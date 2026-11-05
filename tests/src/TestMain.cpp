@@ -1,4 +1,4 @@
-#define CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
 
 #include <Core/Global.h>
@@ -8,6 +8,18 @@
 #include <Common/Util/FileUtil.h>
 #include <iostream>
 
+// Test runtime lifetime note (Line 3, ASan finding):
+// The previous version defined `static TestRuntime RUNTIME;` and relied on the
+// implicit static destructor to call Global::Shutdown(). The Core/Global.cpp
+// static strong/weak context holders are destroyed before that static object on
+// MSVC (static deinitialization order across translation units), so the
+// destructor touched an already-released shared_ptr control block: AddressSanitizer
+// reported a heap-use-after-free on every exit, even with zero tests.
+//
+// The runtime is therefore created as a LOCAL object inside main() below. It is
+// destroyed before static destruction, while Global's statics are still alive.
+// Global.cpp's production lifetime is intentionally unchanged; the latent
+// static-init/deinit hazard is tracked as a separate, unverified finding.
 class TestRuntime
 {
 public:
@@ -35,4 +47,8 @@ private:
     Context::Ptr m_pContext;
 };
 
-static TestRuntime RUNTIME;
+int main(int argc, char** argv)
+{
+    TestRuntime runtime; // destroyed before static destruction: Global statics still alive
+    return Catch::Session().run(argc, argv);
+}

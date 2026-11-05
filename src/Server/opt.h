@@ -24,6 +24,7 @@ static ko_longopt_t longopts[] = {
 	{ "no-wallet", ko_no_argument, 304 },
 	{ "shared-node", ko_required_argument, 305 },
 	{ "config-path", ko_required_argument, 306 },
+	{ "automated-testing", ko_no_argument, 307 },
 	{ NULL, 0, 0 }
 };
 
@@ -55,6 +56,10 @@ static Options ParseOptions(int argc, char* argv[])
 		{
 			options.config_path = opt.arg;
 		}
+		else if (c == 307)
+		{
+			options.environment = Environment::AUTOMATED_TESTING;
+		}
 	}
 
 	return options;
@@ -65,6 +70,7 @@ static void PrintHelp()
 	std::cout << "Usage: GrinPP [options]" << std::endl;
 	std::cout << "--help" << "\t" << "Display this help message" << std::endl;
 	std::cout << "--floonet" << "\t" << "Use floonet chain" << std::endl;
+	std::cout << "--automated-testing" << "\t" << "Use AUTOMATED_TESTING chain (test-only)" << std::endl;
 	std::cout << "--headless" << "\t" << "Run headless app with no console output" << std::endl;
 	std::cout << "--no-wallet" << "\t" << "Run only a node, not a wallet" << std::endl;
 	std::cout << "--shared-node [host:port]" << "\t" << "Uses the node at the given address and port (grinnode.live:80)" << std::endl;

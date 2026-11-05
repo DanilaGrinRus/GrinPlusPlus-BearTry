@@ -3,4 +3,15 @@ list_append_parent(
     ${CMAKE_CURRENT_LIST_DIR}
     "Test_Chain.cpp"
     "Test_ReorgChain.cpp"
+    "Test_ChainConsistency.cpp"
+    "Test_DbCheckpoint.cpp"
+    "Test_DbRecovery.cpp"
+    "Test_KernelIndex.cpp"
+    "Test_KernelIndexCrash.cpp"
+    "Test_KernelIndexFaultInjection.cpp"
+    "Test_KernelIndexPibd.cpp"
+    "Test_KernelFeatures.cpp"
+    "Test_NrdBodylessRestart.cpp"
+    "Test_NrdKillHarness.cpp"
 )
+

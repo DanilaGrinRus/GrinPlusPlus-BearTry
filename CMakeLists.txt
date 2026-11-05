@@ -27,7 +27,7 @@ if(MSVC)
 
     if(CMAKE_CXX_FLAGS MATCHES "/W[0-4]")
         string(REGEX REPLACE "/W[0-4]" "/W4 /WX" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    else()
+    elseif(NOT CMAKE_CXX_FLAGS MATCHES "/WX")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX")
     endif()
 
@@ -47,6 +47,9 @@ if(MSVC)
     )
 
     add_definitions(-DWIN32_LEAN_AND_MEAN)
+    # windows.h defines min/max macros that break std::max/min (and any header
+    # using std::numeric_limits<T>::max()) unless NOMINMAX is defined.
+    add_definitions(-DNOMINMAX)
 foreach(CompilerFlag ${CompilerFlags})
     string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
     set(${CompilerFlag} "${${CompilerFlag}}" CACHE STRING "msvc compiler flags" FORCE)

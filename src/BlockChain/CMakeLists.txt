@@ -7,6 +7,7 @@ file(GLOB SOURCE_CODE
     "ChainResyncer.cpp"
     "ChainState.cpp"
     "ChainStore.cpp"
+    "HeaderStateCheckpoint.cpp"
     "CoinView.cpp"
     "CompactBlockFactory.cpp"
 	"Processors/*.cpp"

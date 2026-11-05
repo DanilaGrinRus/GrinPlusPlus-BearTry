@@ -1,3 +1,5 @@
+> This is the packaged RC1 source snapshot. See ../README.en.md and ../BUILD.ru.md for its status and build instructions.
+
 <p align="center">
   <img width="400" height="94" src="https://user-images.githubusercontent.com/8020386/93075419-593ff300-f6b8-11ea-94c2-2b532d2cedbd.png" alt="Grin++">
 </p>

@@ -4,4 +4,5 @@ list_append_parent(
     "Test_BlockTime.cpp"
     "Test_Difficulty.cpp"
     "Test_HardForks.cpp"
+    "Test_PoWEdgeBits.cpp"
 )

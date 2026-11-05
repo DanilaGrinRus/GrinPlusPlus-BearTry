@@ -3,12 +3,14 @@ set(TARGET_NAME PMMR)
 # PMMR
 file(GLOB SOURCE_CODE
     "HeaderMMRImpl.cpp"
+    "KernelIndex.cpp"
     "KernelMMR.cpp"
     "OutputPMMR.cpp"
     "RangeProofPMMR.cpp"
     "TxHashSetImpl.cpp"
     "TxHashSetManager.cpp"
     "TxHashSetValidator.cpp"
+    "RangeProofBatchVerifier.cpp"
 	"UBMT.cpp"
     "Common/Index.cpp"
     "Common/LeafSet.cpp"

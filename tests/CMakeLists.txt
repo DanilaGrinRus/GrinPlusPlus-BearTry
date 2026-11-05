@@ -10,6 +10,7 @@ add_subdirectory(src/Core)
 add_subdirectory(src/Crypto)
 add_subdirectory(src/Database)
 add_subdirectory(src/Net)
+add_subdirectory(src/P2P)
 add_subdirectory(src/PMMR)
 add_subdirectory(src/Wallet)
 
@@ -25,6 +26,7 @@ target_link_libraries(Tests PRIVATE
     Crypto
     Database
     Net
+    P2P
     Tor
     PMMR
     PoW

@@ -98,10 +98,11 @@ Transaction TxBuilder::BuildTx(const Criteria& criteria)
         }
 
         TransactionKernel kernel = BuildKernel(
-            EKernelFeatures::DEFAULT_KERNEL,
+            criteria.kernel_features,
             Fee::From(kernel_fee),
             kernel_blind,
-            Crypto::CommitBlinded(0, kernel_blind)
+            Crypto::CommitBlinded(0, kernel_blind),
+            criteria.relative_height
         );
 
         kernels.push_back(std::move(kernel));
@@ -122,13 +123,22 @@ TransactionKernel TxBuilder::BuildKernel(
     const EKernelFeatures features,
     const Fee& fee,
     const BlindingFactor& blind,
-    const Commitment& commit)
+    const Commitment& commit,
+    const uint64_t lock_height)
 {
     Serializer serializer;
     serializer.Append<uint8_t>((uint8_t)features);
 
     if (features != EKernelFeatures::COINBASE_KERNEL) {
         fee.Serialize(serializer);
+    }
+
+    if (features == EKernelFeatures::HEIGHT_LOCKED) {
+        serializer.Append<uint64_t>(lock_height);
+    }
+
+    if (features == EKernelFeatures::NO_RECENT_DUPLICATE) {
+        serializer.Append<uint16_t>((uint16_t)lock_height);
     }
 
     auto pSignature = Crypto::BuildCoinbaseSignature(
@@ -140,7 +150,7 @@ TransactionKernel TxBuilder::BuildKernel(
     return TransactionKernel(
         features,
         fee,
-        0,
+        lock_height,
         Commitment(commit),
         Signature(*pSignature)
     );

@@ -24,6 +24,11 @@ public:
         bool include_change{ false };
         uint64_t fee_base{ 500'000 };
         uint64_t num_kernels{ 1 };
+        // Optional kernel type for NRD tests. DEFAULT_KERNEL reproduces the old
+        // behavior; NO_RECENT_DUPLICATE uses relative_height as the kernel lock
+        // height (C++ stores the NRD relative height there).
+        EKernelFeatures kernel_features{ EKernelFeatures::DEFAULT_KERNEL };
+        uint64_t relative_height{ 0 };
     };
     Transaction BuildTx(const Criteria& criteria);
 
@@ -31,7 +36,8 @@ public:
         const EKernelFeatures features,
         const Fee& fee,
         const BlindingFactor& blind,
-        const Commitment& commit
+        const Commitment& commit,
+        const uint64_t lock_height = 0
     );
 
     std::pair<BlindingFactor, TransactionOutput> BuildOutput(

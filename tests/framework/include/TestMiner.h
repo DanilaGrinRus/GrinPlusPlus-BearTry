@@ -72,7 +72,8 @@ public:
     FullBlock MineNextBlock(
 		const BlockHeaderPtr& pPreviousHeader,
 		const Transaction& transaction,
-		const std::vector<FullBlock>& blocksToApply = {})
+		const std::vector<FullBlock>& blocksToApply = {},
+		const uint16_t headerVersion = 1)
     {
 		Hash headerRoot = CalculateHeaderRoot(pPreviousHeader, blocksToApply);
 		auto roots = CalculateTxHashSetInfo(pPreviousHeader, transaction, blocksToApply);
@@ -80,7 +81,7 @@ public:
 		auto pPrevHeader = blocksToApply.empty() ? pPreviousHeader : blocksToApply.back().GetHeader();
 
 		auto pHeader = std::make_shared<BlockHeader>(
-			(uint16_t)1,
+			headerVersion,
 			pPrevHeader->GetHeight() + 1,
 			(TimeUtil::Now() - 1000) + pPrevHeader->GetHeight(),
 			Hash(pPrevHeader->GetHash()),

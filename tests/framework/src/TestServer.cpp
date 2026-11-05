@@ -1,4 +1,6 @@
 #include <TestServer.h>
+#include <filesystem.h>
+#include <stdexcept>
 #include <TorProcessManager.h>
 #include <TestNodeClient.h>
 #include <TestMiner.h>
@@ -41,6 +43,11 @@ TestServer::~TestServer()
 	m_pDatabase.reset();
 
 	auto dataPath = Global::GetConfig().GetDataDirectory();
+	if (m_preserveData) {
+		// Restart tests reopen these paths; keep them intact.
+		return;
+	}
+
 	FileUtil::RemoveFile(dataPath / "NODE" / "CHAIN");
 	FileUtil::RemoveFile(dataPath / "NODE" / "DB");
 	FileUtil::RemoveFile(dataPath / "NODE" / "TXHASHSET");
@@ -64,6 +71,37 @@ TestServer::Ptr TestServer::Create()
 	FileUtil::CreateDirectories(config.GetTxHashSetPath() / "output");
 	FileUtil::CreateDirectories(config.GetTxHashSetPath() / "rangeproof");
 	FileUtil::CreateDirectories(config.GetWalletPath());
+
+	IDatabasePtr pDatabase = DatabaseAPI::OpenDatabase(config);
+	auto pTxHashSetManager = std::make_shared<Locked<TxHashSetManager>>(std::make_shared<TxHashSetManager>(config));
+	ITransactionPool::Ptr pTxPool = TxPoolAPI::CreateTransactionPool(config);
+	auto pHeaderMMR = HeaderMMRAPI::OpenHeaderMMR(config);
+	IBlockChain::Ptr pBlockChain = BlockChainAPI::OpenBlockChain(
+		config,
+		pDatabase->GetBlockDB(),
+		pTxHashSetManager,
+		pTxPool,
+		pHeaderMMR
+	);
+
+	return std::make_shared<TestServer>(
+		pDatabase,
+		pTxHashSetManager,
+		pTxPool,
+		pHeaderMMR,
+		pBlockChain
+	);
+}
+
+TestServer::Ptr TestServer::OpenExisting()
+{
+	const Config& config = Global::GetConfig();
+
+	// Restart path: do not delete or recreate anything. The caller must have
+	// preserved the data dirs from a previous TestServer.
+	if (!fs::exists(config.GetDatabasePath()) || !fs::exists(config.GetTxHashSetPath())) {
+		throw std::runtime_error("OpenExisting: AUTOMATED_TESTING data dirs are missing");
+	}
 
 	IDatabasePtr pDatabase = DatabaseAPI::OpenDatabase(config);
 	auto pTxHashSetManager = std::make_shared<Locked<TxHashSetManager>>(std::make_shared<TxHashSetManager>(config));
