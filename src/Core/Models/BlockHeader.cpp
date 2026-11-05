@@ -1,4 +1,5 @@
 #include <Core/Models/BlockHeader.h>
+#include <Consensus.h>
 #include <Common/Util/TimeUtil.h>
 #include <Core/Util/JsonUtil.h>
 
@@ -157,7 +158,11 @@ std::shared_ptr<BlockHeader> BlockHeader::FromJSON(const Json::Value& json)
 	// ProofOfWork
 	uint8_t edgeBits = JsonUtil::GetRequiredUInt8(json, "edge_bits");
 	std::vector<uint64_t> proofNonces;
-	for (auto cuckoo_nonce : JsonUtil::GetRequiredField(json, "cuckoo_solution"))
+	const auto& solution = JsonUtil::GetRequiredField(json, "cuckoo_solution");
+	if (edgeBits == 0 || edgeBits > 63 || !solution.isArray() || solution.size() != Consensus::PROOFSIZE) {
+		throw DESERIALIZATION_EXCEPTION("Invalid PoW solution size");
+	}
+	for (const auto& cuckoo_nonce : solution)
 	{
 		proofNonces.push_back(cuckoo_nonce.asUInt64());
 	}
