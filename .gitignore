@@ -332,3 +332,29 @@ cmake_install.cmake
 CMakeSettings.json
 
 output/
+
+# Project build helpers (the generic 'build/' rule above would hide them)
+!tools/build/
+
+
+# Gplus local evidence binaries (manifests/logs are kept in git)
+/evidence/**/*.exe
+/tools/audit/nrd/evidence/**/*.exe
+
+# --- Public-fork hygiene -------------------------------------------------
+# Local node/wallet profiles, run data and secrets must never be published.
+/profile/
+/runs/
+/node_data/
+/evidence/
+/secrets/
+*.api_secret
+*.local.txt
+TESTNET_FUNDED_SEEDS.local.txt
+/dist/data/
+
+# Raw machine-specific audit dumps and the local Rust oracle harness are
+# deliberately not part of the public source tree (see OMITTED_LOCAL_TOOLS.md).
+# The audit method (README, cases, scripts) stays tracked.
+/tools/audit/nrd/evidence/
+/tools/audit/nrd/rust-oracle/
