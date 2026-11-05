@@ -111,7 +111,7 @@ std::vector<uint8_t> Age::TryDecrypt(
     const x25519_keypair_t& decrypt_keypair,
     const age::RecipientLine& recipient_line,
     const CBigInteger<16>& file_key_nonce,
-    const age::Header& /*header*/,
+    const age::Header& header,
     const std::vector<uint8_t>& encrypted_payload)
 {
     try
@@ -134,7 +134,7 @@ std::vector<uint8_t> Age::TryDecrypt(
             "header",
             decrypted_file_key
         );
-        //header.VerifyMac(mac_key);
+        header.VerifyMac(mac_key);
 
         SecretKey payload_key = KDF::HKDF(
             std::make_optional(file_key_nonce.GetData()),

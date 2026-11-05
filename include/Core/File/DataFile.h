@@ -6,6 +6,7 @@
 #include <Crypto/Models/BigInteger.h>
 #include <Common/Util/StringUtil.h>
 #include <memory>
+#include <limits>
 
 template<size_t NUM_BYTES>
 class DataFile : public Traits::IBatchable
@@ -50,7 +51,8 @@ public:
 	void Rewind(const uint64_t size)
 	{
 		SetDirty(true);
-		if (!m_pFile->Rewind(size * NUM_BYTES))
+		if (size > (std::numeric_limits<uint64_t>::max)() / NUM_BYTES ||
+			!m_pFile->Rewind(size * NUM_BYTES))
 		{
 			throw FILE_EXCEPTION(StringUtil::Format("Failed to rewind to size {}", size));
 		}
@@ -63,6 +65,11 @@ public:
 
 	std::vector<unsigned char> GetDataAt(const uint64_t position) const
 	{
+		// Bounds-check before multiplying: a huge index would otherwise wrap.
+		if (position >= GetSize()) {
+			throw FILE_EXCEPTION(StringUtil::Format("Failed to read data at position {}", position));
+		}
+
 		std::vector<unsigned char> data;
 		if (!m_pFile->Read(position * NUM_BYTES, NUM_BYTES, data))
 		{

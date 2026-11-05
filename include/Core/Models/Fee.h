@@ -39,6 +39,17 @@ public:
 	//
 	void Serialize(Serializer& serializer) const final
 	{
+		if (serializer.GetProtocolVersion() >= EProtocolVersion::V2)
+		{
+			// V2 fee_fields are a single big-endian u64:
+			// (fee_shift << 40) | fee. This matches Rust FeeFields.
+			const uint64_t feeFields =
+				((uint64_t)(m_shift & 0x0f) << 40) | (m_fee & 0xffffffffffULL);
+			serializer.Append<uint64_t>(feeFields);
+			return;
+		}
+
+		// Original V1 layout, retained for legacy/hash serialization.
 		serializer.Append<uint16_t>(0);
 		serializer.Append<uint8_t>(m_shift);
 		serializer.Append<uint8_t>((uint8_t)(m_fee >> 32));
@@ -47,6 +58,12 @@ public:
 
 	static Fee Deserialize(ByteBuffer& byteBuffer)
 	{
+		if (byteBuffer.GetProtocolVersion() >= EProtocolVersion::V2)
+		{
+			const uint64_t feeFields = byteBuffer.ReadU64();
+			return Fee((uint8_t)((feeFields >> 40) & 0x0f), feeFields & 0xffffffffffULL);
+		}
+
 		byteBuffer.ReadU16();
 		uint8_t shift = byteBuffer.ReadU8() & 0x0f;
 		uint64_t fee = ((uint64_t)byteBuffer.ReadU8()) << 32;

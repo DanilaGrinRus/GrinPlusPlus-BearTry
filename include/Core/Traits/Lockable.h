@@ -2,6 +2,7 @@
 
 #include <Core/Exceptions/UnimplementedException.h>
 #include <Core/Traits/Batchable.h>
+#include <Common/Logger.h>
 #include <memory>
 #include <shared_mutex>
 #include <mutex>
@@ -103,20 +104,58 @@ class Writer : public Reader<T>
 		InnerWriter(const bool batched, std::shared_ptr<U> pObject, std::shared_ptr<std::shared_mutex> pMutex, const bool lock)
 			: m_batched(batched), m_pObject(pObject), m_pMutex(pMutex)
 		{
-			if (lock)
+			const bool locked = lock;
+			if (locked)
 			{
 				m_pMutex->lock();
 			}
 
-			OnInitWrite(batched);
+			try
+			{
+				OnInitWrite(batched);
+			}
+			catch (...)
+			{
+				// The object was never constructed: its destructor will not run.
+				// Release the mutex here or every later access to this Locked<>
+				// would deadlock (N-09).
+				try
+				{
+					OnEndWrite();
+				}
+				catch (const std::exception& e)
+				{
+					LOG_ERROR_F("Wallet writer OnEndWrite failed during init: {}", e.what());
+				}
+				catch (...)
+				{
+					LOG_ERROR("Wallet writer OnEndWrite failed during init: unknown error");
+				}
+
+				// Do not leave a dirty flag behind for a writer that never
+				// started successfully.
+				Traits::IBatchable* pBatchable = GetBatchable(m_pObject);
+				if (pBatchable != nullptr)
+				{
+					pBatchable->SetDirty(false);
+				}
+
+				// The writer was supposed to own the mutex (this includes the
+				// adopt_lock path used by MultiLocker). Since construction
+				// failed, there is no Writer to unlock it later.
+				m_pMutex->unlock();
+
+				throw;
+			}
 		}
 
 		~InnerWriter()
 		{
+			// Using MutexUnlocker in case exception is thrown.
+			MutexUnlocker unlocker(m_pMutex);
+
 			try
 			{
-				// Using MutexUnlocker in case exception is thrown.
-				MutexUnlocker unlocker(m_pMutex);
 				if (m_batched)
 				{
 					Rollback();
@@ -125,12 +164,30 @@ class Writer : public Reader<T>
 				{
 					Commit();
 				}
+			}
+			catch (const std::exception& e)
+			{
+				// Never let a commit/rollback failure escape a destructor. It
+				// must be observable in the log, not silently swallowed (N-10).
+				LOG_ERROR_F("Wallet writer failed to finalize transaction: {}", e.what());
+			}
+			catch (...)
+			{
+				LOG_ERROR("Wallet writer failed to finalize transaction: unknown error");
+			}
 
+			// Always run OnEndWrite, including after a failed commit/rollback.
+			try
+			{
 				OnEndWrite();
 			}
-			catch (std::exception&)
+			catch (const std::exception& e)
 			{
-				// TODO: Handle
+				LOG_ERROR_F("Wallet writer OnEndWrite failed: {}", e.what());
+			}
+			catch (...)
+			{
+				LOG_ERROR("Wallet writer OnEndWrite failed: unknown error");
 			}
 		}
 

@@ -16,6 +16,7 @@ namespace age
     {
         CBigInteger<32> mac;
         std::vector<RecipientLine> recipients;
+        std::string authenticatedBytes;
 
         static Header Create(const SecretKey& mac_key, const std::vector<RecipientLine>& recipients)
         {
@@ -32,22 +33,12 @@ namespace age
 
             Hash mac = Hasher::HMAC_SHA256(mac_key.GetVec(), encoded_u8);
 
-            return { mac, recipients };
+            return { mac, recipients, encoded_without_mac };
         }
 
         void VerifyMac(const SecretKey& mac_key) const
         {
-            std::string encoded_recipients = "";
-            for (const RecipientLine& recipient : recipients) {
-                encoded_recipients += recipient.Encode();
-            }
-
-            std::string encoded_without_mac = StringUtil::Format(
-                "age-encryption.org/v1\n{}---",
-                encoded_recipients
-            );
-            std::vector<uint8_t> encoded_u8(encoded_without_mac.cbegin(), encoded_without_mac.cend());
-
+            std::vector<uint8_t> encoded_u8(authenticatedBytes.begin(), authenticatedBytes.end());
             Hash actual = Hasher::HMAC_SHA256(mac_key.GetVec(), encoded_u8);
 
             if (actual != mac) {
@@ -79,6 +70,7 @@ namespace age
         static Header Decode(const std::vector<std::string>& lines)
         {
             Header header;
+            if (lines.empty() || lines.front() != "age-encryption.org/v1") throw CryptoException("Invalid age header");
 
             for (auto iter = lines.begin() + 1; iter != lines.end(); iter++) {
                 std::string line = *iter;
@@ -111,7 +103,13 @@ namespace age
                         throw std::exception();
                     }
 
-                    header.mac = CBigInteger<32>(Base64::DecodeUnpadded(parts[1])); // TODO: Verify mac
+                    auto tag = Base64::DecodeUnpadded(parts[1]);
+                    if (parts[0] != "---" || tag.size() != 32) throw CryptoException("Invalid age MAC");
+                    header.mac = CBigInteger<32>(std::move(tag));
+                    for (auto entry = lines.begin(); entry != iter; ++entry) {
+                        header.authenticatedBytes += *entry + "\n";
+                    }
+                    header.authenticatedBytes += "---";
                     return header;
                 }
             }

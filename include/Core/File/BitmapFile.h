@@ -57,6 +57,7 @@ public:
 
 			std::ofstream file(m_path.c_str(), std::ios_base::binary | std::ios_base::out | std::ios_base::in);
 
+			file.exceptions(std::ios::badbit | std::ios::failbit);
 			for (auto iter : m_modifiedBytes)
 			{
 				file.seekp(iter.first);
@@ -69,7 +70,7 @@ public:
 			m_mmap = mio::make_mmap_source(MPATH_STR, error);
 			if (error.value() != 0)
 			{
-				// TODO: Handle this
+				throw FILE_EXCEPTION_F("Failed to remap bitmap: {}", error.message());
 			}
 
 			m_modifiedBytes.clear();
@@ -297,6 +298,6 @@ private:
 	mio::mmap_source m_mmap;
 	uint64_t m_size;
 
-	static const bool s_true{ false };
+	static const bool s_true{ true };
 	static const bool s_false{ false };
 };

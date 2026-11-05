@@ -62,6 +62,12 @@ public:
         return queue_.empty();
     }
 
+    void clear()
+    {
+        std::unique_lock<std::mutex> mlock(mutex_);
+        queue_.clear();
+    }
+
 private:
     std::deque<T> queue_;
     std::mutex mutex_;

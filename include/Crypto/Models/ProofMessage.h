@@ -12,6 +12,7 @@ public:
 
 	static ProofMessage FromKeyIndices(const std::vector<uint32_t>& keyIndices, const EBulletproofType& bulletproofType)
 	{
+		if (keyIndices.size() > 4) throw std::invalid_argument("Proof path exceeds four indices");
 		Serializer serializer;
 		for (const uint32_t keyIndex : keyIndices)
 		{

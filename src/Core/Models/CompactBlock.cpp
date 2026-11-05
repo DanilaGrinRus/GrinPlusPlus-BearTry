@@ -76,10 +76,10 @@ Json::Value CompactBlock::ToJSON() const
 	json["header"] = GetHeader()->ToJSON();
 
 	// Short Ids
-	Json::Value inputsNode;
+	Json::Value inputsNode(Json::arrayValue);
 	for (const ShortId& shortId : GetShortIds())
 	{
-		json.append(shortId.GetId().ToHex());
+		inputsNode.append(shortId.GetId().ToHex());
 	}
 	json["inputs"] = inputsNode;
 

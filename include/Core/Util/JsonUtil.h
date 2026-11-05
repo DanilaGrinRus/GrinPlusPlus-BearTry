@@ -1,5 +1,8 @@
 #pragma once
 
+#include <charconv>
+#include <limits>
+
 #include <Common/Util/HexUtil.h>
 #include <Crypto/Models/BlindingFactor.h>
 #include <Crypto/Models/Commitment.h>
@@ -356,12 +359,28 @@ public:
 		}
 		else if (uint64JSON.isString())
 		{
-			return std::stoull(uint64JSON.asString());
+			const auto str = uint64JSON.asString();
+			uint64_t number = 0;
+			auto parsed = std::from_chars(str.data(), str.data() + str.size(), number);
+			if (parsed.ec != std::errc{} || parsed.ptr != str.data() + str.size()) {
+				throw DESERIALIZATION_EXCEPTION("Invalid unsigned decimal integer");
+			}
+			return number;
 		}
 		else
 		{
 			throw DESERIALIZATION_EXCEPTION("Value is not a uint64");
 		}
+	}
+
+	template<typename UInt>
+	static UInt CheckedUInt(const Json::Value& value)
+	{
+		const auto number = ConvertToUInt64(value);
+		if (number > (std::numeric_limits<UInt>::max)()) {
+			throw DESERIALIZATION_EXCEPTION("Unsigned integer out of range");
+		}
+		return static_cast<UInt>(number);
 	}
 
 	static uint64_t GetRequiredUInt64(const Json::Value& parentJSON, const std::string& key)
@@ -395,14 +414,14 @@ public:
 		}
 		else
 		{
-			return std::make_optional((uint32_t)ConvertToUInt64(json.value()));
+			return std::make_optional(CheckedUInt<uint32_t>(json.value()));
 		}
 	}
 
 	static uint32_t GetRequiredUInt32(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint32_t)ConvertToUInt64(value);
+		return CheckedUInt<uint32_t>(value);
 	}
 
 	//
@@ -411,7 +430,7 @@ public:
 	static uint16_t GetRequiredUInt16(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint16_t)ConvertToUInt64(value);
+		return CheckedUInt<uint16_t>(value);
 	}
 
 	//
@@ -420,7 +439,7 @@ public:
 	static uint8_t GetRequiredUInt8(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint8_t)ConvertToUInt64(value);
+		return CheckedUInt<uint8_t>(value);
 	}
 
 	static std::optional<uint8_t> GetUInt8Opt(const Json::Value& parentJSON, const std::string& key)
@@ -432,7 +451,7 @@ public:
 		}
 		else
 		{
-			return (uint8_t)ConvertToUInt64(json.value());
+			return CheckedUInt<uint8_t>(json.value());
 		}
 	}
 

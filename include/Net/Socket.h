@@ -94,6 +94,9 @@ private:
 
 	std::mutex m_writeQueueMutex;
 	SharedQueue<std::vector<uint8_t>> m_writeQueue; // TODO: Use strand instead of queue
+	std::vector<uint8_t> m_activeWrite;
+	size_t m_queuedBytes = 0;
+	static constexpr size_t MAX_WRITE_QUEUE_BYTES = 16 * 1024 * 1024;
 
 	asio::error_code m_errorCode;
 	std::atomic_bool m_socketOpen;

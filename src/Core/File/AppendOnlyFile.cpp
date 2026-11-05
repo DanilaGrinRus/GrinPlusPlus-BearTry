@@ -58,7 +58,7 @@ bool AppendOnlyFile::Rewind(const uint64_t nextPosition)
 	}
 	else
 	{
-		m_buffer.erase(m_buffer.begin() + nextPosition - m_bufferIndex, m_buffer.end());
+		m_buffer.erase(m_buffer.begin() + (nextPosition - m_bufferIndex), m_buffer.end());
 	}
 
 	return true;
@@ -77,20 +77,31 @@ uint64_t AppendOnlyFile::GetSize() const noexcept
 
 bool AppendOnlyFile::Read(const uint64_t position, const uint64_t numBytes, std::vector<unsigned char>& data) const
 {
+	const uint64_t size = GetSize();
+	if (numBytes > size || position > size - numBytes) {
+		return false;
+	}
+
 	// TODO: Handle partial read from m_mmap and m_buffer
-	if (position < m_bufferIndex)
-	{
+	if (position < m_bufferIndex) {
+		// This implementation only reads the mapped part or the buffered part;
+		// a read spanning the boundary is rejected instead of over-reading.
+		if (position + numBytes > m_bufferIndex) {
+			return false;
+		}
+
 		m_pMappedFile->Read(position, numBytes, data);
-	}
-	else
-	{
-		const uint64_t firstBufferIndex = position - m_bufferIndex;
-
-		data = std::vector<unsigned char>(
-			m_buffer.cbegin() + firstBufferIndex,
-			m_buffer.cbegin() + firstBufferIndex + numBytes
-		);
+		return true;
 	}
 
+	const uint64_t firstBufferIndex = position - m_bufferIndex;
+	if (firstBufferIndex > m_buffer.size() || numBytes > m_buffer.size() - firstBufferIndex) {
+		return false;
+	}
+
+	data = std::vector<unsigned char>(
+		m_buffer.cbegin() + firstBufferIndex,
+		m_buffer.cbegin() + firstBufferIndex + numBytes
+	);
 	return true;
 }

@@ -2,6 +2,8 @@
 
 #include <Common/Util/StringUtil.h>
 #include <string>
+#include <chrono>
+#include <utility>
 
 #define LOGGER_API
 
@@ -14,6 +16,8 @@ namespace LoggerAPI
 	};
 
 	LOGGER_API void Initialize(const fs::path& logDirectory, const std::string& logLevel);
+	LOGGER_API void InitializeNodeDiagnostics(const fs::path& logDirectory, const std::string& logLevel);
+	LOGGER_API void LogSyncEvent(const std::string& message) noexcept;
 	LOGGER_API void Shutdown();
 	LOGGER_API void SetThreadName(const std::string& thread_name);
 
@@ -31,6 +35,34 @@ namespace LoggerAPI
 	LOGGER_API void LogWarning(const LogFile file, const std::string& function, const size_t line, const std::string& message);
 	LOGGER_API void LogError(const LogFile file, const std::string& function, const size_t line, const std::string& message);
 }
+
+// A subphase is logged independently of the overall sync state. If validation
+// exits early or throws, its ending is explicitly marked incomplete/failed.
+class ScopedSyncPhase
+{
+public:
+	explicit ScopedSyncPhase(const char* phase) noexcept
+		: m_phase(phase), m_start(std::chrono::steady_clock::now())
+	{
+		try { LoggerAPI::LogSyncEvent(std::string("event=phase_begin phase=") + m_phase); } catch (...) { }
+	}
+	~ScopedSyncPhase() noexcept
+	{
+		try {
+			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now() - m_start).count();
+			LoggerAPI::LogSyncEvent(std::string("event=phase_end phase=") + m_phase + " duration_ms=" +
+				std::to_string(ms) + (m_success ? " outcome=success" : " outcome=incomplete_or_failed"));
+		} catch (...) { }
+	}
+	void Success() noexcept { m_success = true; }
+	ScopedSyncPhase(const ScopedSyncPhase&) = delete;
+	ScopedSyncPhase& operator=(const ScopedSyncPhase&) = delete;
+private:
+	const char* m_phase;
+	std::chrono::steady_clock::time_point m_start;
+	bool m_success = false;
+};
 
 // Node Logger
 #define LOG_TRACE(message) LoggerAPI::LogTrace(LoggerAPI::LogFile::NODE, __func__, __LINE__, message)

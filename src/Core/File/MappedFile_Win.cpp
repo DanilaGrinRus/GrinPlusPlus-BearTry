@@ -4,6 +4,7 @@
 #include <vector>
 #include <filesystem.h>
 #include <stdlib.h>
+#include <limits>
 #include <Core/Exceptions/FileException.h>
 #include <Common/Logger.h>
 
@@ -11,7 +12,9 @@ MappedFile::~MappedFile()
 {
 	//LOG_TRACE_F("Closing File: {}", m_path);
 
-	Unmap();
+	try { Unmap(); } catch (const std::exception& e) {
+		LOG_ERROR_F("Failed to unmap {} during destruction: {}", m_path, e.what());
+	}
 
 	if (m_handle != INVALID_HANDLE_VALUE)
 	{
@@ -78,8 +81,12 @@ bool MappedFile::Write(const size_t startIndex, const std::vector<uint8_t>& data
 
 	if (!data.empty())
 	{
-		DWORD bytesWritten;
-		if (FALSE == WriteFile(m_handle, (const char*)data.data(), (DWORD)data.size(), &bytesWritten, 0))
+		if (data.size() > (std::numeric_limits<DWORD>::max)()) {
+			return false;
+		}
+		DWORD bytesWritten = 0;
+		if (FALSE == WriteFile(m_handle, data.data(), (DWORD)data.size(), &bytesWritten, 0) ||
+			bytesWritten != data.size())
 		{
 			LOG_ERROR_F("Failed to write to {} - error: {}", m_path, GetLastError());
 			return false;
@@ -90,7 +97,7 @@ bool MappedFile::Write(const size_t startIndex, const std::vector<uint8_t>& data
 	if (!success)
 	{
 		LOG_ERROR_F("Failed to set end of file for {} - error: {}", m_path, GetLastError());
-		//return false;
+		return false;
 	}
 
 	return true;
@@ -114,7 +121,7 @@ void MappedFile::Read(const uint64_t position, const uint64_t numBytes, std::vec
 void MappedFile::Map() const
 {
 	m_mmap.mapping_handle = CreateFileMapping(m_handle, 0, PAGE_READONLY, 0, 0, 0);
-	if (m_mmap.mapping_handle == INVALID_HANDLE_VALUE)
+	if (m_mmap.mapping_handle == nullptr)
 	{
 		LOG_ERROR_F("Failed to create file mapping: {}", m_path);
 		throw FILE_EXCEPTION_F("Failed to create file mapping: {}", m_path);
@@ -123,6 +130,8 @@ void MappedFile::Map() const
 	m_mmap.mapped_view = (const char*)MapViewOfFile(m_mmap.mapping_handle, FILE_MAP_READ, 0, 0, 0);
 	if (m_mmap.mapped_view == nullptr)
 	{
+		CloseHandle(m_mmap.mapping_handle);
+		m_mmap.mapping_handle = nullptr;
 		LOG_ERROR_F("Failed to map view of file: {}", m_path);
 		throw FILE_EXCEPTION_F("Failed to map view of file: {}", m_path);
 	}
@@ -135,16 +144,11 @@ void MappedFile::Unmap() const
 		if (!UnmapViewOfFile(m_mmap.mapped_view))
 		{
 			LOG_ERROR_F("Failed to unmap view of file: {}", m_path);
-			throw FILE_EXCEPTION_F("Failed to unmap view of file: {}", m_path);
 		}
-
-		if (!CloseHandle(m_mmap.mapping_handle))
-		{
-			LOG_ERROR_F("Failed to close file mapping: {}", m_path);
-			throw FILE_EXCEPTION_F("Failed to close file mapping: {}", m_path);
-		}
-
 		m_mmap.mapped_view = nullptr;
-		m_mmap.mapping_handle = INVALID_HANDLE_VALUE;
 	}
+	if (m_mmap.mapping_handle != nullptr && !CloseHandle(m_mmap.mapping_handle)) {
+		LOG_ERROR_F("Failed to close file mapping: {}", m_path);
+	}
+	m_mmap.mapping_handle = nullptr;
 }

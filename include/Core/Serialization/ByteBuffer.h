@@ -29,9 +29,7 @@ public:
     template<class T>
     void ReadBigEndian(T& t)
     {
-        if (m_index + sizeof(T) > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(sizeof(T));
 
         if (EndianHelper::IsBigEndian()) {
             memcpy(&t, &m_bytes[m_index], sizeof(T));
@@ -48,9 +46,7 @@ public:
     template<class T>
     void ReadLittleEndian(T& t)
     {
-        if (m_index + sizeof(T) > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(sizeof(T));
 
         if (EndianHelper::IsBigEndian()) {
             std::vector<uint8_t> temp;
@@ -157,34 +153,32 @@ public:
             return "";
         }
 
-        if (m_index + stringLength > m_bytes.size()) {
+        if (stringLength > SIZE_MAX) {
             throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
         }
+
+        RequireRemaining(stringLength);
 
         std::vector<uint8_t> temp(m_bytes.cbegin() + m_index, m_bytes.cbegin() + m_index + stringLength);
         m_index += stringLength;
 
-        return std::string((char*)&temp[0], stringLength);
+        return std::string(temp.begin(), temp.end());
     }
 
     std::string ReadString(const size_t size)
     {
-        if (m_index + size > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(size);
 
         std::vector<uint8_t> temp(m_bytes.cbegin() + m_index, m_bytes.cbegin() + m_index + size);
         m_index += size;
 
-        return std::string((char*)&temp[0], size);
+        return std::string(temp.begin(), temp.end());
     }
 
     template<size_t NUM_BYTES>
     CBigInteger<NUM_BYTES> ReadBigInteger()
     {
-        if (m_index + NUM_BYTES > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(NUM_BYTES);
 
         std::vector<uint8_t> data(m_bytes.cbegin() + m_index, m_bytes.cbegin() + m_index + NUM_BYTES);
 
@@ -195,9 +189,7 @@ public:
 
     std::vector<uint8_t> ReadVector(const uint64_t numBytes)
     {
-        if (m_index + numBytes > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(numBytes);
 
         const size_t index = m_index;
         m_index += numBytes;
@@ -208,9 +200,7 @@ public:
     template<size_t T>
     std::array<uint8_t, T> ReadArray()
     {
-        if (m_index + T > m_bytes.size()) {
-            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
-        }
+        RequireRemaining(T);
 
         const size_t index = m_index;
         m_index += T;
@@ -225,7 +215,7 @@ public:
         return m_bytes.size() - m_index;
     }
 
-    std::vector<uint8_t> ReadRemainingBytes() noexcept
+    std::vector<uint8_t> ReadRemainingBytes()
     {
         size_t prev_index = m_index;
         m_index += GetRemainingSize();
@@ -235,6 +225,15 @@ public:
     EProtocolVersion GetProtocolVersion() const noexcept { return m_protocolVersion; }
 
 private:
+    // Overflow-safe bounds check: `m_index + numBytes` can wrap for attacker
+    // supplied 64-bit lengths, so compare against the remaining size instead.
+    void RequireRemaining(const uint64_t numBytes) const
+    {
+        if (numBytes > (uint64_t)(m_bytes.size() - m_index)) {
+            throw DESERIALIZATION_EXCEPTION("Attempted to read past end of ByteBuffer.");
+        }
+    }
+
     size_t m_index;
     std::vector<uint8_t> m_bytes;
     EProtocolVersion m_protocolVersion;

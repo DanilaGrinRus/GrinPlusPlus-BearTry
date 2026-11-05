@@ -45,8 +45,10 @@ Commitment Pedersen::PedersenCommitSum(const std::vector<Commitment>& positive, 
 {
 	std::shared_lock<std::shared_mutex> readLock(m_mutex);
 
-	std::vector<secp256k1_pedersen_commitment*> positiveCommitments = Pedersen::ConvertCommitments(*m_pContext, positive);
-	std::vector<secp256k1_pedersen_commitment*> negativeCommitments = Pedersen::ConvertCommitments(*m_pContext, negative);
+	auto positiveValues = ConvertCommitments(*m_pContext, positive);
+	auto positiveCommitments = Pointers(positiveValues);
+	auto negativeValues = ConvertCommitments(*m_pContext, negative);
+	auto negativeCommitments = Pointers(negativeValues);
 
 	secp256k1_pedersen_commitment commitment;
 	const int result = secp256k1_pedersen_commit_sum(
@@ -58,8 +60,6 @@ Commitment Pedersen::PedersenCommitSum(const std::vector<Commitment>& positive, 
 		negativeCommitments.size()
 	);
 
-	Pedersen::CleanupCommitments(positiveCommitments);
-	Pedersen::CleanupCommitments(negativeCommitments);
 
 	if (result != 1)
 	{
@@ -160,31 +160,23 @@ Commitment Pedersen::ToCommitment(const PublicKey& publicKey) const
 
 }
 
-std::vector<secp256k1_pedersen_commitment*> Pedersen::ConvertCommitments(const secp256k1_context& context, const std::vector<Commitment>& commitments)
+std::vector<secp256k1_pedersen_commitment> Pedersen::ConvertCommitments(const secp256k1_context& context, const std::vector<Commitment>& commitments)
 {
-	std::vector<secp256k1_pedersen_commitment*> convertedCommitments(commitments.size(), NULL);
-	for (int i = 0; i < commitments.size(); i++)
-	{
-		secp256k1_pedersen_commitment* pCommitment = new secp256k1_pedersen_commitment();
-		const int parsed_result = secp256k1_pedersen_commitment_parse(&context, pCommitment, commitments[i].data());
-		convertedCommitments[i] = pCommitment;
-
-		if (parsed_result != 1) {
-			CleanupCommitments(convertedCommitments);
-			LOG_ERROR_F("secp256k1_pedersen_commitment_parse failed with error {} for commitment {}", parsed_result, commitments[i]);
-			throw CRYPTO_EXCEPTION_F("secp256k1_pedersen_commitment_parse failed with error: {}", parsed_result);
+	std::vector<secp256k1_pedersen_commitment> result(commitments.size());
+	for (size_t i = 0; i < commitments.size(); ++i) {
+		if (!secp256k1_pedersen_commitment_parse(&context, &result[i], commitments[i].data())) {
+			throw CRYPTO_EXCEPTION("Invalid Pedersen commitment");
 		}
 	}
-
-	return convertedCommitments;
+	return result;
 }
 
-void Pedersen::CleanupCommitments(std::vector<secp256k1_pedersen_commitment*>& commitments)
+std::vector<secp256k1_pedersen_commitment*> Pedersen::Pointers(std::vector<secp256k1_pedersen_commitment>& commitments)
 {
-	for (secp256k1_pedersen_commitment* pCommitment : commitments)
-	{
-		delete pCommitment;
+	std::vector<secp256k1_pedersen_commitment*> result;
+	result.reserve(commitments.size());
+	for (auto& commitment : commitments) {
+		result.push_back(&commitment);
 	}
-
-	commitments.clear();
+	return result;
 }

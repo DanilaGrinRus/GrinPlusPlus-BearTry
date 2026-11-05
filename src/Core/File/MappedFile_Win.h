@@ -12,7 +12,7 @@ class MappedFile : public IMappedFile
 {
 	struct MemMap
 	{
-		bool IsMapped() const noexcept { return mapping_handle != INVALID_HANDLE_VALUE; }
+		bool IsMapped() const noexcept { return mapped_view != nullptr; }
 
 		mio::file_handle_type mapping_handle;
 		const char* mapped_view;
@@ -24,7 +24,7 @@ public:
 	MappedFile(const fs::path& path, const mio::file_handle_type handle) noexcept
 		: m_path(path), m_handle(handle)
 	{
-		m_mmap.mapping_handle = INVALID_HANDLE_VALUE;
+		m_mmap.mapping_handle = nullptr;
 		m_mmap.mapped_view = nullptr;
 	}
 	virtual ~MappedFile();

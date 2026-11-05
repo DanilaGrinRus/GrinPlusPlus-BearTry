@@ -26,7 +26,12 @@ void OutputIdentifier::Serialize(Serializer& serializer) const
 OutputIdentifier OutputIdentifier::Deserialize(ByteBuffer& byteBuffer)
 {
 	// Read OutputFeatures (1 byte)
-	const EOutputFeatures features = (EOutputFeatures)byteBuffer.ReadU8();
+	const uint8_t rawFeatures = byteBuffer.ReadU8();
+	if (rawFeatures > (uint8_t)EOutputFeatures::COINBASE_OUTPUT) {
+		throw DESERIALIZATION_EXCEPTION_F("Unknown output feature byte {}", rawFeatures);
+	}
+
+	const EOutputFeatures features = (EOutputFeatures)rawFeatures;
 
 	// Read Commitment (33 bytes)
 	Commitment commitment = Commitment::Deserialize(byteBuffer);

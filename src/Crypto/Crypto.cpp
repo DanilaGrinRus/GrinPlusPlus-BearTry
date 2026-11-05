@@ -155,6 +155,9 @@ Signature Crypto::ParseCompactSignature(const CompactSignature& signature)
 {
 	auto sigs = AggSig::GetInstance().ParseCompactSignatures({ signature });
 
+	if (sigs.empty()) {
+		throw std::invalid_argument("Invalid compact signature");
+	}
 	return Signature(sigs.front().data);
 }
 
