@@ -13,10 +13,18 @@ namespace ConfigProps
 		static const std::string P2P = "P2P";
 
 		static const std::string MIN_PEERS = "MIN_PEERS";
+		static const std::string MIN_SYNC_PEERS = "MIN_SYNC_PEERS";
+		static const std::string P2P_PORT = "P2P_PORT";
+		static const std::string P2P_PEER_PORT = "P2P_PEER_PORT";
+		static const std::string PIBD_ENABLED = "PIBD_ENABLED";
 		static const std::string MAX_PEERS = "MAX_PEERS";
 		static const std::string PREFERRED_PEERS = "PREFERRED_PEERS";
 		static const std::string ALLOWED_PEERS = "ALLOWED_PEERS";
 		static const std::string BLOCKED_PEERS = "BLOCKED_PEERS";
+		static const std::string PIHD_MODE = "PIHD_MODE";
+		// Peers the node must never dial. Unlike BLOCKED_PEERS, this does not
+		// reject inbound connections (used to keep test topologies loop-free).
+		static const std::string BLOCKED_OUTBOUND_PEERS = "BLOCKED_OUTBOUND_PEERS";
 	}
 
 	namespace Dandelion

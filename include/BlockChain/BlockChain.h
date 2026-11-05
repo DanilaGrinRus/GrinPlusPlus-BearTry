@@ -24,6 +24,7 @@
 class Config;
 class IBlockDB;
 class TxHashSetManager;
+class ITxHashSet;
 class ITransactionPool;
 class SyncStatus;
 class FullBlock;
@@ -40,6 +41,23 @@ class IBlockChain
 public:
 	using Ptr = std::shared_ptr<IBlockChain>;
 
+	// Coherent read-only view for API handlers. The returned lease keeps the
+	// chain mutation lock held until the caller releases it, so the txhashset
+	// and PMMR contents cannot change while a response is assembled.
+	struct ApiStateSnapshot
+	{
+		struct ReadLease
+		{
+			virtual ~ReadLease() = default;
+		};
+
+		bool valid = false;
+		uint64_t sequence = 0;
+		BlockHeaderPtr tip = nullptr;
+		std::shared_ptr<ITxHashSet> txHashSet = nullptr;
+		std::shared_ptr<ReadLease> lease = nullptr;
+	};
+
 	virtual ~IBlockChain() = default;
 
 	virtual void ResyncChain() = 0;
@@ -53,6 +71,25 @@ public:
 
 	virtual fs::path SnapshotTxHashSet(BlockHeaderPtr pBlockHeader) = 0;
 	virtual EBlockChainStatus ProcessTransactionHashSet(const Hash& blockHash, const fs::path& path, SyncStatus& syncStatus) = 0;
+
+	//
+	// Validates and installs a txhashset that is already on disk (PIBD path).
+	// The files must have been activated at the configured txhashset path.
+	//
+	virtual EBlockChainStatus ProcessExistingTxHashSet(const Hash& blockHash, SyncStatus& syncStatus) = 0;
+
+	// Closes the open txhashset so its files can be renamed during activation.
+	virtual void CloseTxHashSet() = 0;
+
+	// Re-opens the txhashset from the configured path at the confirmed tip.
+	virtual void OpenTxHashSet() = 0;
+
+	// Currently installed txhashset (nullptr when none is open).
+	virtual std::shared_ptr<ITxHashSet> GetTxHashSet() = 0;
+	virtual bool EnsureKernelIndex() = 0;
+	virtual ApiStateSnapshot GetApiStateSnapshot() const = 0;
+	virtual bool IsApiStateCurrent(const uint64_t sequence) const = 0;
+
 	virtual EBlockChainStatus AddTransaction(TransactionPtr pTransaction, const EPoolType poolType) = 0;
 	virtual TransactionPtr GetTransactionByKernelHash(const Hash& kernelHash) const = 0;
 
@@ -120,6 +157,16 @@ public:
 	// Returns true if full block found matching the given hash.
 	//
 	virtual bool HasBlock(const uint64_t height, const Hash& blockHash) const = 0;
+
+	//
+	// Read-only preflight for an archive rewind: true when every input commitment
+	// of the block is present in the canonical SPENT_OUTPUTS record. Fills
+	// mappedCount with the record's mapped entry count for exact diagnostics.
+	//
+	virtual bool AreSpentPositionsComplete(
+		const Hash& blockHash,
+		const std::vector<Commitment>& inputs,
+		size_t& mappedCount) const = 0;
 
 
 	virtual std::vector<BlockWithOutputs> GetOutputsByHeight(const uint64_t startHeight, const uint64_t maxHeight) const = 0;

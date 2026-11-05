@@ -1,4 +1,5 @@
 #include "Node.h"
+#include "SyncProgressDisplay.h"
 #include "NodeRestServer.h"
 #include "NodeClients/DefaultNodeClient.h"
 #include "../console.h"
@@ -10,6 +11,7 @@
 #include <BlockChain/BlockChain.h>
 #include <Database/Database.h>
 #include <Common/Logger.h>
+#include <Common/Util/ScopedTiming.h>
 #include <PMMR/TxHashSetManager.h>
 
 #include <iostream>
@@ -33,11 +35,34 @@ Node::~Node()
 
 std::unique_ptr<Node> Node::Create(const Context::Ptr& pContext)
 {
-	auto pNodeClient = DefaultNodeClient::Create(pContext);
-	auto pNodeRestServer = NodeRestServer::Create(
-		pContext->GetConfig(),
-		pNodeClient->GetNodeContext()
-	);
+	auto pHealth = std::make_shared<NodeStartupHealth>();
+	ServerPtr pServer;
+	{
+		ScopedTiming timing("node_rest_initializing");
+		pServer = NodeRestServer::StartInitializing(pContext->GetConfig(), pHealth);
+		timing.Success();
+	}
+
+	std::shared_ptr<DefaultNodeClient> pNodeClient;
+	{
+		ScopedTiming timing("node_chain_and_p2p_open");
+		pNodeClient = DefaultNodeClient::Create(pContext);
+		timing.Success();
+	}
+
+	std::unique_ptr<NodeRestServer> pNodeRestServer;
+	{
+		ScopedTiming timing("node_rest_full");
+		pNodeRestServer = NodeRestServer::Create(
+			pContext->GetConfig(),
+			pNodeClient->GetNodeContext(),
+			pServer,
+			pHealth
+		);
+		timing.Success();
+	}
+
+	LOG_INFO("startup_timing name=health_and_status_ready outcome=success");
 
 	return std::make_unique<Node>(
 		pContext,
@@ -76,11 +101,7 @@ void Node::UpdateDisplay(const int secondsRunning)
 	}
 	else if (status == ESyncStatus::SYNCING_TXHASHSET)
 	{
-		const uint64_t downloaded = pSyncStatus->GetDownloaded();
-		const uint64_t downloadSize = pSyncStatus->GetDownloadSize();
-		const uint64_t percentage = downloadSize > 0 ? (downloaded * 100) / downloadSize : 0;
-
-		std::cout << "\nStatus: Syncing TxHashSet " << downloaded << "/" << downloadSize << "(" << percentage << "%)";
+		std::cout << "\n" << FormatTxHashSetProgress(*pSyncStatus);
 	}
 	else if (status == ESyncStatus::PROCESSING_TXHASHSET)
 	{

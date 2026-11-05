@@ -9,6 +9,7 @@
 
 #include <Core/Exceptions/FileException.h>
 #include <Core/Global.h>
+#include <P2P/PihdParams.h>
 
 class P2PConfig
 {
@@ -20,6 +21,13 @@ public:
 	void SetMinConnections(const int min_connections) noexcept { m_minConnections = min_connections; }
 
 	uint16_t GetP2PPort() const noexcept { return m_port; }
+	// Port used for outbound connections to peers. Defaults to the listening port;
+	// they differ only when running behind a forward or on a shared test host.
+	uint16_t GetPeerPort() const noexcept { return m_peerPort; }
+	// Allows running the legacy txhashset.zip sync path on purpose (tests,
+	// diagnostics, or peers that cannot serve PIBD).
+	bool IsPibdEnabled() const noexcept { return m_pibdEnabled; }
+	Pihd::EPihdMode GetPihdMode() const noexcept { return m_pihdMode; }
 	const std::vector<uint8_t>& GetMagicBytes() const noexcept { return m_magicBytes; }
 
 	uint8_t GetMinSyncPeers() const noexcept { return m_minSyncPeers; }
@@ -27,6 +35,7 @@ public:
     const std::unordered_set<IPAddress>& GetPreferredPeers() const noexcept { return m_peferredPeers; }
 	const std::unordered_set<IPAddress>& GetAllowedPeers() const noexcept { return m_allowedPeers; }
 	const std::unordered_set<IPAddress>& GetBlockedPeers() const noexcept { return m_blockedPeers; }
+	const std::unordered_set<IPAddress>& GetBlockedOutboundPeers() const noexcept { return m_blockedOutboundPeers; }
 
 	void SetPreferredPeers(const std::unordered_set<IPAddress>& peers) noexcept { m_peferredPeers = peers; };
 	void SetAllowedPeers(const std::unordered_set<IPAddress>& peers) noexcept { m_allowedPeers = peers; };
@@ -54,6 +63,7 @@ public:
 		}
 
 		if (!json.isMember(ConfigProps::P2P::P2P)) {
+			m_peerPort = m_port;
 			return;
 		}
 
@@ -65,6 +75,34 @@ public:
 
 		if (p2pJSON.isMember(ConfigProps::P2P::MIN_PEERS)) {
 			m_minConnections = p2pJSON.get(ConfigProps::P2P::MIN_PEERS, 10).asInt();
+		}
+
+		if (p2pJSON.isMember(ConfigProps::P2P::P2P_PORT)) {
+			m_port = (uint16_t)p2pJSON.get(ConfigProps::P2P::P2P_PORT, (int)m_port).asInt();
+		}
+
+		m_peerPort = m_port;
+		if (p2pJSON.isMember(ConfigProps::P2P::P2P_PEER_PORT)) {
+			m_peerPort = (uint16_t)p2pJSON.get(ConfigProps::P2P::P2P_PEER_PORT, (int)m_port).asInt();
+		}
+
+		if (p2pJSON.isMember(ConfigProps::P2P::PIBD_ENABLED)) {
+			m_pibdEnabled = p2pJSON.get(ConfigProps::P2P::PIBD_ENABLED, true).asBool();
+		}
+
+		if (p2pJSON.isMember(ConfigProps::P2P::PIHD_MODE)) {
+			const std::string mode = p2pJSON.get(ConfigProps::P2P::PIHD_MODE, "off").asString();
+			if (mode == "client" || mode == "full") {
+				// Serving is not implemented yet; "full" must not advertise
+				// PIHD_HIST or promise segments it cannot return.
+				m_pihdMode = Pihd::EPihdMode::CLIENT;
+			} else {
+				m_pihdMode = Pihd::EPihdMode::OFF;
+			}
+		}
+
+		if (p2pJSON.isMember(ConfigProps::P2P::MIN_SYNC_PEERS)) {
+			m_minSyncPeers = (uint8_t)p2pJSON.get(ConfigProps::P2P::MIN_SYNC_PEERS, 3).asInt();
 		}
 
 		if (p2pJSON.isMember(ConfigProps::P2P::PREFERRED_PEERS)) {
@@ -85,6 +123,15 @@ public:
 			}
 		}
 
+		if (p2pJSON.isMember(ConfigProps::P2P::BLOCKED_OUTBOUND_PEERS)) {
+			Json::Value peers = p2pJSON.get(ConfigProps::P2P::BLOCKED_OUTBOUND_PEERS, Json::Value(Json::nullValue));
+			for (auto& peer : peers) {
+				const std::string& addressStr = peer.asCString();
+				const std::vector<IPAddress>& iPAddresses = GetValidIPAddress(addressStr);
+				m_blockedOutboundPeers.insert(iPAddresses.begin(), iPAddresses.end());
+			}
+		}
+
 		if (p2pJSON.isMember(ConfigProps::P2P::BLOCKED_PEERS)) {
 			Json::Value peers = p2pJSON.get(ConfigProps::P2P::BLOCKED_PEERS, Json::Value(Json::nullValue));
 			for (auto& peer : peers) {
@@ -99,11 +146,15 @@ private:
 	int m_maxConnections;
 	int m_minConnections;
 	uint16_t m_port;
+	uint16_t m_peerPort;
+	bool m_pibdEnabled = true;
+	Pihd::EPihdMode m_pihdMode = Pihd::EPihdMode::OFF;
 	std::vector<uint8_t> m_magicBytes;
 	uint8_t m_minSyncPeers;
 	std::unordered_set<IPAddress> m_peferredPeers;
 	std::unordered_set<IPAddress> m_allowedPeers;
 	std::unordered_set<IPAddress> m_blockedPeers;
+	std::unordered_set<IPAddress> m_blockedOutboundPeers;
 
 	static std::vector<IPAddress> GetValidIPAddress(const std::string& addressStr)
     {

@@ -53,37 +53,32 @@ Config::Config(const Json::Value& json, const Environment environment, const fs:
 	
 }
 
+bool Config::IsNrdKernelEnabled(const Environment environment) noexcept
+{
+	// Rust grin 5.5.2 src/bin/grin.rs:
+	//   Mainnet => global::init_global_nrd_enabled(false)
+	//   all other networks => global::init_global_nrd_enabled(true)
+	return environment != Environment::MAINNET;
+}
+
 Config::Ptr Config::Load(const fs::path& configPath, const Environment environment)
 {
 	std::shared_ptr<Config> pConfig = nullptr;
 	
-	// Read config file
-	try {
+	if (fs::exists(configPath)) {
 		std::vector<unsigned char> data;
 		if (!FileUtil::ReadFile(configPath, data)) {
-			LOG_ERROR_F("Failed to open config file at: {}", configPath);
 			throw FILE_EXCEPTION_F("Failed to open config file at: {}", configPath);
 		}
-		pConfig = Config::Load(JsonUtil::Parse(data), environment);
-	}
-	catch (...) { }
-	
-	if (pConfig == nullptr || pConfig->GetJSON().empty()) {
+		auto json = JsonUtil::Parse(data);
+		if (!json.isObject()) throw FILE_EXCEPTION_F("Invalid config file: {}", configPath);
+		pConfig = Config::Load(json, environment);
+	} else {
 		pConfig = Config::Default(environment);
 	}
-
 	FileUtil::CreateDirectories(pConfig->GetDataDirectory());
-
-	// Update config file
-	Json::Value& json = pConfig->GetJSON();
-	std::ofstream file(configPath, std::ios::out | std::ios::binary | std::ios::ate);
-	if (!file.is_open()) {
-		LOG_ERROR_F("Failed to save config file at: {}", configPath);
-		throw FILE_EXCEPTION_F("Failed to save config file at: {}", configPath);
-	}
-
-	file << json;
-	file.close();
+	const auto contents = pConfig->GetJSON().toStyledString();
+	FileUtil::SafeWriteToFile(configPath, {contents.begin(), contents.end()});
 
 	return pConfig;
 }
@@ -142,6 +137,9 @@ int Config::GetMaxPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P()
 void Config::SetMaxPeers(const int max_peers) noexcept { m_pImpl->m_nodeConfig.GetP2P().SetMaxConnections(max_peers); }
 
 uint16_t Config::GetP2PPort() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetP2PPort(); }
+Pihd::EPihdMode Config::GetPihdMode() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetPihdMode(); }
+uint16_t Config::GetPeerPort() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetPeerPort(); }
+bool Config::IsPibdEnabled() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().IsPibdEnabled(); }
 const std::vector<uint8_t>& Config::GetMagicBytes() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetMagicBytes(); }
 
 uint8_t Config::GetMinSyncPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetMinSyncPeers(); }
@@ -149,6 +147,7 @@ uint8_t Config::GetMinSyncPeers() const noexcept { return m_pImpl->m_nodeConfig.
 const std::unordered_set<IPAddress>& Config::GetPreferredPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetPreferredPeers(); }
 const std::unordered_set<IPAddress>& Config::GetAllowedPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetAllowedPeers(); }
 const std::unordered_set<IPAddress>& Config::GetBlockedPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetBlockedPeers(); }
+const std::unordered_set<IPAddress>& Config::GetBlockedOutboundPeers() const noexcept { return m_pImpl->m_nodeConfig.GetP2P().GetBlockedOutboundPeers(); }
 
 bool Config::IsPeerAllowed(const IPAddress& peer) {
 	const std::unordered_set<IPAddress>& vec = m_pImpl->m_nodeConfig.GetP2P().GetAllowedPeers();
