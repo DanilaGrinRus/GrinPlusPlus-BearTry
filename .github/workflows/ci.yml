@@ -1,159 +1,235 @@
-name: ci
-on: [push]
+# Windows x64 CI for the Grin++ node public fork.
+#
+# This file REPLACES the legacy upstream .github/workflows/ci.yml
+# (vcpkg 2020.06, ubuntu-20.04/macos-12, `backend/` paths, deprecated
+# get-tag/run-vcpkg actions). The legacy workflow cannot build this tree:
+# the pinned vcpkg predates VS 2022 and its downloads fail, and the tree only
+# targets Windows x64 with a prebuilt static-CRT dependency sysroot.
+#
+# STATUS OF THIS FILE (be honest in review):
+#   * prepared locally, reviewed against the accepted build invocation;
+#   * NOT executed on GitHub Actions (no public repository exists yet);
+#   * the sysroot-download path requires a published release asset with a
+#     pinned SHA-256; until that asset exists the job fails fast on purpose;
+#   * the optional build-from-source sysroot path is NOT VERIFIED.
+#
+# Test scope: `Tests.exe "~[.]"` runs the normal offline Catch2 suite. Hidden
+# harness scenarios are excluded by "~[.]" by design. No mainnet, no live
+# network test, no wallet, no real funds are exercised here.
+
+name: windows-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sysroot_url:
+        description: "URL of a prebuilt dependency sysroot zip (contents at zip root)"
+        required: false
+        type: string
+      sysroot_sha256:
+        description: "SHA-256 of that zip (required when sysroot_url is set)"
+        required: false
+        type: string
+      build_sysroot:
+        description: "Build the sysroot from source with tools/deps/build_sysroot.py (NOT VERIFIED)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  ci:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [14.x]
-        name: [macos, ubuntu, windows]
-        include:
-          - name: macos
-            os: macos-12
-            os_name: mac
-            compiler: gcc
-            version: "12"
-            vcpkg_triplet: x64-osx-grinpp
-            cmake_generator: Ninja
-            cmake_platform_args: ''
-            output_files: |
-                backend/bin/Release/GrinNode
-                backend/bin/Release/slate_tool
-                backend/bin/Release/tx_verifier
-                backend/bin/Release/Tests
-            release_command: 'npm run clean_build:nix && npm run release'
-          - name: ubuntu
-            os: ubuntu-20.04
-            os_name: linux
-            compiler: gcc
-            version: "10"
-            vcpkg_triplet: x64-linux
-            cmake_generator: Ninja
-            cmake_platform_args: ''
-            output_files: |
-                backend/bin/Release/GrinNode
-                backend/bin/Release/slate_tool
-                backend/bin/Release/tx_verifier
-                backend/bin/Release/Tests
-            release_command: 'npm run clean_build:nix && npm run release'
-          - name: windows
-            os: windows-2019
-            os_name: win
-            vcpkg_triplet: x64-windows-static
-            cmake_generator: 'VS16Win64'
-            cmake_platform_args: ''
-            output_files: |
-                backend/bin/Release/Release/GrinNode.exe
-                backend/bin/Release/Release/slate_tool.exe
-                backend/bin/Release/Release/tx_verifier.exe
-                backend/bin/Release/Release/Tests.exe
-            release_command: 'npm run clean_build:win && npm run release'
+  windows-x64:
+    name: Windows 2022 x64 Release build + offline tests
+    runs-on: windows-2022
+    timeout-minutes: 150
+
+    env:
+      GRINPP_SYSROOT_URL: ${{ inputs.sysroot_url || vars.GRINPP_SYSROOT_URL }}
+      GRINPP_SYSROOT_SHA256: ${{ inputs.sysroot_sha256 || vars.GRINPP_SYSROOT_SHA256 }}
+      BUILD_SYSROOT_FROM_SOURCE: ${{ inputs.build_sysroot || 'false' }}
 
     steps:
-      - uses: olegtarasov/get-tag@v2
-        id: tagName
-        env:
-            ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-      - name: Checkout Grin++ Backend
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          path: backend
-      - name: Checkout Grin++ UI
-        uses: actions/checkout@v2
-        with:
-          repository: GrinPlusPlus/GrinPlusPlusUI
-          path: frontend
-      - name: Checkout vcpkg
-        uses: actions/checkout@v2
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-          ref: '2020.06'
-      - name: Install compiler
-        id: install_cc
-        uses: rlalik/setup-cpp-compiler@master
-        with:
-          compiler: g++-10
-      - name: setup macos environment
-        if: runner.os == 'macOS'
+          fetch-depth: 1
+
+      - name: Resolve dependency sysroot
+        shell: pwsh
         run: |
-          brew install gcc cmake
-          echo "::set-env name=CC::gcc-${{ matrix.version }}"
-          echo "::set-env name=CXX::g++-${{ matrix.version }}"
-          brew install gflags python@3.10
-          ln -s -f /usr/local/bin/python3.10 /usr/local/bin/python
-        env:
-            ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-      - name: setup ubuntu environment
-        if: runner.os == 'Linux'
+          $ErrorActionPreference = 'Stop'
+          $sysroot = Join-Path $env:RUNNER_TEMP 'sysroot'
+
+          if ($env:BUILD_SYSROOT_FROM_SOURCE -eq 'true') {
+            $helper = Join-Path $env:GITHUB_WORKSPACE 'tools\deps\build_sysroot.py'
+            if (-not (Test-Path $helper)) {
+              throw "tools/deps/build_sysroot.py is not in the tree; cannot build the sysroot in CI (NOT VERIFIED path)."
+            }
+            python $helper --repo $env:GITHUB_WORKSPACE --sysroot-dir $sysroot
+            if ($LASTEXITCODE -ne 0) { throw "build_sysroot.py failed ($LASTEXITCODE)" }
+          }
+          else {
+            if (-not $env:GRINPP_SYSROOT_URL) {
+              throw "No sysroot configured. Set repository variable GRINPP_SYSROOT_URL + GRINPP_SYSROOT_SHA256 (or pass workflow_dispatch inputs). Publish the sysroot bundle once; it is not downloadable automatically."
+            }
+            if (-not $env:GRINPP_SYSROOT_SHA256) {
+              throw "GRINPP_SYSROOT_SHA256 is required when downloading a sysroot bundle."
+            }
+            $zip = Join-Path $env:RUNNER_TEMP 'sysroot.zip'
+            Write-Host "Downloading $env:GRINPP_SYSROOT_URL"
+            Invoke-WebRequest -Uri $env:GRINPP_SYSROOT_URL -OutFile $zip -UseBasicParsing
+            $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+            if ($actual -ne $env:GRINPP_SYSROOT_SHA256.ToUpperInvariant()) {
+              throw "sysroot zip SHA-256 mismatch: expected $env:GRINPP_SYSROOT_SHA256, got $actual"
+            }
+            New-Item -ItemType Directory -Force -Path $sysroot | Out-Null
+            Expand-Archive -Path $zip -DestinationPath $sysroot -Force
+          }
+
+          # The bundle layout must be the CMake prefix itself: share/fmt/fmt-config.cmake
+          # and lib at the archive root. Fail loudly on a wrong layout instead of
+          # discovering it 20 minutes into the configure step.
+          $probe = Join-Path $sysroot 'share\fmt\fmt-config.cmake'
+          if (-not (Test-Path $probe)) {
+            throw "sysroot layout invalid: missing $probe"
+          }
+          "GRINPP_SYSROOT=$sysroot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "sysroot OK: $sysroot"
+
+      - name: Configure (Release x64, tests on, tools off)
+        shell: pwsh
         run: |
-          echo "Tag Name: ${{ steps.tagName.outputs.tag }}"
-          sudo apt install uuid-dev libgflags-dev make dpkg-dev libc6-dev
-          echo "export CC=/usr/bin/${{ steps.install_cc.outputs.cc }}"
-          echo "export CXX=/usr/bin/${{ steps.install_cc.outputs.cxx }}"
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 10
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 10
-      - name: Cache vcpkg artifacts
-        uses: actions/cache@v2
-        with:
-          path: ${{ github.workspace }}/vcpkg/
-          key: ${{ hashFiles( '.git/HEAD' ) }}--${{ hashFiles( '**/backend/vcpkg/*' ) }}${{ runner.os }}-v2
-      - name: Run vcpkg
-        uses: lukka/run-vcpkg@v6
-        with:
-          vcpkgArguments: '--debug --overlay-ports=${{ github.workspace }}/backend/vcpkg/custom_ports --overlay-triplets=${{ github.workspace }}/backend/vcpkg/custom_triplets --triplet ${{ matrix.vcpkg_triplet }} @${{ github.workspace }}/backend/vcpkg/packages.txt'
-          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-          vcpkgGitCommitId: '6185aa76504a5025f36754324abf307cc776f3da'
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v1
-        with:
-          node-version: ${{ matrix.node-version }}
-      - name: 'Run CMake'
-        uses: lukka/run-cmake@v3.3
-        with:
-          cmakeGenerator: ${{ matrix.cmake_generator }}
-          cmakeBuildType: 'Release'
-          cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
-          cmakeListsTxtPath: '${{ github.workspace }}/backend/CMakeLists.txt'
-          useVcpkgToolchainFile: true
-          vcpkgTriplet: '${{ matrix.vcpkg_triplet }}'
-          buildDirectory: '${{ github.workspace }}/build'
-          cmakeAppendedArgs: ' ${{ matrix.cmake_platform_args }} -DCMAKE_BUILD_TYPE=Release -DGRINPP_TESTS=ON'
-          buildWithCMake: true
-          buildWithCMakeArgs: '--config Release --parallel'
-      - name: Upload artifact
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'configure.log'
+          cmake -S $env:GITHUB_WORKSPACE -B (Join-Path $env:GITHUB_WORKSPACE 'build') `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_PREFIX_PATH=$env:GRINPP_SYSROOT" `
+            -DGRINPP_TESTS=ON -DGRINPP_TOOLS=OFF 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 200; throw "cmake configure failed ($LASTEXITCODE)" }
+
+      - name: Build GrinNode and Tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'build.log'
+          cmake --build (Join-Path $env:GITHUB_WORKSPACE 'build') `
+            --config Release --target GrinNode Tests --parallel 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 200; throw "build failed ($LASTEXITCODE)" }
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'bin\Release\Release'
+          if (-not (Test-Path (Join-Path $exe 'GrinNode.exe'))) { throw "GrinNode.exe not produced" }
+          if (-not (Test-Path (Join-Path $exe 'Tests.exe'))) { throw "Tests.exe not produced" }
+
+      - name: Record artifact hashes
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'bin\Release\Release'
+          $lines = foreach ($f in 'GrinNode.exe', 'Tests.exe') {
+            $p = Join-Path $exe $f
+            $h = (Get-FileHash $p -Algorithm SHA256).Hash
+            "{0}  {1}" -f $h, $f
+          }
+          $lines | Tee-Object -FilePath (Join-Path $env:GITHUB_WORKSPACE 'bin\Release\Release\SHA256SUMS.txt')
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Verify static CRT (no VC++ runtime DLL imports)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "visual Studio with VC tools not found" }
+          $msvc = Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $dumpbin = Join-Path $msvc.FullName 'bin\Hostx64\x64\dumpbin.exe'
+          $out = & $dumpbin /dependents (Join-Path $env:GITHUB_WORKSPACE 'bin\Release\Release\GrinNode.exe') 2>&1 | Out-String
+          Write-Host $out
+          $bad = $out | Select-String -Pattern 'VCRUNTIME|MSVCP[0-9]|api-ms-win-crt' -AllMatches
+          if ($bad) { throw "GrinNode.exe imports a VC++ runtime DLL; the package would not be standalone: $bad" }
+          Write-Host "OK: only OS DLL imports; static /MT CRT."
+
+      - name: Run offline test suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'test-home'
+          New-Item -ItemType Directory -Force -Path (Join-Path $root 'temp') | Out-Null
+          $drive = [IO.Path]::GetPathRoot($root).TrimEnd('\')
+          $env:HOMEDRIVE = $drive
+          $env:HOMEPATH = $root.Substring($drive.Length)
+          $env:TEMP = Join-Path $root 'temp'
+          $env:TMP = $env:TEMP
+          $tests = Join-Path $env:GITHUB_WORKSPACE 'bin\Release\Release\Tests.exe'
+          $log = Join-Path $env:GITHUB_WORKSPACE 'tests-offline.log'
+          Push-Location $env:GITHUB_WORKSPACE
+          try {
+            & $tests '~[.]' 2>&1 | Tee-Object -FilePath $log
+            $code = $LASTEXITCODE
+          }
+          finally { Pop-Location }
+          Get-Content $log -Tail 5
+          if ($code -ne 0) { throw "Tests.exe '~[.]' failed with exit code $code (log: $log)" }
+          $tail = Get-Content $log -Tail 2 | Out-String
+          if ($tail -notmatch 'All tests passed') { throw "test log does not end with 'All tests passed' (log: $log)" }
+
+      - name: Upload logs
+        if: always()
         uses: actions/upload-artifact@v4
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}    
         with:
-          name: GrinNode_${{ runner.os }}_${{ env.GITHUB_RUN_ID }}
-          path: ${{ matrix.output_files }}
-      - name: Build UI (windows)
-        working-directory: frontend
-        if: runner.os == 'windows' && startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: windows-logs-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            tests-offline.log
+            bin/Release/Release/SHA256SUMS.txt
+            ${{ runner.temp }}/configure.log
+            ${{ runner.temp }}/build.log
+
+      - name: Upload binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrinNode-win-x64-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            bin/Release/Release/GrinNode.exe
+            bin/Release/Release/Tests.exe
+            bin/Release/Release/SHA256SUMS.txt
+
+  docs-links:
+    name: Local markdown link check
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check relative links in repository markdown
+        shell: pwsh
         run: |
-          mkdir -p bin
-          copy "..\backend\bin\Release\Release\GrinNode.exe" "./bin/"
-          dir ${{ github.workspace }}\backend\dist\win
-          xcopy "..\backend\dist\win" ".\bin\" /E /H /C /I
-          dir ${{ github.workspace }}\frontend\bin
-          npm version ${{ steps.tagName.outputs.tag }} --allow-same-version --git-tag-version false
-          npm install && npm run build && xcopy src\electron-starter.js build\electron-starter.js* && xcopy src\notarize.js build\notarize.js*` && npm run release
-      - name: Build UI (macOS/linux)
-        working-directory: frontend
-        if: runner.os != 'windows' && startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-        run: |
-          mkdir -p bin
-          cp ../backend/bin/Release/GrinNode ./bin/
-          cp -R ../backend/dist/${{ matrix.os_name }}/tor ./bin/tor
-          npm version ${{ steps.tagName.outputs.tag }} --allow-same-version --git-tag-version false
-          npm run clean_build:nix && npm run release
+          $ErrorActionPreference = 'Stop'
+          $files = Get-ChildItem $env:GITHUB_WORKSPACE -Filter *.md -File
+          $missing = @()
+          foreach ($f in $files) {
+            $text = Get-Content $f.FullName -Raw
+            foreach ($m in [regex]::Matches($text, '\]\(([^)]+)\)')) {
+              $target = $m.Groups[1].Value.Trim()
+              if ($target -match '^(https?://|mailto:|#)') { continue }
+              $target = ($target -split '#')[0]
+              if (-not $target) { continue }
+              $path = Join-Path $f.DirectoryName $target
+              if (-not (Test-Path $path)) { $missing += "$($f.Name): $target" }
+            }
+          }
+          if ($missing.Count -gt 0) {
+            $missing | ForEach-Object { Write-Host "MISSING: $_" }
+            throw "$($missing.Count) relative markdown link(s) do not resolve."
+          }
+          Write-Host "OK: all relative markdown links resolve."
