@@ -2,8 +2,8 @@
 
 The node and its build sources are included. This file records what is
 deliberately **not** part of the public source tree and why. Originals were
-not deleted: they remain in the local preparation workspace
-(`<private-workspace>` and the `merged-final-20261105` source snapshot).
+not deleted: they remain in the private preparation workspace (not published);
+their paths are recorded in the acceptance report, not in this repository.
 
 ## 1. Machine-specific audit evidence (excluded by publication decision)
 
