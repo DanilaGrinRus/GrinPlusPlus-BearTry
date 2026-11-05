@@ -67,6 +67,22 @@ The mapping from group to changed paths, problem statement, tests and residual
 risk is in
 [`docs/history/FROM-UPSTREAM-TO-CURRENT.en.md`](history/FROM-UPSTREAM-TO-CURRENT.en.md).
 
+## Post-tag commits
+
+Publishing the fork added commits on top of the tagged candidate. They do not
+change the candidate source tree verified against the manifest:
+
+- `33d89265` and `b7223ede` — remove private absolute paths from audit/tooling
+  text;
+- `94a90aa1` — history reconstruction note (this file's first version);
+- `2aea52aa` — replace the legacy upstream CI workflow with a Windows
+  static-sysroot build; **prepared, not executed on GitHub Actions**;
+- `15e231b9` — portable dependency sysroot helper (`tools/deps/build_sysroot.py`,
+  pinned refs); reviewed and dry-run, **end-to-end rebuild NOT VERIFIED**;
+- `8d5e9842` — public documentation (this documentation set).
+
+Read `git log --oneline node-beta.1-candidate..main` for the exact current list.
+
 ## How to audit the reconstruction
 
 1. Check out `node-beta.1-candidate`.

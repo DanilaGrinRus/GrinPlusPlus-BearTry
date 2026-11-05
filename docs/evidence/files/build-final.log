@@ -1,0 +1,59 @@
+Версия MSBuild 17.14.60+43b635718 для .NET Framework
+
+  chachapoly.vcxproj -> <candidate-source>\bin\Release\Release\chachapoly.lib
+  sha3.vcxproj -> <candidate-source>\bin\Release\Release\sha3.lib
+  uint128.vcxproj -> <candidate-source>\bin\Release\Release\uint128.lib
+  rfc6234.vcxproj -> <candidate-source>\bin\Release\Release\rfc6234.lib
+  sqlite3.vcxproj -> <candidate-source>\bin\Release\Release\sqlite3.lib
+  bitcoin.vcxproj -> <candidate-source>\bin\Release\Release\bitcoin.lib
+  reproc.vcxproj -> <work-root>\build\deps\reproc\reproc\lib\Release\reproc.lib
+  scrypt.vcxproj -> <candidate-source>\bin\Release\Release\scrypt.lib
+  jsoncpp.vcxproj -> <candidate-source>\bin\Release\Release\jsoncpp.lib
+  reproc++.vcxproj -> <work-root>\build\deps\reproc\reproc++\lib\Release\reproc++.lib
+  Common.vcxproj -> <candidate-source>\bin\Release\Release\Common.lib
+  Crypto.vcxproj -> <candidate-source>\bin\Release\Release\Crypto.lib
+  Tor.vcxproj -> <candidate-source>\bin\Release\Release\Tor.lib
+  Net.vcxproj -> <candidate-source>\bin\Release\Release\Net.lib
+  Core.vcxproj -> <candidate-source>\bin\Release\Release\Core.lib
+  PoW.vcxproj -> <candidate-source>\bin\Release\Release\PoW.lib
+  Keychain.vcxproj -> <candidate-source>\bin\Release\Release\Keychain.lib
+  Database.vcxproj -> <candidate-source>\bin\Release\Release\Database.lib
+  API.vcxproj -> <candidate-source>\bin\Release\Release\API.lib
+  WalletDB.vcxproj -> <candidate-source>\bin\Release\Release\WalletDB.lib
+  PMMR.vcxproj -> <candidate-source>\bin\Release\Release\PMMR.lib
+  TxPool.vcxproj -> <candidate-source>\bin\Release\Release\TxPool.lib
+  Wallet.vcxproj -> <candidate-source>\bin\Release\Release\Wallet.lib
+  P2P.vcxproj -> <candidate-source>\bin\Release\Release\P2P.lib
+  BlockChainImpl.cpp
+  HeaderStateCheckpoint.cpp
+  Создание кода...
+  BlockChain.vcxproj -> <candidate-source>\bin\Release\Release\BlockChain.lib
+  GrinNode.vcxproj -> <candidate-source>\bin\Release\Release\GrinNode.exe
+Версия MSBuild 17.14.60+43b635718 для .NET Framework
+
+  rfc6234.vcxproj -> <candidate-source>\bin\Release\Release\rfc6234.lib
+  chachapoly.vcxproj -> <candidate-source>\bin\Release\Release\chachapoly.lib
+  sha3.vcxproj -> <candidate-source>\bin\Release\Release\sha3.lib
+  sqlite3.vcxproj -> <candidate-source>\bin\Release\Release\sqlite3.lib
+  scrypt.vcxproj -> <candidate-source>\bin\Release\Release\scrypt.lib
+  reproc.vcxproj -> <work-root>\build\deps\reproc\reproc\lib\Release\reproc.lib
+  uint128.vcxproj -> <candidate-source>\bin\Release\Release\uint128.lib
+  bitcoin.vcxproj -> <candidate-source>\bin\Release\Release\bitcoin.lib
+  jsoncpp.vcxproj -> <candidate-source>\bin\Release\Release\jsoncpp.lib
+  reproc++.vcxproj -> <work-root>\build\deps\reproc\reproc++\lib\Release\reproc++.lib
+  Common.vcxproj -> <candidate-source>\bin\Release\Release\Common.lib
+  Crypto.vcxproj -> <candidate-source>\bin\Release\Release\Crypto.lib
+  Tor.vcxproj -> <candidate-source>\bin\Release\Release\Tor.lib
+  Net.vcxproj -> <candidate-source>\bin\Release\Release\Net.lib
+  Core.vcxproj -> <candidate-source>\bin\Release\Release\Core.lib
+  PoW.vcxproj -> <candidate-source>\bin\Release\Release\PoW.lib
+  API.vcxproj -> <candidate-source>\bin\Release\Release\API.lib
+  Keychain.vcxproj -> <candidate-source>\bin\Release\Release\Keychain.lib
+  Database.vcxproj -> <candidate-source>\bin\Release\Release\Database.lib
+  PMMR.vcxproj -> <candidate-source>\bin\Release\Release\PMMR.lib
+  WalletDB.vcxproj -> <candidate-source>\bin\Release\Release\WalletDB.lib
+  P2P.vcxproj -> <candidate-source>\bin\Release\Release\P2P.lib
+  TxPool.vcxproj -> <candidate-source>\bin\Release\Release\TxPool.lib
+  Wallet.vcxproj -> <candidate-source>\bin\Release\Release\Wallet.lib
+  BlockChain.vcxproj -> <candidate-source>\bin\Release\Release\BlockChain.lib
+  Tests.vcxproj -> <candidate-source>\bin\Release\Release\Tests.exe

@@ -131,8 +131,8 @@ PIBD. `sync_info` появляется только при наличии реа
 
 | Метод | Параметры | Результат | Статус |
 |---|---|---|---|
-| `get_header` | `[height, hash, commit]` — ровно 3, nullable | `{"Ok": <header>}` | **IMPLEMENTED / PARTIAL** (схема не сверена построчно) |
-| `get_block` | `[height, hash, commit]` — ровно 3, nullable | `{"Ok": <full block>}` | **IMPLEMENTED / PARTIAL** |
+| `get_header` | `[height, hash, commit]` — минимум 3, nullable (лишние игнорируются) | `{"Ok": <header>}` | **IMPLEMENTED / PARTIAL** (схема не сверена построчно) |
+| `get_block` | `[height, hash, commit]` — минимум 3, nullable (лишние игнорируются) | `{"Ok": <full block>}` | **IMPLEMENTED / PARTIAL** |
 | `get_blocks` | `[start_height, end_height?, max?, include_proof?]` | `{"Ok": {"last_retrieved_height": N, "blocks": […]}}` | **IMPLEMENTED**; `max` ≤ 1000, диапазон ≤ 10000 высот. Ошибки `INVALID_PARAMS`, `QUERY_TOO_WIDE`, `NODE_BUSY_RETRY`, `INTERNAL_ERROR`. |
 | `get_version` | нет | `{"Ok": {"node_version": "Grin++ 1.2.9", "block_header_version": N}}` | **IMPLEMENTED** |
 | `get_tip` | нет | `{"Ok": {height,last_block_pushed,prev_block_to_last,total_difficulty}}` | **IMPLEMENTED** |

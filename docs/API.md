@@ -133,8 +133,8 @@ reference is **PARTIAL** unless stated otherwise.
 
 | Method | Params | Result | Status |
 |---|---|---|---|
-| `get_header` | `[height, hash, commit]` — exactly 3, nullable | `{"Ok": <header>}` | **IMPLEMENTED / PARTIAL** (schema not line-by-line compared) |
-| `get_block` | `[height, hash, commit]` — exactly 3, nullable | `{"Ok": <full block>}` | **IMPLEMENTED / PARTIAL** |
+| `get_header` | `[height, hash, commit]` — at least 3, nullable (extra ignored) | `{"Ok": <header>}` | **IMPLEMENTED / PARTIAL** (schema not line-by-line compared) |
+| `get_block` | `[height, hash, commit]` — at least 3, nullable (extra ignored) | `{"Ok": <full block>}` | **IMPLEMENTED / PARTIAL** |
 | `get_blocks` | `[start_height, end_height?, max?, include_proof?]` | `{"Ok": {"last_retrieved_height": N, "blocks": […]}}` | **IMPLEMENTED**; `max` capped at 1000 and the range at 10000 heights. Errors `INVALID_PARAMS`, `QUERY_TOO_WIDE`, `NODE_BUSY_RETRY`, `INTERNAL_ERROR`. |
 | `get_version` | none | `{"Ok": {"node_version": "Grin++ 1.2.9", "block_header_version": N}}` | **IMPLEMENTED** |
 | `get_tip` | none | `{"Ok": {height,last_block_pushed,prev_block_to_last,total_difficulty}}` | **IMPLEMENTED** |
