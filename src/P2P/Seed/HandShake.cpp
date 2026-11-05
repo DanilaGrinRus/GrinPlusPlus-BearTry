@@ -4,12 +4,29 @@
 #include "../Messages/ShakeMessage.h"
 #include "../Messages/BanReasonMessage.h"
 #include "../ConnectionManager.h"
+#include "../PIBD/PibdArchiveServer.h"
 
 #include <Core/Exceptions/ProtocolException.h>
 #include <Crypto/CSPRNG.h>
 #include <Common/Logger.h>
+#include <P2P/AdvertisedTip.h>
+
+#include <memory>
 
 static const uint64_t SELF_NONCE = CSPRNG::GenerateRandom(0, UINT64_MAX);
+
+namespace
+{
+	// The capability mask is fixed for the lifetime of a handshake. It must come
+	// from the serving component, not from a static constant: a node that cannot
+	// serve the archive horizon must not claim PIBD (G-09 capability contract).
+	Capabilities GetLocalCapabilities()
+	{
+		const std::shared_ptr<PibdArchiveServer> pArchiveServer = PibdArchiveServer::Instance();
+		return Capabilities::Advertised(
+			pArchiveServer != nullptr && pArchiveServer->ShouldAdvertise());
+	}
+}
 
 void HandShake::PerformHandshake(const Socket::Ptr& pSocket, ConnectedPeer& connectedPeer) const
 {
@@ -45,6 +62,14 @@ void HandShake::PerformOutboundHandshake(const Socket::Ptr& pSocket, ConnectedPe
     ByteBuffer buffer(pReceived->GetPayload());
     ShakeMessage shakeMessage = ShakeMessage::Deserialize(buffer);
 
+    // Only peers on the same chain may connect (Grin 5.5.2: BadHandshake).
+    if (shakeMessage.GetHash() != Global::GetGenesisHash()) {
+        throw PROTOCOL_EXCEPTION_F(
+            "Shake message genesis block does not match ours. Peer {}",
+            *connectedPeer.GetPeer()
+        );
+    }
+
     uint32_t version = (std::min)(P2P::PROTOCOL_VERSION, shakeMessage.GetVersion());
     connectedPeer.UpdateVersion(version);
     connectedPeer.UpdateCapabilities(shakeMessage.GetCapabilities());
@@ -71,6 +96,14 @@ void HandShake::PerformInboundHandshake(const Socket::Ptr& pSocket, ConnectedPee
         throw PROTOCOL_EXCEPTION("Connected to self");
     }
 
+    // Only peers on the same chain may connect (Grin 5.5.2: BadHandshake).
+    if (hand_message.GetHash() != Global::GetGenesisHash()) {
+        throw PROTOCOL_EXCEPTION_F(
+            "Hand message genesis block does not match ours. Peer {}",
+            *connectedPeer.GetPeer()
+        );
+    }
+
     if (m_connectionManager.IsConnected(connectedPeer.GetIPAddress())) {
         throw PROTOCOL_EXCEPTION("Already connected to peer");
     }
@@ -91,10 +124,10 @@ void HandShake::TransmitHandMessage(const Socket::Ptr& pSocket) const
     IPAddress localHostIP = IPAddress::CreateV4({ 0x7F, 0x00, 0x00, 0x01 });
     HandMessage hand(
         P2P::PROTOCOL_VERSION,
-        Capabilities::FAST_SYNC_NODE,
+        GetLocalCapabilities(),
         SELF_NONCE,
         Global::GetGenesisHash(),
-        m_pSyncStatus->GetBlockDifficulty(),
+        P2P::GetAdvertisedDifficulty(*m_pSyncStatus),
         SocketAddress(localHostIP, Global::GetConfig().GetP2PPort()),
         SocketAddress(localHostIP, pSocket->GetPort()),
         P2P::USER_AGENT
@@ -109,9 +142,9 @@ void HandShake::TransmitShakeMessage(const Socket::Ptr& pSocket, const uint32_t 
 {
     ShakeMessage shakeMessage(
         protocolVersion,
-        Capabilities::FAST_SYNC_NODE,
+        GetLocalCapabilities(),
         Global::GetGenesisHash(),
-        m_pSyncStatus->GetBlockDifficulty(),
+        P2P::GetAdvertisedDifficulty(*m_pSyncStatus),
         P2P::USER_AGENT
     );
 

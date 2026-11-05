@@ -2,7 +2,10 @@
 
 #include "Seed/Seeder.h"
 #include "Pipeline/Pipeline.h"
+#include "PIBD/PibdSync.h"
+#include <Common/Util/FileUtil.h>
 #include "Sync/Syncer.h"
+#include "Sync/PihdClient.h"
 #include "Messages/TransactionKernelMessage.h"
 
 #include <Core/Context.h>
@@ -44,8 +47,32 @@ std::shared_ptr<P2PServer> P2PServer::Create(
 	std::shared_ptr<IDatabase> pDatabase,
 	const ITransactionPool::Ptr& pTransactionPool)
 {
-	// Sync Status
+	// Sync Status: seed the handshake/Ping values from the loaded chain. The
+	// header status feeds Hand/Shake and Ping advertisement (header head, i.e.
+	// CANDIDATE, matching the headers served by LocateHeaders); the block status
+	// remains the confirmed body tip for body-sync accounting.
+	//
+	// Seed from ONE tip-header snapshot per chain, never from split
+	// GetHeight+GetTotalDifficulty reads: two calls can straddle a tip change and
+	// advertise a mixed height/difficulty pair.
 	SyncStatusPtr pSyncStatus(new SyncStatus());
+	const auto pCandidateHead = pBlockChain->GetTipBlockHeader(EChainType::CANDIDATE);
+	if (pCandidateHead != nullptr)
+	{
+		pSyncStatus->UpdateHeaderStatus(pCandidateHead->GetHeight(), pCandidateHead->GetTotalDifficulty());
+	}
+	// If the candidate tip header is not readable yet, leave the header status at
+	// zero; the sync loop refreshes it from ChainState under a read lease and
+	// Hand/Shake/Ping will use that coherent snapshot instead of a split read.
+
+	const auto pConfirmedHead = pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
+	if (pConfirmedHead != nullptr)
+	{
+		pSyncStatus->UpdateBlockStatus(
+			pConfirmedHead->GetHeight(),
+			pConfirmedHead->GetTotalDifficulty(),
+			pConfirmedHead->GetTimestamp());
+	}
 
 	// Peer Manager
 	std::shared_ptr<Locked<PeerManager>> peerManager = PeerManager::Create(
@@ -55,6 +82,7 @@ std::shared_ptr<P2PServer> P2PServer::Create(
 
 	// Connection Manager
 	ConnectionManagerPtr pConnectionManager = ConnectionManager::Create();
+	auto pPihdClient = std::make_shared<PihdClient>(pConnectionManager, pBlockChain);
 
 	const Config& config = pContext->GetConfig();
 
@@ -66,13 +94,22 @@ std::shared_ptr<P2PServer> P2PServer::Create(
 		pSyncStatus
 	);
 
+	// PIBD state sync service (download -> desegmenter -> activation).
+	const fs::path txHashSetPath = config.GetTxHashSetPath();
+	const fs::path pibdStagingPath = txHashSetPath.parent_path() / "pibd_staging";
+	const fs::path pibdResumePath = txHashSetPath.parent_path() / "pibd_resume";
+	std::shared_ptr<PibdSync> pPibdSync =
+		std::make_shared<PibdSync>(txHashSetPath, pibdStagingPath, pibdResumePath);
+
 	// Seeder
 	std::unique_ptr<Seeder> pSeeder = Seeder::Create(
 		*pConnectionManager,
 		*peerManager,
 		pBlockChain,
 		pPipeline,
-		pSyncStatus
+		pSyncStatus,
+		pPibdSync,
+		pPihdClient
 	);
 
 	// Syncer
@@ -80,7 +117,9 @@ std::shared_ptr<P2PServer> P2PServer::Create(
 		pConnectionManager,
 		pBlockChain,
 		pPipeline,
-		pSyncStatus
+		pSyncStatus,
+		pPibdSync,
+		pPihdClient
 	);
 
 	// Dandelion
@@ -140,15 +179,7 @@ void P2PServer::UnbanPeer(const IPAddress& address)
 
 bool P2PServer::UnbanAllPeers()
 {
-	std::vector<PeerPtr> peers = m_pPeerManager->Write()->GetAllPeers();
-	for (PeerPtr peer : peers)
-	{
-		if (peer->IsBanned())
-		{
-			peer->Unban();
-		}
-	}
-
+	m_pPeerManager->Write()->UnbanAllPeers();
 	return true;
 }
 

@@ -9,6 +9,7 @@
 #include <thread>
 #include <optional>
 #include <unordered_map>
+#include <functional>
 
 class ConnectionManager
 {
@@ -26,11 +27,17 @@ public:
 
 	bool IsConnected(const IPAddress& address) const;
 	std::vector<PeerPtr> GetMostWorkPeers() const;
+	// Most-work peers with their per-connection height, needed to avoid asking a
+	// peer for blocks above the height it reported in Ping (REQ_G38_FIX.md §3.3).
+	std::vector<ConnectionPtr> GetMostWorkConnections() const;
+	ConnectionPtr GetConnectionByAddress(const IPAddress& address) const;
 	std::vector<ConnectedPeer> GetConnectedPeers() const;
 	uint64_t GetMostWork() const;
 	uint64_t GetHighestHeight() const;
 
-	PeerPtr SendMessageToMostWorkPeer(const IMessage& message);
+	PeerPtr SendMessageToMostWorkPeer(
+		const IMessage& message,
+		const std::function<void(const PeerPtr&)>& beforeSend = {});
 	bool SendMessageToPeer(const IMessage& message, PeerConstPtr pPeer);
 	void BroadcastMessage(const IMessage& message, const uint64_t sourceId);
 

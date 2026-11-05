@@ -12,6 +12,7 @@
 #include <chrono>
 #include <atomic>
 #include <queue>
+#include <deque>
 
 // Forward Declarations
 class IMessage;
@@ -55,6 +56,9 @@ public:
 
 	void Connect();
 	void Disconnect();
+	// Called from a message handler while m_mutex is already held. The raw
+	// archive body cannot be parsed as a following P2P message.
+	void CloseAfterMessage();
 
 	uint64_t GetId() const { return m_connectionId; }
 	bool IsConnectionActive() const;
@@ -64,9 +68,13 @@ public:
 	bool SendSync(const IMessage& message);
 
 	void DisableReceives(bool disabled) { m_receivingDisabled = disabled; }
+	// Resume framed P2P reads after a synchronous archive transfer has consumed
+	// exactly the advertised number of bytes.
+	void ResumeReceives();
 	bool ReceiveSync(std::vector<uint8_t>& bytes, const size_t num_bytes);
 
 	bool ExceedsRateLimit() const;
+	bool AllowPibdRequest();
 	void BanPeer(const EBanReason reason);
 	void CheckPing();
 
@@ -103,9 +111,10 @@ private:
 	std::chrono::system_clock::time_point m_lastReceived;
 	std::vector<uint8_t> m_received;
 
+	std::atomic<int> m_connectError{0};
 	std::atomic<bool> m_terminate;
 	std::atomic<bool> m_sendingDisabled;
-	std::atomic<bool> m_receivingDisabled;
+	std::atomic<bool> m_receivingDisabled{false};
 	std::thread m_connectionThread;
 	const uint64_t m_connectionId;
 	ConnectedPeer m_connectedPeer;
@@ -113,6 +122,8 @@ private:
 
 	mutable LRUCache<Hash, Hash> m_advertisedBlocks;
 	mutable std::mutex m_mutex;
+	std::mutex m_pibdRateMutex;
+	std::deque<std::chrono::steady_clock::time_point> m_pibdRequests;
 };
 
 typedef std::shared_ptr<Connection> ConnectionPtr;

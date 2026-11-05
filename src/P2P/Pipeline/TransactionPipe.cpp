@@ -42,6 +42,7 @@ void TransactionPipe::Thread_ProcessTransactions(TransactionPipe& pipeline)
 			std::unique_ptr<TxEntry> pTxEntry = pipeline.m_transactionsToProcess.copy_front();
 			if (pTxEntry != nullptr)
 			{
+				pipeline.m_transactionsToProcess.pop_front(1);
 				const EBlockChainStatus status = pipeline.m_pBlockChain->AddTransaction(pTxEntry->pTransaction, pTxEntry->poolType);
 				if (status == EBlockChainStatus::SUCCESS && pTxEntry->poolType == EPoolType::MEMPOOL)
 				{
@@ -59,7 +60,6 @@ void TransactionPipe::Thread_ProcessTransactions(TransactionPipe& pipeline)
 					pTxEntry->m_peer->Ban(EBanReason::BadTransaction);
 				}
 
-				pipeline.m_transactionsToProcess.pop_front(1);
 			}
 			else
 			{

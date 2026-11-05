@@ -2,6 +2,7 @@
 
 #include <Core/Context.h>
 #include <P2P/Common.h>
+#include <Common/Util/StringUtil.h>
 #include <Common/Util/TimeUtil.h>
 #include <Common/Util/ThreadUtil.h>
 #include <Core/Config.h>
@@ -32,7 +33,9 @@ std::shared_ptr<Locked<PeerManager>> PeerManager::Create(const Context::Ptr& pCo
         LOG_INFO("Preferred peers found.");
         for (const IPAddress& ipAddress : Global::GetConfig().GetPreferredPeers()) {
             try {
-                const PeerPtr& peer = std::make_shared<Peer>(ipAddress);
+                // Preserve a preferred peer's persisted ban and metadata.
+                const auto storedPeer = pPeerDB->Read()->GetPeer(ipAddress, std::nullopt);
+                const PeerPtr peer = storedPeer.has_value() ? storedPeer.value() : std::make_shared<Peer>(ipAddress);
                 pPeerManager->m_peersByAddress.emplace(peer->GetIPAddress(), PeerEntry(peer));
             }
             catch (std::exception& e) {
@@ -146,12 +149,51 @@ PeerPtr PeerManager::GetNewPeer(const Capabilities::ECapability& preferredCapabi
     return peers.front();
 }
 
+std::string PeerManager::GetNoPeerReason(const Capabilities::ECapability& preferredCapability) const
+{
+    const time_t currentTime = TimeUtil::Now();
+    const time_t maxBanTime = std::chrono::system_clock::to_time_t(
+        std::chrono::system_clock::now() - std::chrono::seconds(P2P::BAN_WINDOW)
+    );
+
+    size_t banned = 0;
+    size_t retryWindow = 0;
+    size_t withoutCapability = 0;
+    size_t connected = 0;
+
+    for (const auto& entry : m_peersByAddress) {
+        const PeerPtr& peer = entry.second.m_peer;
+        if (peer->GetLastBanTime() > maxBanTime) {
+            banned++;
+        }
+        if (peer->IsConnected()) {
+            connected++;
+        }
+        if (!peer->GetCapabilities().HasCapability(preferredCapability)) {
+            withoutCapability++;
+        }
+        if (std::difftime(currentTime, entry.second.m_lastAttempt) <= (double)P2P::RETRY_WINDOW) {
+            retryWindow++;
+        }
+    }
+
+    return StringUtil::Format(
+        "known={}, banned={}, no_capability=0x{:x}:{}, retry_window_all={}s:{}, connected={}",
+        m_peersByAddress.size(),
+        banned,
+        (uint32_t)preferredCapability,
+        withoutCapability,
+        P2P::RETRY_WINDOW,
+        retryWindow,
+        connected);
+}
+
 std::vector<PeerPtr> PeerManager::GetAllPeers()
 {
     std::vector<PeerPtr> peers;
     for (auto iter = m_peersByAddress.begin(); iter != m_peersByAddress.end(); iter++) {
         PeerPtr peer = iter->second.m_peer;
-        if (peer->GetLastContactTime() > 0) {
+        if (peer->GetLastContactTime() > 0 || peer->IsBanned()) {
             peers.push_back(peer);
         }
     }
@@ -164,7 +206,7 @@ std::vector<PeerConstPtr> PeerManager::GetAllPeers() const
     std::vector<PeerConstPtr> peers;
     for (auto iter = m_peersByAddress.begin(); iter != m_peersByAddress.end(); iter++) {
         PeerConstPtr peer = iter->second.m_peer;
-        if (peer->GetLastContactTime() > 0) {
+        if (peer->GetLastContactTime() > 0 || peer->IsBanned()) {
             peers.push_back(peer);
         }
     }
@@ -197,20 +239,73 @@ void PeerManager::AddFreshPeers(const std::vector<SocketAddress>& peerAddresses)
 void PeerManager::BanPeer(const IPAddress& address, const EBanReason banReason)
 {
     auto iter = m_peersByAddress.find(address);
+    PeerPtr current;
     if (iter != m_peersByAddress.end()) {
-        iter->second.m_peer->Ban(banReason);
+        current = iter->second.m_peer;
     } else {
-        PeerPtr peer = std::make_shared<Peer>(address, 0, Capabilities(0), "");
-        peer->Ban(banReason);
-        m_peersByAddress.emplace(address, PeerEntry(peer, TimeUtil::Now()));
+        const auto stored = m_pPeerDB->Read()->GetPeer(address, std::nullopt);
+        current = stored.has_value() ? stored.value() : std::make_shared<Peer>(address);
     }
+    const auto persisted = std::make_shared<Peer>(address);
+    *persisted = *current;
+    persisted->Ban(banReason);
+    m_pPeerDB->Write()->SavePeers({ persisted });
+    if (iter != m_peersByAddress.end()) current->Ban(banReason);
+    else m_peersByAddress.emplace(address, PeerEntry(persisted, TimeUtil::Now()));
+}
+
+void PeerManager::UnbanAllPeers()
+{
+    // Include records not loaded into memory (e.g. with preferred peers set).
+    // In-memory state is authoritative for peers modified since the last save.
+    std::map<IPAddress, PeerPtr> peers;
+    for (const PeerPtr& peer : m_pPeerDB->Read()->LoadAllPeers()) {
+        peers[peer->GetIPAddress()] = peer;
+    }
+    for (const auto& entry : m_peersByAddress) {
+        peers[entry.first] = entry.second.m_peer;
+    }
+
+    std::vector<PeerPtr> copies;
+    std::vector<PeerPtr> live;
+    for (const auto& entry : peers) {
+        const PeerPtr& peer = entry.second;
+        if (peer->GetLastBanTime() == 0 && peer->GetBanReason() == EBanReason::None) continue;
+        const auto copy = std::make_shared<Peer>(entry.first);
+        *copy = *peer;
+        copy->Unban();
+        copies.push_back(copy);
+        const auto iter = m_peersByAddress.find(entry.first);
+        if (iter != m_peersByAddress.end()) live.push_back(iter->second.m_peer);
+    }
+    if (copies.empty()) return;
+    // One DB batch first; failure leaves every live peer unchanged.
+    m_pPeerDB->Write()->SavePeers(copies);
+    for (const PeerPtr& peer : live) peer->Unban();
 }
 
 void PeerManager::UnbanPeer(const IPAddress& address)
 {
-    auto iter = m_peersByAddress.find(address);
+    const auto iter = m_peersByAddress.find(address);
     if (iter != m_peersByAddress.end()) {
-        iter->second.m_peer->Unban();
+        const PeerPtr peer = iter->second.m_peer;
+        // Persist a copy first, so a storage error cannot leave the in-memory
+        // peer unbanned while the API reports failure.
+        const PeerPtr unbanned = std::make_shared<Peer>(address);
+        *unbanned = *peer;
+        unbanned->Unban();
+        m_pPeerDB->Write()->SavePeers({ unbanned });
+        peer->Unban();
+        return;
+    }
+
+    // Preferred-peer mode does not load every database entry into memory.
+    // Still honour the administrator's request for a stored-only peer.
+    const auto storedPeer = m_pPeerDB->Read()->GetPeer(address, std::nullopt);
+    if (storedPeer.has_value()) {
+        const PeerPtr peer = storedPeer.value();
+        peer->Unban();
+        m_pPeerDB->Write()->SavePeers({ peer });
     }
 }
 
@@ -238,7 +333,7 @@ std::vector<PeerPtr> PeerManager::GetPeersWithCapability(
             iter = m_peersByAddress.begin();
         }
 
-        PeerEntry& peerEntry = iter->second;
+        PeerEntry& peerEntry = (iter++)->second;
         const PeerPtr& peer = peerEntry.m_peer;
 
         if (connectingToPeer && peer->GetLastBanTime() > maxBanTime) {
@@ -258,7 +353,6 @@ std::vector<PeerPtr> PeerManager::GetPeersWithCapability(
             }
         }
 
-        iter++;
     }
 
     return peersFound;

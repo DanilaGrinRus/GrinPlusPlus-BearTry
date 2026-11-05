@@ -114,6 +114,7 @@ public:
 	void Unban() noexcept
 	{
 		m_lastBanTime = 0;
+		m_banReason = EBanReason::None;
 		m_dirty = true;
 	}
 	void UpdateUserAgent(const std::string& userAgent) noexcept { m_userAgent = userAgent; }
@@ -183,7 +184,8 @@ public:
 		json["last_banned"] = Json::UInt64(GetLastBanTime());
 		json["ban_reason"] = BanReason::Format(GetBanReason());
 		json["last_connected"] = Json::UInt64(GetLastContactTime());
-		json["protocol_version"] = Json::UInt(GetVersion());
+		// Rust api::types::PeerData has no protocol_version field. Connection
+		// version is exposed by ConnectedPeer/PeerInfoDisplay instead.
 		return json;
 	}
 

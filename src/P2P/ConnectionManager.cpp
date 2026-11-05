@@ -95,6 +95,37 @@ std::vector<PeerPtr> ConnectionManager::GetMostWorkPeers() const
 	return mostWorkPeers;
 }
 
+std::vector<ConnectionPtr> ConnectionManager::GetMostWorkConnections() const
+{
+	std::vector<ConnectionPtr> mostWorkConnections;
+
+	auto connections = m_connections.Read();
+
+	ConnectionPtr pMostWorkPeer = GetMostWorkPeer(*connections);
+	if (pMostWorkPeer != nullptr) {
+		const uint64_t totalDifficulty = pMostWorkPeer->GetTotalDifficulty();
+		for (const ConnectionPtr& pConnection : *connections) {
+			if (pConnection->GetTotalDifficulty() >= totalDifficulty && pConnection->GetHeight() > 0) {
+				mostWorkConnections.push_back(pConnection);
+			}
+		}
+	}
+
+	return mostWorkConnections;
+}
+
+ConnectionPtr ConnectionManager::GetConnectionByAddress(const IPAddress& address) const
+{
+	auto connections = m_connections.Read();
+	const auto iter = std::find_if(
+		connections->cbegin(),
+		connections->cend(),
+		[&address](const ConnectionPtr& pConnection) { return pConnection->GetIPAddress() == address; }
+	);
+
+	return iter != connections->cend() ? *iter : nullptr;
+}
+
 std::vector<ConnectedPeer> ConnectionManager::GetConnectedPeers() const
 {
 	auto connections = m_connections.Read();
@@ -132,13 +163,19 @@ uint64_t ConnectionManager::GetHighestHeight() const
 	return 0;
 }
 
-PeerPtr ConnectionManager::SendMessageToMostWorkPeer(const IMessage& message)
+PeerPtr ConnectionManager::SendMessageToMostWorkPeer(
+	const IMessage& message,
+	const std::function<void(const PeerPtr&)>& beforeSend)
 {
 	auto connections = m_connections.Read();
 	ConnectionPtr pConnection = GetMostWorkPeer(*connections);
 	if (pConnection != nullptr) {
+		const PeerPtr peer = pConnection->GetPeer();
+		if (beforeSend) {
+			beforeSend(peer);
+		}
 		pConnection->SendAsync(message);
-		return pConnection->GetPeer();
+		return peer;
 	}
 
 	return nullptr;
@@ -161,7 +198,7 @@ void ConnectionManager::BroadcastMessage(const IMessage& message, const uint64_t
 {
 	LOG_DEBUG_F("Broadcasting message: {}", MessageTypes::ToString(message.GetMessageType()));
 
-	// TODO: This should only broadcast to 8(?) peers. Should maybe be configurable.
+	// Broadcast to the current connections; their number is bounded by MAX_PEERS.
 	auto connections = *m_connections.Read().GetShared();
 	for (ConnectionPtr pConnection : connections) {
 		if (pConnection->GetId() != sourceId) {
@@ -193,7 +230,7 @@ void ConnectionManager::PruneConnections(const bool bInactiveOnly)
 	auto connectionsWriter = m_connections.Write();
 	std::vector<ConnectionPtr>& connections = *connectionsWriter;
 
-	for (auto iter = connections.begin(); iter < connections.end(); iter++) {
+	for (auto iter = connections.begin(); iter != connections.end();) {
 		ConnectionPtr pConnection = *iter;
 		if (!bInactiveOnly || !pConnection->IsConnectionActive()) {
 			try { 
@@ -202,7 +239,9 @@ void ConnectionManager::PruneConnections(const bool bInactiveOnly)
 			catch (std::exception& e) {
 				LOG_ERROR("Error disconnecting: " + std::string(e.what()));
 			}
-			connections.erase(iter);
+			iter = connections.erase(iter);
+		} else {
+			++iter;
 		}
 	}
 

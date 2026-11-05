@@ -73,11 +73,21 @@ void BlockPipe::ProcessNewBlock(BlockPipe& pipeline, const BlockEntry& blockEntr
 		{
 			blockEntry.m_peer->Ban(EBanReason::BadBlock);
 		}
+		else if (status == EBlockChainStatus::LOCAL_REWIND_DATA_MISSING)
+		{
+			// The peer's block was not classified as invalid. Do not ban; the
+			// operator/sync layer needs local state recovery (restore bodies or
+			// resync the state), not a peer ban.
+			LOG_WARNING_F(
+				"Block {} needs local rewind data that is unavailable; peer {} is not banned. "
+				"Local state recovery/resync is required before retrying.",
+				blockEntry.m_block.GetHash(),
+				blockEntry.m_peer->GetIPAddress().Format());
+		}
 	}
 	catch (std::exception& e)
 	{
-		LOG_ERROR_F("Exception ({}) caught while attempting to add block {}.", e.what(), blockEntry.m_block);
-		blockEntry.m_peer->Ban(EBanReason::BadBlock);
+		LOG_ERROR_F("Exception ({}) caught while attempting to add block {}; peer validity is unknown, no ban.", e.what(), blockEntry.m_block);
 	}
 }
 

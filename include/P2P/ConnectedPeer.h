@@ -47,6 +47,7 @@ public:
 		json["direction"] = GetDirection() == EDirection::OUTBOUND ? "Outbound" : "Inbound";
 		json["total_difficulty"] = GetTotalDifficulty();
 		json["height"] = GetHeight();
+		json["version"] = Json::UInt(GetProtocolVersion());
 		return json;
 	}
 

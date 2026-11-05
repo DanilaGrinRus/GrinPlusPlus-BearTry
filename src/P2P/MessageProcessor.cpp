@@ -15,10 +15,22 @@
 #include "Messages/GetHeadersMessage.h"
 #include "Messages/HeaderMessage.h"
 #include "Messages/HeadersMessage.h"
+#include "Messages/GetHeaderSegmentMessage.h"
+#include "Messages/HeaderSegmentMessage.h"
+#include "Sync/PihdClient.h"
 #include "Messages/BlockMessage.h"
 #include "Messages/GetBlockMessage.h"
 #include "Messages/CompactBlockMessage.h"
 #include "Messages/GetCompactBlockMessage.h"
+
+// PIBD Messages
+#include "Messages/SegmentRequestMessage.h"
+#include "Messages/SegmentResponseMessage.h"
+#include "PIBD/PibdArchiveServer.h"
+#include "PIBD/PibdParams.h"
+#include "PIBD/PibdSegmentService.h"
+#include "PIBD/PibdSync.h"
+#include "../PMMR/TxHashSetImpl.h"
 
 // Transaction Messages
 #include "Messages/TransactionMessage.h"
@@ -32,6 +44,7 @@
 #include <Core/Exceptions/BadDataException.h>
 #include <Core/Exceptions/BlockChainException.h>
 #include <Core/Global.h>
+#include <P2P/AdvertisedTip.h>
 #include <P2P/Common.h>
 #include <Common/Util/HexUtil.h>
 #include <Common/Util/StringUtil.h>
@@ -45,24 +58,59 @@ static const int BUFFER_SIZE = 256 * 1024;
 
 using namespace MessageTypes;
 
+namespace
+{
+	// Per-tree accepted segment heights, mirroring grin 5.5.2
+	// servers/src/common/adapters.rs. The previous blanket "> 13" bound was both
+	// too strict (valid output heights 14-15) and too loose (rangeproof 12-13 are
+	// rejected by the Rust server). Bounds the work a peer can request.
+	bool IsValidSegmentHeight(const EMessageType messageType, const uint64_t height)
+	{
+		switch (messageType)
+		{
+			case GetOutputBitmapSegment: return PibdParams::IsValidBitmapSegmentHeight(height);
+			case GetKernelSegment: return PibdParams::IsValidKernelSegmentHeight(height);
+			case GetOutputSegment: return PibdParams::IsValidOutputSegmentHeight(height);
+			case GetRangeProofSegment: return PibdParams::IsValidRangeProofSegmentHeight(height);
+			default: return false;
+		}
+	}
+}
+
 MessageProcessor::MessageProcessor(
 	ConnectionManager& connectionManager,
 	Locked<PeerManager> peerManager,
 	const IBlockChain::Ptr& pBlockChain,
 	const std::shared_ptr<Pipeline>& pPipeline,
-	SyncStatusConstPtr pSyncStatus)
+	SyncStatusConstPtr pSyncStatus,
+	std::shared_ptr<PibdSync> pPibdSync,
+	std::shared_ptr<PihdClient> pPihdClient)
 	: m_connectionManager(connectionManager),
 	m_peerManager(peerManager),
 	m_pBlockChain(pBlockChain),
 	m_pPipeline(pPipeline),
-	m_pSyncStatus(pSyncStatus)
+	m_pSyncStatus(pSyncStatus),
+	m_pPibdSync(std::move(pPibdSync)),
+	m_pPihdClient(std::move(pPihdClient))
 {
 
+}
+
+std::optional<P2P::AdvertisedTip> MessageProcessor::GetAdvertisedTip() const
+{
+	// One call, one BlockHeaderPtr: GetTipBlockHeader reads the candidate tip
+	// under a ChainState read lease and the header carries both height and TD,
+	// so the advertised pair cannot mix two tips.
+	return P2P::ReadAdvertisedTip([this]() {
+		return m_pBlockChain->GetTipBlockHeader(EChainType::CANDIDATE);
+	});
 }
 
 void MessageProcessor::ProcessMessage(const std::shared_ptr<Connection>& pConnection, const RawMessage& rawMessage)
 {
 	const EMessageType messageType = rawMessage.GetMessageHeader().GetMessageType();
+
+	LOG_DEBUG_F("Received {} from {}", MessageTypes::ToString(messageType), pConnection);
 
 	try
 	{
@@ -77,8 +125,12 @@ void MessageProcessor::ProcessMessage(const std::shared_ptr<Connection>& pConnec
 			e.what()
 		);
 
-		// TODO: Send ban reason
+		// grin 5.5.2 has no ban-reason field on the wire; the reason is logged
+		// locally before the peer is banned.
 		pConnection->BanPeer(e.GetReason());
+		if (m_pSyncStatus != nullptr) {
+			m_pSyncStatus->IncrementBansInvalidData();
+		}
 	}
 	catch (const BlockChainException& e)
 	{
@@ -89,14 +141,15 @@ void MessageProcessor::ProcessMessage(const std::shared_ptr<Connection>& pConnec
 			e.what()
 		);
 	}
-	catch (const DeserializationException&)
+	catch (const DeserializationException& e)
 	{
 		LOG_ERROR_F(
-			"Deserialization exception while processing {} from {}",
+			"Deserialization exception while processing {} from {}: {}",
 			MessageTypes::ToString(messageType),
-			pConnection
+			pConnection,
+			e.what()
 		);
-		pConnection->Disconnect();
+		pConnection->CloseAfterMessage();
 	}
 }
 
@@ -126,9 +179,18 @@ void MessageProcessor::ProcessMessageInternal(const std::shared_ptr<Connection>&
 			const PingMessage pingMessage = PingMessage::Deserialize(byteBuffer);
 			pConnection->UpdateTotals(pingMessage.GetTotalDifficulty(), pingMessage.GetHeight());
 
-			auto pTipHeader = m_pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
-			const PongMessage pongMessage(pTipHeader->GetTotalDifficulty(), pTipHeader->GetHeight());
+			// Reply from ONE coherent header-head snapshot (height + TD from the
+			// same tip). Do not fall back to CONFIRMED or mix values: peers use
+			// this as our sync height/difficulty, and body-vs-header values leave
+			// a restarted Rust peer stuck in AwaitingPeers (task-7A root cause).
+			const auto advertisedTip = GetAdvertisedTip();
+			if (!advertisedTip)
+			{
+				LOG_DEBUG_F("Withholding Pong from {}: no coherent header-tip snapshot available.", pConnection);
+				break;
+			}
 
+			const PongMessage pongMessage(advertisedTip->TotalDifficulty, advertisedTip->Height);
 			pConnection->SendAsync(pongMessage);
 			break;
 		}
@@ -138,7 +200,197 @@ void MessageProcessor::ProcessMessageInternal(const std::shared_ptr<Connection>&
 			pConnection->UpdateTotals(pongMessage.GetTotalDifficulty(), pongMessage.GetHeight());
 			break;
 		}
-		case GetPeerAddrs:
+		case GetHeaderSegment:
+		{
+			// Client-only build: we never advertise PIHD_HIST, so serving a
+			// header segment is deliberately unsupported.
+			LOG_DEBUG_F("Ignoring GetHeaderSegment from {}: PIHD server disabled", pConnection);
+			break;
+		}
+		case HeaderSegment:
+		{
+			if (m_pPihdClient == nullptr) {
+				break;
+			}
+			const HeaderSegmentMessage response = HeaderSegmentMessage::Deserialize(byteBuffer);
+			m_pPihdClient->OnHeaderSegment(pConnection, response);
+			break;
+		}
+		case OutputBitmapSegment:
+		case OutputSegment:
+		case RangeProofSegment:
+		case KernelSegment:
+		{
+			if (m_pPibdSync == nullptr || !m_pPibdSync->IsActive()) {
+				LOG_DEBUG_F(
+					"Ignoring {} from {}: no PIBD sync in progress",
+					MessageTypes::ToString(header.GetMessageType()),
+					pConnection);
+				break;
+			}
+
+			const SegmentResponseMessage segmentResponse =
+				SegmentResponseMessage::Deserialize(byteBuffer, header.GetMessageType());
+			if (!m_pPibdSync->OnResponse(segmentResponse, std::chrono::steady_clock::now(),
+				pConnection->GetIPAddress().Format())) {
+				LOG_DEBUG_F("PIBD response from {} was not applied", pConnection);
+			}
+
+			break;
+		}
+		case GetOutputBitmapSegment:
+		case GetOutputSegment:
+		case GetRangeProofSegment:
+		case GetKernelSegment:
+		{
+			// Serve the immutable archive at the current horizon or the installed
+			// flushed snapshot. Both are exact-hash only; anything else is refused
+			// (no response, no ban) so a peer can retry or fall back.
+			try {
+				const SegmentRequestMessage request =
+					SegmentRequestMessage::Deserialize(byteBuffer, header.GetMessageType());
+				const Hash& blockHash = request.GetBlockHash();
+				const SegmentIdentifier& identifier = request.GetIdentifier();
+
+				// Reject heights outside the tree's protocol range. This bounds the
+				// segment generation work a peer can request and keeps invalid
+				// requests away from the segmenter.
+				if (!IsValidSegmentHeight(header.GetMessageType(), identifier.GetHeight())) {
+					LOG_WARNING_F(
+						"Ignoring PIBD request with invalid segment height {} for {}",
+						identifier.GetHeight(),
+						MessageTypes::ToString(header.GetMessageType()));
+					break;
+				}
+
+				if (!pConnection->AllowPibdRequest()) {
+					LOG_DEBUG_F("Throttling PIBD request from {}: per-connection limit reached", pConnection);
+					break;
+				}
+
+				// Serve the immutable archive first (exact hash only, no chain
+				// lock), then the single open flushed state. Archive segment
+				// generation must not hold the chain mutation lease: it is
+				// expensive and would stall block application.
+				bool served = false;
+				for (int attempt = 0; attempt < 3 && !served; ++attempt) {
+					std::shared_ptr<TxHashSet> pState;
+					std::shared_ptr<const PibdArchiveServer::Snapshot> pArchiveLease;
+					bool servedFromArchive = false;
+					IBlockChain::ApiStateSnapshot snapshot;
+
+					const std::shared_ptr<PibdArchiveServer> pArchiveServer =
+						PibdArchiveServer::Instance();
+					if (pArchiveServer != nullptr) {
+						pArchiveLease = pArchiveServer->Acquire(blockHash);
+					}
+
+					if (pArchiveLease != nullptr && pArchiveLease->txHashSet != nullptr) {
+						if (!pArchiveServer->TryAcquireRequestSlot()) {
+							LOG_DEBUG_F(
+								"Throttling {} from {}: global PIBD request limit reached",
+								MessageTypes::ToString(header.GetMessageType()),
+								pConnection);
+							break;
+						}
+
+						pState = pArchiveLease->txHashSet;
+						servedFromArchive = true;
+					}
+					else {
+						snapshot = m_pBlockChain->GetApiStateSnapshot();
+						if (!snapshot.valid || snapshot.txHashSet == nullptr) {
+							LOG_DEBUG_F("Cannot serve {}: no API state snapshot",
+								MessageTypes::ToString(header.GetMessageType()));
+							break;
+						}
+
+						const std::shared_ptr<TxHashSet> pLiveState =
+							std::dynamic_pointer_cast<TxHashSet>(snapshot.txHashSet);
+						if (pLiveState == nullptr) {
+							LOG_DEBUG_F("Cannot serve {}: no txhashset is open",
+								MessageTypes::ToString(header.GetMessageType()));
+							break;
+						}
+
+						const BlockHeaderPtr pFlushedHeader = pLiveState->GetFlushedBlockHeader();
+						if (pFlushedHeader == nullptr || pFlushedHeader->GetHeight() == 0 ||
+							pFlushedHeader->GetHash() != blockHash) {
+							LOG_DEBUG_F(
+								"Ignoring {} from {}: requested hash is neither the flushed state nor a ready archive horizon",
+								MessageTypes::ToString(header.GetMessageType()),
+								pConnection);
+							break;
+						}
+
+						pState = pLiveState;
+					}
+
+					PibdSegmentService service(
+						pState->GetOutputPMMR(), pState->GetRangeProofPMMR(), pState->GetKernelMMR(), blockHash);
+
+					std::shared_ptr<SegmentResponseMessage> pResponse;
+					switch (header.GetMessageType()) {
+						case GetOutputBitmapSegment:
+							pResponse = std::make_shared<SegmentResponseMessage>(
+								SegmentResponseMessage::CreateOutputBitmap(
+									blockHash, service.GetBitmapSegment(identifier), service.GetOutputMmrRoot()));
+							break;
+						case GetOutputSegment:
+							pResponse = std::make_shared<SegmentResponseMessage>(
+								SegmentResponseMessage::CreateOutputs(
+									blockHash, service.GetOutputSegment(identifier), service.GetBitmapMmrRoot()));
+							break;
+						case GetRangeProofSegment:
+							pResponse = std::make_shared<SegmentResponseMessage>(
+								SegmentResponseMessage::CreateRangeProofs(
+									blockHash, service.GetRangeProofSegment(identifier)));
+							break;
+						case GetKernelSegment:
+							pResponse = std::make_shared<SegmentResponseMessage>(
+								SegmentResponseMessage::CreateKernels(
+									blockHash, service.GetKernelSegment(identifier)));
+							break;
+						default:
+							break;
+					}
+
+					if (pResponse == nullptr) {
+						break;
+					}
+
+					if (!servedFromArchive && !m_pBlockChain->IsApiStateCurrent(snapshot.sequence)) {
+						LOG_DEBUG_F(
+							"PIBD snapshot changed while serving {} from {}; retrying",
+							MessageTypes::ToString(header.GetMessageType()),
+							pConnection);
+						continue;
+					}
+
+					// The response owns its serialized bytes (SendAsync serializes
+					// synchronously). Release the chain read lease and the archive
+					// lease before the socket write; archive files are removed only
+					// after the last lease is released.
+					snapshot.lease.reset();
+					pConnection->SendAsync(*pResponse);
+					served = true;
+				}
+
+				if (!served) {
+					LOG_DEBUG_F("PIBD response for {} was not sent (state changed or unavailable)",
+						MessageTypes::ToString(header.GetMessageType()));
+				}
+			}
+			catch (const std::exception& e) {
+				LOG_WARNING_F(
+					"Failed to serve {} from {}: {}",
+					MessageTypes::ToString(header.GetMessageType()),
+					pConnection,
+					e.what());
+			}
+
+			break;
+		}		case GetPeerAddrs:
 		{
 			const GetPeerAddressesMessage getPeerAddressesMessage = GetPeerAddressesMessage::Deserialize(byteBuffer);
 			const Capabilities capabilities = getPeerAddressesMessage.GetCapabilities();
@@ -317,7 +569,7 @@ void MessageProcessor::ProcessMessageInternal(const std::shared_ptr<Connection>&
 			m_pPipeline->SendTxHashSet(pConnection, msg.GetBlockHash());
 			break;
 		}
-		case TxHashSetArchive:
+		case MessageTypes::TxHashSetArchive:
 		{
 			m_pPipeline->ReceiveTxHashSet(pConnection, TxHashSetArchiveMessage::Deserialize(byteBuffer));
 			break;

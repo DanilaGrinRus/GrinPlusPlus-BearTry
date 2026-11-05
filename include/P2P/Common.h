@@ -24,6 +24,9 @@ namespace P2P
 	// Maximum number of block headers a peer should ever send
 	static const uint32_t MAX_BLOCK_HEADERS = 512;
 
+	// Maximum PIBD segment requests accepted from one connection per minute.
+	static const uint32_t MAX_PIBD_REQUESTS_PER_MINUTE = 500;
+
 	// Maximum number of block bodies a peer should ever ask for and send
 	static const uint32_t MAX_BLOCK_BODIES = 16;
 

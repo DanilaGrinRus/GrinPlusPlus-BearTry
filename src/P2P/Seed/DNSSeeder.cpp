@@ -12,23 +12,24 @@ std::vector<SocketAddress> DNSSeeder::GetPeersFromDNS()
 	std::vector<std::string> dnsSeeds;
 	if (Global::IsMainnet())
 	{
+		// DNS seeds from Grin 5.5.2; these are discovery sources, not an allowlist.
 		dnsSeeds = {
-			"mainnet.seed.grin.lesceller.com",	// q.lesceller@gmail.com
-			"mainnet.seed.grin.prokapi.com",	// hendi@prokapi.com
-			"grinseed.revcore.net",			// yeastplume@gmail.com
-			"mainnet-seed.grinnode.live",		// info@grinnode.live
-			"mainnet.grin.punksec.de",		// grin@punksec.de
-			"grinnode.30-r.com",			// trinitron@30-r.com
+			"mainnet-seed.grinnode.live",
+			"grincoin.org",
+			"main.gri.mw",
+			"mainnet.grinffindor.org",
+			"main-seed.grin.money",
+			"mainnet.fountainoffairfortune.it"
 		};
 	}
 	else
 	{
 		dnsSeeds = {
-			"floonet.seed.grin.lesceller.com",	// q.lesceller@gmail.com
-			"floonet.seed.grin.prokapi.com",	// hendi@prokapi.com
-			"grintestseed.revcore.net",		// yeastplume@gmail.com
-			"testnet.grin.punksec.de",		// grin@punksec.de
-			"testnet.grinnode.30-r.com",		// trinitron@30-r.com
+			"testnet.grincoin.org",
+			"test.gri.mw",
+			"testnet.grinffindor.org",
+			"test-seed.grin.money",
+			"testnet.fountainoffairfortune.it"
 		};
 	}
 

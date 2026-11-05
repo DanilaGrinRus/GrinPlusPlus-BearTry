@@ -150,7 +150,7 @@ private:
 		if (connectResponse[1] != SOCKS::Reply::SUCCEEDED)
 		{
 			// Failures to connect to a peer that are not proxy errors
-			// TODO: throw SOCKS_EXCEPTION("Connect failed with error: " + SOCKS::ErrorString(connectResponse[1]));
+			throw SOCKS_EXCEPTION("Proxy refused the connection request");
 		}
 
 		if (connectResponse[2] != 0x00) // Reserved field must be 0
