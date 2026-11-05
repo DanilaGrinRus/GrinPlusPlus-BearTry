@@ -130,7 +130,7 @@ cmake --build build --config Release --target GrinNode Tests --parallel
 ## Лицензия и уведомления
 
 MIT — см. [LICENSE](LICENSE). Копирайт upstream сохранён. Встроенные зависимости
-и их уведомления перечислены в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+и их уведомления перечислены в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); полные тексты лицензий — в [LICENSES/](LICENSES/README.md).
 
 ---
 

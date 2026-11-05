@@ -135,7 +135,7 @@ API-Secrets (`.api_secret`) oder persönlichen Profildaten. Siehe
 
 MIT — siehe [LICENSE](LICENSE). Das Upstream-Copyright bleibt erhalten.
 Gebündelte Abhängigkeiten und ihre Hinweise sind in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) aufgeführt.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) aufgeführt; vollständige Lizenztexte stehen in [LICENSES/](LICENSES/README.md).
 
 ---
 

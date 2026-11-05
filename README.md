@@ -126,7 +126,8 @@ profile data. See [SECURITY.md](SECURITY.md).
 
 MIT — see [LICENSE](LICENSE). Upstream copyright is preserved. Bundled
 dependencies and their notices are inventoried in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), with full license texts in
+[LICENSES/](LICENSES/README.md).
 
 ---
 
