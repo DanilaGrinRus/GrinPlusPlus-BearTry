@@ -8,10 +8,13 @@
 #
 # STATUS OF THIS FILE (be honest in review):
 #   * prepared locally, reviewed against the accepted build invocation;
-#   * NOT executed on GitHub Actions (no public repository exists yet);
-#   * the sysroot-download path requires a published release asset with a
-#     pinned SHA-256; until that asset exists the job fails fast on purpose;
-#   * the optional build-from-source sysroot path is NOT VERIFIED.
+#   * push CI is self-contained: when no sysroot URL is configured it builds
+#     the dependency sysroot from source with tools/deps/build_sysroot.py
+#     (verified locally on 2026-11-06); a downloaded pinned sysroot can be
+#     supplied later via vars.GRINPP_SYSROOT_URL + GRINPP_SYSROOT_SHA256 for
+#     faster runs;
+#   * the GitHub-hosted runtime is verified by the first real CI run; treat
+#     runner-specific limits as NOT VERIFIED until that run is green.
 #
 # Test scope: `Tests.exe "~[.]"` runs the normal offline Catch2 suite. Hidden
 # harness scenarios are excluded by "~[.]" by design. No mainnet, no live
@@ -35,7 +38,7 @@ on:
         required: false
         type: string
       build_sysroot:
-        description: "Build the sysroot from source with tools/deps/build_sysroot.py (NOT VERIFIED)"
+        description: "Build the sysroot from source with tools/deps/build_sysroot.py (verified locally; GitHub runner pending)"
         required: false
         default: "false"
         type: choice
@@ -71,12 +74,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $sysroot = Join-Path $env:RUNNER_TEMP 'sysroot'
 
-          if ($env:BUILD_SYSROOT_FROM_SOURCE -eq 'true') {
+          $noUrl = [string]::IsNullOrWhiteSpace($env:GRINPP_SYSROOT_URL)
+          if ($env:BUILD_SYSROOT_FROM_SOURCE -eq 'true' -or $noUrl) {
+            Write-Host 'No sysroot URL configured: building dependencies from source.'
             $helper = Join-Path $env:GITHUB_WORKSPACE 'tools\deps\build_sysroot.py'
             if (-not (Test-Path $helper)) {
-              throw "tools/deps/build_sysroot.py is not in the tree; cannot build the sysroot in CI (NOT VERIFIED path)."
+              throw "tools/deps/build_sysroot.py is not in the tree; cannot build the sysroot in CI (source-build path)."
             }
-            python $helper --repo $env:GITHUB_WORKSPACE --sysroot-dir $sysroot
+            $toolchain = Join-Path $env:RUNNER_TEMP 'deps-toolchain'
+            python $helper --repo $env:GITHUB_WORKSPACE --toolchain-dir $toolchain --sysroot-dir $sysroot
             if ($LASTEXITCODE -ne 0) { throw "build_sysroot.py failed ($LASTEXITCODE)" }
           }
           else {

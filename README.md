@@ -1,8 +1,8 @@
 # Grin++ — community fork (Node Beta 1 candidate)
 
-This repository is a community fork of [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus).
-It is **not** an official release of the upstream project and is not maintained by
-the upstream team. The fork is focused on the **node module first** (GrinNode);
+This repository is an **independent fork** of [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus).
+It is a community fork, **not** an official release of the upstream project, and is not
+maintained by the upstream team. The fork is focused on the **node module first** (GrinNode);
 the wallet and UI are **not** part of the Node Beta acceptance.
 
 | | |

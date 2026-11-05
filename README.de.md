@@ -1,6 +1,6 @@
 # Grin++ — Community-Forks (Node-Beta-1-Kandidat)
 
-Dieses Repository ist ein Community-Forks von
+Dieses Repository ist ein **unabhängiger** Community-Fork von
 [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus). Es ist **kein**
 offizieller Release des Upstream-Projekts und wird nicht vom Upstream-Team
 betreut. Der Fork konzentriert sich zuerst auf das **Node-Modul** (GrinNode);

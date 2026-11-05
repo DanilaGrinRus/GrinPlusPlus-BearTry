@@ -1,6 +1,6 @@
 # Grin++ — общественный форк (кандидат Node Beta 1)
 
-Этот репозиторий — общественный форк [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus).
+Этот репозиторий — **независимый** общественный форк [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus).
 Он **не** является официальным выпуском вышестоящего проекта и не поддерживается
 его командой. Форк сосредоточен на **модуле ноды** (GrinNode); кошелёк и UI **не**
 входят в приёмку Node Beta.
