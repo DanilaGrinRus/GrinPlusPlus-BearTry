@@ -15,7 +15,7 @@ Ziel: eindeutige Identität und Evidenz des Kandidaten.
 | Gezielte Index-/Scheduler-/BlockPipe-Tests | **PASS** | `target-final.json` komplett PASS |
 | NRD-Kill-Recovery | **PASS** | 241 Assertions, Recovery Exit 0 |
 | Veraltetes Manifest bereinigt | **PASS** | In der Doku nur das finale Manifest |
-| Rekonstruierte Commit-Historie | **PASS** | `node-beta.1-candidate` (annotiertes Tag-Objekt `317d143d…`) zeigt auf Commit `7efdb02e…`; Tree-Verifikation PASS |
+| Rekonstruierte Commit-Historie | **PASS** | `node-beta.1-candidate` (annotiertes Tag-Objekt `fc5174ec…`) zeigt auf Commit `ccc4f356…`; Tree-Verifikation PASS |
 | Sauberer Neu-Build | **IN ARBEIT** | Sauberer Klon baut und besteht dieselbe Suite (oder Abweichung erklärt) |
 
 ## Phase 1 — Live-Verifikation des Kandidaten

@@ -12,7 +12,7 @@ the wallet and UI are **not** part of the Node Beta acceptance.
 | Base commit | `a0958a391c30cf630e3e08534fbc6fe9fb194326` (2024-10-22) |
 | Project license | MIT (see [LICENSE](LICENSE), upstream copyright preserved) |
 | Development stage | **Node Beta 1 candidate** — not a stable release, not Mainnet-ready |
-| Git tag | `node-beta.1-candidate` — annotated object `317d143d…`, tagged commit `7efdb02e…` |
+| Git tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
 
 ## Status at a glance
 

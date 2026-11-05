@@ -20,7 +20,7 @@ Statusvokabular der gesamten Dokumentation:
 | Punkt | Wert |
 |---|---|
 | Stufe | **Node-Beta-1-Kandidat**; das Label Beta 1 wird mit diesem Dokument nicht vergeben |
-| Git-Tag | `node-beta.1-candidate` — annotiertes Objekt `317d143d…`, getaggter Commit `7efdb02e…` |
+| Git-Tag | `node-beta.1-candidate` — annotiertes Objekt `fc5174ec…`, getaggter Commit `ccc4f356…` |
 | Upstream-Basis | GrinPlusPlus `v1.2.9`, Commit `a0958a391c30cf630e3e08534fbc6fe9fb194326` (22.10.2024) |
 | `GrinNode.exe` SHA-256 | `4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC` |
 | `Tests.exe` SHA-256 | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |

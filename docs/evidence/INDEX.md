@@ -21,7 +21,7 @@ transfer a result to another binary or commit.
 |---|---|
 | Platform | Windows 11 x64 |
 | Toolchain | Visual Studio 2022, MSVC 14.44 (v143), Release, `/W4 /WX`, static CRT |
-| Candidate commit | `node-beta.1-candidate` — annotated tag object `317d143d…`, tagged commit `7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59` |
+| Candidate commit | `node-beta.1-candidate` — annotated tag object `fc5174ec…`, tagged commit `ccc4f356c5f46bd693f1965581c7307d4563d8c9` |
 | Candidate `GrinNode.exe` | `4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC` |
 | Candidate `Tests.exe` | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |
 | Candidate source manifest | 1528 files, SHA-256 `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |

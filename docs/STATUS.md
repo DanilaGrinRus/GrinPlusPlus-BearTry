@@ -20,7 +20,7 @@ Status vocabulary used everywhere in this documentation:
 | Item | Value |
 |---|---|
 | Release stage | **Node Beta 1 candidate**; the Beta 1 label is not assigned by this document |
-| Git tag | `node-beta.1-candidate` — annotated object `317d143d…`, tagged commit `7efdb02e…` |
+| Git tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
 | Base upstream | GrinPlusPlus `v1.2.9`, commit `a0958a391c30cf630e3e08534fbc6fe9fb194326` (2024-10-22) |
 | `GrinNode.exe` SHA-256 | `4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC` |
 | `Tests.exe` SHA-256 | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |

@@ -20,7 +20,7 @@
 | Пункт | Значение |
 |---|---|
 | Стадия | **Кандидат Node Beta 1**; метка Beta 1 этим документом не присваивается |
-| Git-метка | `node-beta.1-candidate` — аннотированный объект `317d143d…`, коммит `7efdb02e…` |
+| Git-метка | `node-beta.1-candidate` — аннотированный объект `fc5174ec…`, коммит `ccc4f356…` |
 | База upstream | GrinPlusPlus `v1.2.9`, коммит `a0958a391c30cf630e3e08534fbc6fe9fb194326` (22.10.2024) |
 | SHA-256 `GrinNode.exe` | `4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC` |
 | SHA-256 `Tests.exe` | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |

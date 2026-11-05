@@ -15,7 +15,7 @@ Goal: make the candidate's identity and evidence unambiguous.
 | Targeted index/scheduler/block-pipe tests | **PASS** | `target-final.json` all PASS |
 | Forced-kill NRD recovery | **PASS** | 241 assertions, recovery exit 0 |
 | Stale-manifest cleanup | **PASS** | Only the final manifest is cited in docs |
-| Commit history reconstructed | **PASS** | `node-beta.1-candidate` (annotated tag object `317d143d…`) points at commit `7efdb02e…`; tree verification PASS |
+| Commit history reconstructed | **PASS** | `node-beta.1-candidate` (annotated tag object `fc5174ec…`) points at commit `ccc4f356…`; tree verification PASS |
 | Clean-copy rebuild | **IN PROGRESS** | Clean clone builds and passes the same suite (or the difference is explained) |
 
 ## Phase 1 — live candidate verification

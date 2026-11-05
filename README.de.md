@@ -13,7 +13,7 @@ Wallet und UI gehören **nicht** zur Node-Beta-Abnahme.
 | Basis-Commit | `a0958a391c30cf630e3e08534fbc6fe9fb194326` (22.10.2024) |
 | Projektlizenz | MIT (siehe [LICENSE](LICENSE), Upstream-Copyright bleibt erhalten) |
 | Entwicklungsstand | **Node-Beta-1-Kandidat** — kein stabiles Release, keine Mainnet-Bereitschaft |
-| Git-Tag | `node-beta.1-candidate` — annotiertes Objekt `317d143d…`, getaggter Commit `7efdb02e…` |
+| Git-Tag | `node-beta.1-candidate` — annotiertes Objekt `fc5174ec…`, getaggter Commit `ccc4f356…` |
 
 ## Status auf einen Blick
 
