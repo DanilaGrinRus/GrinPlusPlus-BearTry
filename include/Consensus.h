@@ -5,6 +5,7 @@
 // file LICENSE or http://www.opensource.org/licenses/mit-license.php.
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <utility>
 #include <type_traits>
@@ -165,6 +166,9 @@ namespace Consensus
 	// easier to reason about.
 	static constexpr uint32_t STATE_SYNC_THRESHOLD = 2 * DAY_HEIGHT;
 
+	// PIBD horizon interval, from grin global::TXHASHSET_ARCHIVE_INTERVAL (12 * 60).
+	static constexpr uint32_t TXHASHSET_ARCHIVE_INTERVAL = 12 * 60;
+
 	// Time window in blocks to calculate block time median
 	static const uint64_t MEDIAN_TIME_WINDOW = 11;
 
@@ -190,7 +194,7 @@ namespace Consensus
 	static int64_t GetMaxBlockTime(const std::chrono::time_point<std::chrono::system_clock>& currentTime)
 	{
 		auto maxBlockTime = currentTime + std::chrono::seconds(DEFAULT_FUTURE_TIME_LIMIT_SEC);
-		return maxBlockTime.time_since_epoch().count();
+		return std::chrono::duration_cast<std::chrono::seconds>(maxBlockTime.time_since_epoch()).count();
 	}
 
 	/// Difficulty adjustment half life (actually, 60s * number of 0s-blocks to raise diff by factor e) is 4 hours
@@ -303,6 +307,25 @@ namespace Consensus
 	static const uint64_t FLOONET_SECOND_HARD_FORK = 298'080;
 	static const uint64_t FLOONET_THIRD_HARD_FORK = 552'960;
 	static const uint64_t FLOONET_FOURTH_HARD_FORK = 642'240;
+
+	// Test-only consensus seam. It permits an NRD kernel before header v4 only
+	// in AUTOMATED_TESTING and only when explicitly enabled by a test. Production
+	// environments and the normal test configuration keep the HF3 rejection.
+	inline std::atomic_bool& NrdBeforeHf3OverrideForTesting() noexcept
+	{
+		static std::atomic_bool overrideEnabled{false};
+		return overrideEnabled;
+	}
+
+	inline void SetNrdBeforeHf3OverrideForTesting(const bool enabled) noexcept
+	{
+		NrdBeforeHf3OverrideForTesting().store(enabled);
+	}
+
+	inline bool IsNrdBeforeHf3OverrideForTesting() noexcept
+	{
+		return NrdBeforeHf3OverrideForTesting().load();
+	}
 
 	static uint16_t GetHeaderVersion(const Environment& environment, const uint64_t height)
 	{

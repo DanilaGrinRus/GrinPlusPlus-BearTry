@@ -27,6 +27,9 @@ void ProofOfWork::Serialize(Serializer& serializer) const
 
 void ProofOfWork::SerializeCycle(Serializer& serializer) const
 {
+	if (m_edgeBits > 63 || m_proofNonces.size() > Consensus::PROOFSIZE) {
+		throw DESERIALIZATION_EXCEPTION("PoW cycle exceeds supported size");
+	}
 	const int bytes_len = ((m_edgeBits * Consensus::PROOFSIZE) + 7) / 8;
 	std::vector<unsigned char> bits(bytes_len, 0);
 	for (int n = 0; n < m_proofNonces.size(); n++)

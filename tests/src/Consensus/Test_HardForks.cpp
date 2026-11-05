@@ -18,3 +18,12 @@ TEST_CASE("Consensus::GetHeaderVersion")
 	REQUIRE(GetHeaderVersion(Environment::MAINNET, (YEAR_HEIGHT * 2) - 1) == 4);
 	REQUIRE(GetHeaderVersion(Environment::MAINNET, (YEAR_HEIGHT * 2)) == 5);
 }
+
+TEST_CASE("NRD pre-HF3 test seam is explicitly scoped")
+{
+	REQUIRE(!IsNrdBeforeHf3OverrideForTesting());
+	SetNrdBeforeHf3OverrideForTesting(true);
+	REQUIRE(IsNrdBeforeHf3OverrideForTesting());
+	SetNrdBeforeHf3OverrideForTesting(false);
+	REQUIRE(!IsNrdBeforeHf3OverrideForTesting());
+}

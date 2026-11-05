@@ -74,6 +74,15 @@ public:
 		const FullBlock& block
 	) = 0;
 
+	//
+	// Read-only views for the node API (grin v5.5.2 foreign methods
+	// get_pool_size / get_stempool_size / get_unconfirmed_transactions).
+	//
+	virtual size_t GetPoolSize() const = 0;
+	virtual size_t GetStemPoolSize() const = 0;
+	virtual std::vector<TransactionPtr> GetUnconfirmedTransactions() const = 0;
+	virtual std::vector<TransactionPtr> GetStemTransactions() const = 0;
+
 	// Dandelion
 	virtual TransactionPtr GetTransactionToStem(
 		std::shared_ptr<const IBlockDB> pBlockDB,

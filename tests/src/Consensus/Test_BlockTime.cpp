@@ -6,9 +6,9 @@ using namespace Consensus;
 
 TEST_CASE("Consensus::GetMaxBlockTime")
 {
-	auto now = std::chrono::system_clock::now();
+	const auto now = std::chrono::system_clock::time_point(std::chrono::milliseconds(1000500));
 
-	REQUIRE(GetMaxBlockTime(now) == (now + std::chrono::seconds(300)).time_since_epoch().count());
+	REQUIRE(GetMaxBlockTime(now) == 1300);
 }
 
 TEST_CASE("Consensus::GetMaxCoinbaseHeight")

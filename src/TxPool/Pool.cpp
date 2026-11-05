@@ -33,7 +33,7 @@ void Pool::AddTransaction(TransactionPtr pTransaction, const EDandelionStatus st
 {
 	LOG_DEBUG_F("Transaction added: {}", pTransaction->GetHash());
 
-	m_transactions.emplace_back(TxPoolEntry(pTransaction, status, std::time_t()));
+	m_transactions.emplace_back(TxPoolEntry(pTransaction, status, std::time(nullptr)));
 }
 
 bool Pool::ContainsTransaction(const Transaction& transaction) const
@@ -150,7 +150,7 @@ void Pool::ReconcileBlock(std::shared_ptr<const IBlockDB> pBlockDB, ITxHashSetCo
 		}
 	}
 
-	m_transactions.clear();
+	std::vector<TxPoolEntry> retained;
 
 	std::vector<TransactionPtr> validTransactions = ValidTransactionFinder::FindValidTransactions(
 		pBlockDB,
@@ -161,8 +161,9 @@ void Pool::ReconcileBlock(std::shared_ptr<const IBlockDB> pBlockDB, ITxHashSetCo
 	for (auto& pTransaction : validTransactions)
 	{
 		const TxPoolEntry& txPoolEntry = filteredEntriesByHash.at(pTransaction->GetHash());
-		m_transactions.push_back(txPoolEntry);
+		retained.push_back(txPoolEntry);
 	}
+	m_transactions.swap(retained);
 }
 
 void Pool::ChangeStatus(const std::vector<TransactionPtr>& transactions, const EDandelionStatus status)

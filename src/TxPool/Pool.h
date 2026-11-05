@@ -39,6 +39,17 @@ public:
 	std::vector<TransactionPtr> FindTransactionsByStatus(const EDandelionStatus status) const;
 	std::vector<TransactionPtr> GetExpiredTransactions(const uint16_t embargoSeconds) const;
 
+	size_t Size() const { return m_transactions.size(); }
+	std::vector<TransactionPtr> GetAllTransactions() const
+	{
+		std::vector<TransactionPtr> transactions;
+		transactions.reserve(m_transactions.size());
+		for (const TxPoolEntry& entry : m_transactions) {
+			transactions.push_back(entry.GetTransaction());
+		}
+		return transactions;
+	}
+
 	TransactionPtr Aggregate() const;
 	void Clear() { m_transactions.clear(); }
 

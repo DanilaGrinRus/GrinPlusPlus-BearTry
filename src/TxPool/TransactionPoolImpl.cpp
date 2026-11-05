@@ -2,6 +2,7 @@
 #include "ValidTransactionFinder.h"
 
 #include <Consensus.h>
+#include <Core/Config.h>
 #include <Core/Global.h>
 #include <Core/Util/TransactionUtil.h>
 #include <Database/BlockDb.h>
@@ -9,6 +10,28 @@
 #include <Common/Logger.h>
 #include <Core/Util/FeeUtil.h>
 #include <Core/Validation/TransactionValidator.h>
+
+TransactionPool::ENrdPolicyResult TransactionPool::CheckNrdPolicy(
+	const std::vector<TransactionKernel>& kernels,
+	const uint16_t headerVersion,
+	const Environment environment)
+{
+	for (const TransactionKernel& kernel : kernels) {
+		if (kernel.GetFeatures() != EKernelFeatures::NO_RECENT_DUPLICATE) {
+			continue;
+		}
+
+		if (!Config::IsNrdKernelEnabled(environment)) {
+			return ENrdPolicyResult::NRD_NOT_ENABLED;
+		}
+
+		if (headerVersion < 4) {
+			return ENrdPolicyResult::NRD_PRE_HF3;
+		}
+	}
+
+	return ENrdPolicyResult::OK;
+}
 
 std::vector<TransactionPtr> TransactionPool::GetTransactionsByShortId(const Hash& hash, const uint64_t nonce, const std::set<ShortId>& missingShortIds) const
 {
@@ -26,6 +49,17 @@ EAddTransactionStatus TransactionPool::AddTransaction(
 {
 	std::unique_lock<std::shared_mutex> writeLock(m_mutex);
 	const uint64_t next_block_height = lastConfirmedBlock.GetHeight() + 1;
+
+	const ENrdPolicyResult nrdPolicy = CheckNrdPolicy(
+		pTransaction->GetKernels(),
+		lastConfirmedBlock.GetVersion(),
+		Global::GetEnv());
+	if (nrdPolicy != ENrdPolicyResult::OK) {
+		LOG_WARNING_F(
+			"Rejecting transaction with NRD kernel (policy result {})",
+			static_cast<int>(nrdPolicy));
+		return EAddTransactionStatus::TX_INVALID;
+	}
 
 	if (poolType == EPoolType::MEMPOOL && m_memPool.ContainsTransaction(*pTransaction))
 	{

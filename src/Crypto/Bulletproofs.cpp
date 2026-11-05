@@ -6,6 +6,7 @@
 #include <Common/Logger.h>
 #include <Crypto/CSPRNG.h>
 #include <Core/Exceptions/CryptoException.h>
+#include <map>
 
 const uint64_t MAX_WIDTH = 1 << 20;
 const size_t SCRATCH_SPACE_SIZE = 256 * MAX_WIDTH;
@@ -34,50 +35,88 @@ bool Bulletproofs::VerifyBulletproofs(const std::vector<std::pair<Commitment, Ra
 {
 	std::shared_lock<std::shared_mutex> readLock(m_mutex);
 
-	const size_t numBits = 64;
-	const size_t proofLength = rangeProofs.front().second.GetProofBytes().size();
-
-	std::vector<Commitment> commitments;
-	commitments.reserve(rangeProofs.size());
-
-	std::vector<const unsigned char*> bulletproofPointers;
-	bulletproofPointers.reserve(rangeProofs.size());
-	for (const std::pair<Commitment, RangeProof>& rangeProof : rangeProofs)
-	{
-		if (!m_cache.WasAlreadyVerified(rangeProof.first))
-		{
-			commitments.push_back(rangeProof.first);
-			bulletproofPointers.emplace_back(rangeProof.second.GetProofBytes().data());
-		}
-	}
-
-	if (commitments.empty()) {
+	if (rangeProofs.empty()) {
 		return true;
 	}
 
-	// array of generator multiplied by value in pedersen commitments (cannot be NULL)
-	std::vector<secp256k1_generator> valueGenerators;
-	for (size_t i = 0; i < commitments.size(); i++)
-	{
-		valueGenerators.push_back(secp256k1_generator_const_h);
+	// The secp256k1 multi-verify API assumes one proof length for the whole
+	// batch. Group by length instead of applying the first proof's length to
+	// every element; empty or oversized proofs are rejected before secp sees
+	// them.
+	std::map<size_t, std::vector<size_t>> groups;
+	for (size_t i = 0; i < rangeProofs.size(); ++i) {
+		const size_t proofLength = rangeProofs[i].second.GetProofBytes().size();
+		if (proofLength == 0 || proofLength > MAX_PROOF_SIZE) {
+			LOG_ERROR_F("Invalid rangeproof length {}", proofLength);
+			return false;
+		}
+		groups[proofLength].push_back(i);
 	}
 
-	std::vector<secp256k1_pedersen_commitment*> commitmentPointers = Pedersen::ConvertCommitments(*m_pContext, commitments);
+	const size_t numBits = 64;
+	for (const auto& group : groups) {
+		const size_t proofLength = group.first;
 
-	secp256k1_scratch_space* pScratchSpace = secp256k1_scratch_space_create(m_pContext, SCRATCH_SPACE_SIZE);
-	const int result = secp256k1_bulletproof_rangeproof_verify_multi(m_pContext, pScratchSpace, m_pGenerators, bulletproofPointers.data(), commitments.size(), proofLength, NULL, commitmentPointers.data(), 1, numBits, valueGenerators.data(), NULL, NULL);
-	secp256k1_scratch_space_destroy(pScratchSpace);
+		std::vector<Commitment> commitments;
+		std::vector<const unsigned char*> bulletproofPointers;
+		std::vector<size_t> uncachedIndices;
+		for (const size_t index : group.second) {
+			const Commitment& commitment = rangeProofs[index].first;
+			const RangeProof& proof = rangeProofs[index].second;
+			if (!m_cache.WasAlreadyVerified(commitment, proof)) {
+				commitments.push_back(commitment);
+				bulletproofPointers.emplace_back(proof.GetProofBytes().data());
+				uncachedIndices.push_back(index);
+			}
+		}
 
-	Pedersen::CleanupCommitments(commitmentPointers);
+		if (commitments.empty()) {
+			continue;
+		}
 
-	if (result != 1) {
-		LOG_ERROR_F("Failed to validate {} rangeproofs", commitments.size());
-		return false;
-	}
+		// array of generator multiplied by value in pedersen commitments (cannot be NULL)
+		std::vector<secp256k1_generator> valueGenerators(
+			commitments.size(), secp256k1_generator_const_h);
 
-	for (const Commitment& commitment : commitments)
-	{
-		m_cache.AddToCache(commitment);
+		auto values = Pedersen::ConvertCommitments(*m_pContext, commitments);
+		auto commitmentPointers = Pedersen::Pointers(values);
+		if (commitmentPointers.empty()) {
+			LOG_ERROR("Failed to convert rangeproof commitments");
+			return false;
+		}
+
+		secp256k1_scratch_space* pScratchSpace =
+			secp256k1_scratch_space_create(m_pContext, SCRATCH_SPACE_SIZE);
+		if (pScratchSpace == nullptr) {
+				LOG_ERROR("Failed to allocate rangeproof scratch space");
+			return false;
+		}
+
+		const int result = secp256k1_bulletproof_rangeproof_verify_multi(
+			m_pContext,
+			pScratchSpace,
+			m_pGenerators,
+			bulletproofPointers.data(),
+			commitments.size(),
+			proofLength,
+			NULL,
+			commitmentPointers.data(),
+			1,
+			numBits,
+			valueGenerators.data(),
+			NULL,
+			NULL);
+		secp256k1_scratch_space_destroy(pScratchSpace);
+
+		if (result != 1) {
+			LOG_ERROR_F("Failed to validate {} rangeproofs (length {})", commitments.size(), proofLength);
+			return false;
+		}
+
+		// Cache only after the whole group verified successfully.
+		for (const size_t index : uncachedIndices) {
+			m_cache.AddToCache(rangeProofs[index].first, rangeProofs[index].second);
+		}
 	}
 
 	return true;
@@ -135,7 +174,8 @@ std::unique_ptr<RewoundProof> Bulletproofs::RewindProof(const Commitment& commit
 {
 	std::shared_lock<std::shared_mutex> readLock(m_mutex);
 
-	std::vector<secp256k1_pedersen_commitment*> commitmentPointers = Pedersen::ConvertCommitments(*m_pContext, std::vector<Commitment>({ commitment }));
+	auto values = Pedersen::ConvertCommitments(*m_pContext, { commitment });
+	auto commitmentPointers = Pedersen::Pointers(values);
 
 	if (!commitmentPointers.empty())
 	{
@@ -157,7 +197,6 @@ std::unique_ptr<RewoundProof> Bulletproofs::RewindProof(const Commitment& commit
 			0,
 			message.data()
 		);
-		Pedersen::CleanupCommitments(commitmentPointers);
 
 		if (result == 1)
 		{

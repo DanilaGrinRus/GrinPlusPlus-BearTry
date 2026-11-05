@@ -54,7 +54,10 @@ public:
 	uint64_t GetLockHeight() const { return m_lockHeight; }
 	const Commitment& GetExcessCommitment() const { return m_excessCommitment; }
 	const Signature& GetExcessSignature() const { return m_excessSignature; }
-	bool IsCoinbase() const { return (m_features & EKernelFeatures::COINBASE_KERNEL) == EKernelFeatures::COINBASE_KERNEL; }
+	// Kernel features are variants, not bit flags (Rust `KernelFeatures::is_coinbase`
+	// matches only Coinbase). In particular NRD has value 3 and must not be
+	// mistaken for COINBASE_KERNEL (1) by a bitwise test.
+	bool IsCoinbase() const { return m_features == EKernelFeatures::COINBASE_KERNEL; }
 	Hash GetSignatureMessage() const;
 	static Hash GetSignatureMessage(const EKernelFeatures features, const Fee& fee, const uint64_t lockHeight);
 

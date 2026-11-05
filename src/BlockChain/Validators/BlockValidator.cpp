@@ -1,6 +1,7 @@
 #include "BlockValidator.h"
 
 #include <Consensus.h>
+#include <Core/Global.h>
 #include <Crypto/Crypto.h>
 #include <Core/Exceptions/BlockChainException.h>
 #include <Core/Exceptions/BadDataException.h>
@@ -20,7 +21,7 @@ void BlockValidator::VerifySelfConsistent(const FullBlock& block)
 		return;
 	}
 
-	// TODO - NRD: Verify kernel variants
+	VerifyKernelFeatures(block);
 	VerifyWeight(block);
 	VerifyKernelLockHeights(block);
 	VerifyBody(block);
@@ -41,6 +42,54 @@ void BlockValidator::VerifyBody(const FullBlock& block)
 	}
 }
 
+void BlockValidator::VerifyNrdNetworkGate(const FullBlock& block, const Environment environment)
+{
+	// Rust grin 5.5.2 src/bin/grin.rs disables the NRD kernel feature on mainnet
+	// (init_global_nrd_enabled(false)) and core/src/core/block.rs rejects any NRD
+	// kernel with NRDKernelNotEnabled when the flag is off (core/tests/block.rs
+	// block_with_nrd_kernel_nrd_not_enabled). Same decision for the C++ block
+	// path; no other policy changes.
+	if (Config::IsNrdKernelEnabled(environment)) {
+		return;
+	}
+
+	for (const TransactionKernel& kernel : block.GetKernels()) {
+		if (kernel.GetFeatures() == EKernelFeatures::NO_RECENT_DUPLICATE) {
+			throw BAD_DATA_EXCEPTION_F(
+				EBanReason::BadBlock,
+				"NRD kernel {} in block {} is not enabled on this network",
+				kernel.GetExcessCommitment(), block.GetHeight());
+		}
+	}
+}
+
+void BlockValidator::VerifyKernelFeatures(const FullBlock& block)
+{
+	// Feature-flag gate first: Rust checks !is_nrd_enabled() before the HF3
+	// header-version check, so a mainnet version-3 NRD block reports
+	// NRDKernelNotEnabled rather than NRDKernelPreHF3.
+	VerifyNrdNetworkGate(block, Global::GetEnv());
+
+	const uint64_t height = block.GetHeight();
+	const uint16_t version = block.GetHeader()->GetVersion();
+	for (const TransactionKernel& kernel : block.GetKernels()) {
+		// Rust grin 5.5.2: verify_nrd_kernels_for_header_version (core/src/core/block.rs)
+		// rejects any NRD kernel when header.version < HeaderVersion(4) (HF3).
+		// core/tests/block.rs "block_with_nrd_kernel_pre_post_hf3" pins version 3
+		// to Error::NRDKernelPreHF3 and version 4 to valid.
+		// The only exception is the explicit bodyless-NRD test seam, which is
+		// restricted to AUTOMATED_TESTING and is off by default.
+		const bool allowNrdBeforeHf3ForTesting =
+			Global::IsAutomatedTesting() && Consensus::IsNrdBeforeHf3OverrideForTesting();
+		if (kernel.GetFeatures() == EKernelFeatures::NO_RECENT_DUPLICATE && version < 4 &&
+			!allowNrdBeforeHf3ForTesting) {
+			throw BAD_DATA_EXCEPTION_F(
+				EBanReason::BadBlock,
+				"NRD kernel {} in block {} is not valid before header version 4",
+				kernel.GetExcessCommitment(), height);
+		}
+	}
+}
 void BlockValidator::VerifyWeight(const FullBlock& block)
 {
 	if (block.CalcWeight() > Consensus::MAX_BLOCK_WEIGHT) {
