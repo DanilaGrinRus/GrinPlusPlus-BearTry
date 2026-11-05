@@ -28,7 +28,14 @@ Instead of inventing a plausible history, the fork does the following:
 
 - The **content** of the final commit is verified: the tree must match the
   candidate source manifest (`964B2DD8…`, 1528 files, excluding documented
-  omissions such as build outputs, profiles and local audit dumps).
+  omissions such as build outputs, profiles and local audit dumps). The
+  verification report records: 1386 files checked, 1384 identical after
+  CR-normalisation, 2 intentional differences (`.gitignore`,
+  `OMITTED_LOCAL_TOOLS.md`), 0 content differences and 0 missing files —
+  **PASS**.
+- The tag `node-beta.1-candidate` is an annotated tag (object
+  `317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) whose tagged commit is
+  `7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`.
 - The **ordering** is logical, not chronological. A file touched by several
   workstreams is assigned to the earliest group that needs it; later groups
   build on it.

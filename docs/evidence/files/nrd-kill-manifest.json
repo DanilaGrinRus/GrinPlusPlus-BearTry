@@ -1,0 +1,16 @@
+{
+  "schema": "nrd-rebuild-kill-harness/v1",
+  "run_id": "kill-20261105-235125",
+  "tests_exe": "<candidate-source>\\bin\\Release\\Release\\Tests.exe",
+  "tests_sha256": "A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C",
+  "child_test": "RebuildKillChild",
+  "recovery_test": "RebuildKillRecovery",
+  "child_killed_while_running": true,
+  "child_pid": 26288,
+  "recovery_exit": 0,
+  "recovery_passed": true,
+  "killed_after_state_marker_ms": 300,
+  "isolated_home": "<work-root>\\runs\\nrd-kill\\kill-20261105-235125\\home",
+  "state_file": "<work-root>\\runs\\nrd-kill\\kill-20261105-235125\\state.txt",
+  "note": "Fault-injected external kill; not an organic network scenario. NRD index is in-memory only; recovery must rebuild a complete index from headers+kernel MMR."
+}

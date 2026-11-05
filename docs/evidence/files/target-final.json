@@ -1,0 +1,27 @@
+[
+  {
+    "case": "KernelIndex orphan processing repairs a refused append",
+    "exit": 0,
+    "tail": "All tests passed (17 assertions in 1 test case) | "
+  },
+  {
+    "case": "KernelIndex write faults never publish a partial index",
+    "exit": 0,
+    "tail": "All tests passed (81 assertions in 1 test case) | "
+  },
+  {
+    "case": "KernelIndex builds after TxHashSet install",
+    "exit": 0,
+    "tail": "All tests passed (25 assertions in 1 test case) | "
+  },
+  {
+    "case": "PibdScheduler*",
+    "exit": 0,
+    "tail": "All tests passed (68 assertions in 9 test cases) | "
+  },
+  {
+    "case": "BlockPipe*",
+    "exit": 0,
+    "tail": "All tests passed (41 assertions in 6 test cases) | "
+  }
+]
