@@ -142,6 +142,10 @@ void WalletSqlite::UpdateRefreshBlockHeight(const uint64_t refreshBlockHeight)
 	SaveMetadata(UserMetadata(metadata.GetNextTxId(), refreshBlockHeight, metadata.GetRestoreLeafIndex()));
 }
 
+// Restore cursor units: 0-based output-PMMR node position of the next node to
+// scan, shared by the local and remote node clients (the remote API calls it
+// last_retrieved_index). The column name is historical; it is not a leaf index.
+// See OutputRestorer.cpp and WalletRefresher.cpp for the scan/rescan policy.
 uint64_t WalletSqlite::GetRestoreLeafIndex() const
 {
 	return GetMetadata().GetRestoreLeafIndex();

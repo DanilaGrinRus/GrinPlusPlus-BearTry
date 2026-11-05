@@ -23,10 +23,12 @@ void AccountsTable::UpdateSchema(SqliteDB& database, const int previousVersion)
 	if (previousVersion < 2) {
 		CreateTable(database);
 	} else if(previousVersion < 4) {
-		try {
-			std::string table_creation_cmd = "ALTER TABLE accounts ADD current_address_index INTEGER DEFAULT 0 NOT NULL;";
-			database.Execute(table_creation_cmd);
-		} catch (...) { }
+		// Idempotent: v2-shaped databases may already have the column when the
+		// version row is stale (N-08). Do not rely on a swallowed ALTER error.
+		if (!database.TableHasColumn("accounts", "current_address_index")) {
+			const std::string alter_table_cmd = "ALTER TABLE accounts ADD current_address_index INTEGER DEFAULT 0 NOT NULL;";
+			database.Execute(alter_table_cmd);
+		}
 	}
 }
 

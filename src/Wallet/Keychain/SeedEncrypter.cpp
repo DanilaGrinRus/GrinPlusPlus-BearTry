@@ -7,11 +7,30 @@
 #include <Crypto/CSPRNG.h>
 #include <Common/Logger.h>
 
+namespace
+{
+	constexpr size_t SEED_HMAC_SIZE = 32;
+	constexpr size_t MIN_SEED_SIZE = 16;
+	constexpr size_t MAX_SEED_SIZE = 32;
+
+	bool IsSupportedSeedLength(const size_t size)
+	{
+		return size >= MIN_SEED_SIZE
+			&& size <= MAX_SEED_SIZE
+			&& (size % 4) == 0;
+	}
+}
+
 SecureVector SeedEncrypter::DecryptWalletSeed(const EncryptedSeed& encryptedSeed, const SecureString& password)
 {
 	try
 	{
 		WALLET_INFO("Decrypting wallet seed");
+
+		// The scrypt parameters come from the on-disk seed file. Reject
+		// attacker-controlled values before calling into crypto_scrypt.
+		EncryptedSeed::ValidateScryptParameters(encryptedSeed.GetScryptParameters());
+
 		SecretKey passwordHash = KDF::PBKDF(
 			password,
 			encryptedSeed.GetSalt().GetData(),
@@ -24,7 +43,24 @@ SecureVector SeedEncrypter::DecryptWalletSeed(const EncryptedSeed& encryptedSeed
 			encryptedSeed.GetIV()
 		);
 
-		SecureVector walletSeed(decrypted.begin(), decrypted.begin() + decrypted.size() - 32);
+		if (decrypted.size() < MIN_SEED_SIZE + SEED_HMAC_SIZE) {
+			WALLET_ERROR_F("Decrypted seed is too short: {} bytes", decrypted.size());
+			throw KEYCHAIN_EXCEPTION_F(
+				"Decrypted seed length is invalid: {}",
+				decrypted.size()
+			);
+		}
+
+		const size_t seedSize = decrypted.size() - SEED_HMAC_SIZE;
+		if (!IsSupportedSeedLength(seedSize)) {
+			WALLET_ERROR_F("Decrypted seed has unsupported length: {} bytes", seedSize);
+			throw KEYCHAIN_EXCEPTION_F(
+				"Decrypted seed length is invalid: {}",
+				seedSize
+			);
+		}
+
+		SecureVector walletSeed(decrypted.begin(), decrypted.begin() + seedSize);
 
 		Hash hash256 = Hasher::HMAC_SHA256(
 			walletSeed.data(),
@@ -38,6 +74,11 @@ SecureVector SeedEncrypter::DecryptWalletSeed(const EncryptedSeed& encryptedSeed
 			return walletSeed;
 		}
 	}
+	catch (const KeyChainException&)
+	{
+		// Preserve precise diagnostics for malformed seed files.
+		throw;
+	}
 	catch (std::exception& e)
 	{
 		WALLET_ERROR_F("Exception thrown: {}", e.what());
@@ -49,6 +90,14 @@ SecureVector SeedEncrypter::DecryptWalletSeed(const EncryptedSeed& encryptedSeed
 EncryptedSeed SeedEncrypter::EncryptWalletSeed(const SecureVector& walletSeed, const SecureString& password)
 {
 	WALLET_INFO("Encrypting wallet seed");
+
+	if (!IsSupportedSeedLength(walletSeed.size())) {
+		WALLET_ERROR_F("Refusing to encrypt seed with unsupported length: {} bytes", walletSeed.size());
+		throw KEYCHAIN_EXCEPTION_F(
+			"Invalid seed length: {}",
+			walletSeed.size()
+		);
+	}
 
 	CBigInteger<16> iv(CSPRNG::GenerateRandomBytes(16).data());
 	CBigInteger<8> salt(CSPRNG::GenerateRandomBytes(8).data());

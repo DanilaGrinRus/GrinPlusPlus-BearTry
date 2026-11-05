@@ -38,9 +38,13 @@ public:
 			throw WALLET_STORE_EXCEPTION("Tried to commit a closed transaction.");
 		}
 
-		m_open = false;
-
+		// Keep m_open == true until COMMIT succeeds. If COMMIT throws (BUSY,
+		// FULL, IOERR, ...), the SQLite transaction may still be active; the
+		// destructor then performs a best-effort ROLLBACK instead of leaking an
+		// open transaction into the next write.
 		m_pDatabase->Execute("COMMIT;");
+
+		m_open = false;
 	}
 
 	void Rollback() noexcept
@@ -52,8 +56,18 @@ public:
 
 		m_open = false;
 
-		m_pDatabase->Execute("ROLLBACK;");
+		// Rollback is called from destructors and from noexcept paths. A
+		// failure here must be logged, never allowed to reach std::terminate.
+		try {
+			m_pDatabase->Execute("ROLLBACK;");
+		} catch (const std::exception& e) {
+			WALLET_ERROR_F("Failed to rollback transaction: {}", e.what());
+		} catch (...) {
+			WALLET_ERROR("Failed to rollback transaction: unknown error");
+		}
 	}
+
+	bool IsOpen() const noexcept { return m_open; }
 
 private:
 	SqliteDB::Ptr m_pDatabase;

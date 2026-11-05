@@ -171,7 +171,7 @@ std::optional<TorAddress> Wallet::AddTorListener(const KeyChainPath& path, const
 FeeEstimateDTO Wallet::EstimateFee(const EstimateFeeCriteria& criteria) const
 {
 	// Select inputs using desired selection strategy.
-	const uint8_t totalNumOutputs = criteria.GetNumChangeOutputs() + 1;
+	const uint32_t totalNumOutputs = criteria.SendEntireBalance() ? 1 : criteria.GetNumChangeOutputs() + 1;
 	const uint64_t numKernels = 1;
 	std::vector<OutputDataEntity> all_outputs = m_walletDB.Read()->GetOutputs(m_master_seed);
     std::vector<OutputDataEntity> available_coins;

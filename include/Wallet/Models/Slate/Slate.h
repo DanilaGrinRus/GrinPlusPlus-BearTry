@@ -71,7 +71,8 @@ public:
 		return slateId == rhs.slateId &&
 			stage == rhs.stage &&
 			version == rhs.version &&
-			blockVersion && rhs.blockVersion &&
+			blockVersion == rhs.blockVersion &&
+			featureArgsOpt == rhs.featureArgsOpt &&
 			amount == rhs.amount &&
 			fee == rhs.fee &&
 			offset == rhs.offset &&

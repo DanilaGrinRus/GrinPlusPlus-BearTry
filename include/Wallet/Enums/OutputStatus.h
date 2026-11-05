@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Core/Exceptions/DeserializationException.h>
 #include <string>
 
 enum EOutputStatus
@@ -9,7 +10,11 @@ enum EOutputStatus
 	NO_CONFIRMATIONS = 2,
 	SPENT = 3,
 	LOCKED = 4,
-	CANCELED = 5
+	CANCELED = 5,
+	// The output was seen on chain but its confirming block was reorged out and
+	// the output is no longer in the canonical UTXO set. Unlike SPENT, this is
+	// not a final state: the output may reappear (and become SPENDABLE again).
+	REVERTED = 6
 };
 
 namespace OutputStatus
@@ -39,6 +44,10 @@ namespace OutputStatus
 		else if (value == "Canceled")
 		{
 			return EOutputStatus::CANCELED;
+		}
+		else if (value == "Reverted")
+		{
+			return EOutputStatus::REVERTED;
 		}
 
 		throw DESERIALIZATION_EXCEPTION_F("Invalid output status: {}", value);
@@ -71,6 +80,10 @@ namespace OutputStatus
 			case CANCELED:
 			{
 				return "Canceled";
+			}
+			case REVERTED:
+			{
+				return "Reverted";
 			}
 		}
 

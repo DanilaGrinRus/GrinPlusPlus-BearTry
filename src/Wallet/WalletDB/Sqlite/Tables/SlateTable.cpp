@@ -19,8 +19,25 @@ void SlateTable::CreateTable(SqliteDB& database)
 void SlateTable::UpdateSchema(SqliteDB& database, const int previousVersion)
 {
 	if (previousVersion < 2) {
+		// v0/v1 may already have a slate table without armored_slatepack. Never
+		// issue a conflicting CREATE TABLE; add the missing column instead.
+		if (database.TableExists("slate")) {
+			if (!database.TableHasColumn("slate", "armored_slatepack")) {
+				database.Execute("ALTER TABLE slate ADD armored_slatepack TEXT;");
+			}
+			return;
+		}
+
 		CreateTable(database);
 	} else if (previousVersion < 3) {
+		// Some builds stamped a v4-shaped database as version 2 (N-08). In that
+		// case the armored_slatepack column already exists and a copy through
+		// "new_slate" would silently drop its values. Never lose the column.
+		if (database.TableHasColumn("slate", "armored_slatepack")) {
+			WALLET_INFO("Slate table already contains armored_slatepack; skipping v2->v3 migration");
+			return;
+		}
+
 		WALLET_INFO("Migrating Slate Table to new schema");
 
 		// Create "new_outputs" table
@@ -49,6 +66,9 @@ void SlateTable::UpdateSchema(SqliteDB& database, const int previousVersion)
 
 			database.Update(insert_slate_cmd, parameters);
 		}
+
+		// Finalize the read statement before DDL on the same table.
+		pStatement->Finalize();
 
 		// Delete existing table
 		std::string drop_table_cmd = "DROP TABLE slate";
@@ -186,6 +206,7 @@ std::string SlateTable::LoadArmoredSlatepack(
 		SlateStage stage = SlateStage::FromString(pStatement->GetColumnString(0));
 		if (stage >= highest_stage) {
 			armored_slatepack = pStatement->GetColumnString(1);
+			highest_stage = stage;
 		}
 	}
 

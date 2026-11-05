@@ -4,6 +4,26 @@
 #include <Wallet/Exceptions/InsufficientFundsException.h>
 #include <Common/Logger.h>
 
+#include <limits>
+
+namespace
+{
+	//
+	// Adds two uint64 amounts, failing closed on overflow. Selection compares
+	// (amount + fee) against the selected total, so an overflowing sum must be
+	// treated as "not enough funds" rather than wrapping around.
+	//
+	uint64_t AddChecked(const uint64_t lhs, const uint64_t rhs)
+	{
+		if (lhs > (std::numeric_limits<uint64_t>::max)() - rhs)
+		{
+			throw InsufficientFundsException();
+		}
+
+		return lhs + rhs;
+	}
+}
+
 // If strategy is "ALL", spend all available coins to reduce the fee.
 std::vector<OutputDataEntity> CoinSelection::SelectCoinsToSpend(
 	const std::vector<OutputDataEntity>& availableCoins, 
@@ -49,11 +69,12 @@ std::vector<OutputDataEntity> CoinSelection::SelectUsingSmallestInputs(
 	std::vector<OutputDataEntity> selectedCoins;
 	for (const OutputDataEntity& coin : sortedCoins)
 	{
-		amountFound += coin.GetAmount();
+		amountFound = AddChecked(amountFound, coin.GetAmount());
 		selectedCoins.push_back(coin);
 
 		const uint64_t fee = FeeUtil::CalculateFee(feeBase, (int64_t)selectedCoins.size(), numOutputs, numKernels);
-		if (amountFound >= (amount + fee))
+		const uint64_t required = AddChecked(amount, fee);
+		if (amountFound >= required)
 		{
 			return selectedCoins;
 		}
@@ -77,11 +98,12 @@ std::vector<OutputDataEntity> CoinSelection::SelectUsingFewestInputs(
 	uint64_t amountFound = 0;
 	std::vector<OutputDataEntity> selectedCoins;
 	for (const OutputDataEntity& coin : sortedCoins) {
-		amountFound += coin.GetAmount();
+		amountFound = AddChecked(amountFound, coin.GetAmount());
 		selectedCoins.push_back(coin);
 
 		const uint64_t fee = FeeUtil::CalculateFee(feeBase, (int64_t)selectedCoins.size(), numOutputs, numKernels);
-		if (amountFound >= (amount + fee)) {
+		const uint64_t required = AddChecked(amount, fee);
+		if (amountFound >= required) {
 			return selectedCoins;
 		}
 	}
@@ -101,11 +123,13 @@ std::vector<OutputDataEntity> CoinSelection::SelectUsingAllInputs(
 	uint64_t amountFound = 0;
 	for (const OutputDataEntity& coin : availableCoins)
 	{
-		amountFound += coin.GetAmount();
+		amountFound = AddChecked(amountFound, coin.GetAmount());
 	}
 
 	const uint64_t fee = FeeUtil::CalculateFee(feeBase, (int64_t)availableCoins.size(), numOutputs, numKernels);
-	if (amount < amount + fee) {
+	const uint64_t required = AddChecked(amount, fee);
+	if (amountFound >= required)
+	{
 		return availableCoins;
 	}
 
@@ -128,13 +152,14 @@ std::vector<OutputDataEntity> CoinSelection::SelectUsingCustomInputs(
 	{
 		if (inputs.find(coin.GetOutput().GetCommitment()) != inputs.end())
 		{
-			amountFound += coin.GetAmount();
+			amountFound = AddChecked(amountFound, coin.GetAmount());
 			selectedCoins.push_back(coin);
 		}
 	}
 
 	const uint64_t fee = FeeUtil::CalculateFee(feeBase, (int64_t)selectedCoins.size(), numOutputs, numKernels);
-	if (amountFound >= (amount + fee))
+	const uint64_t required = AddChecked(amount, fee);
+	if (amountFound >= required)
 	{
 		return selectedCoins;
 	}

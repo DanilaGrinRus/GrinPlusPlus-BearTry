@@ -121,13 +121,14 @@ PublicKey Slate::CalculateTotalExcess() const
 		sigs.cbegin(), sigs.cend(),
 		std::back_inserter(public_keys),
 		[](const SlateSignature& signature) {
-			WALLET_INFO_F("Adding Pubkey: {}", signature.excess);
+			// Do not log individual participant excess keys: slate material is
+			// sensitive before (and after) publication.
 			return signature.excess;
 		}
 	);
 
 	PublicKey total_excess = Crypto::AddPublicKeys(public_keys);
-	WALLET_INFO_F("Total excess: {}", total_excess);
+	WALLET_DEBUG_F("Total excess calculated for slate {}.", uuids::to_string(slateId));
 	return total_excess;
 }
 
@@ -138,13 +139,12 @@ PublicKey Slate::CalculateTotalNonce() const
 		sigs.cbegin(), sigs.cend(),
 		std::back_inserter(public_nonces),
 		[](const SlateSignature& signature) {
-			WALLET_INFO_F("Adding Pubkey: {}", signature.nonce);
 			return signature.nonce;
 		}
 	);
 
 	PublicKey total_nonce = Crypto::AddPublicKeys(public_nonces);
-	WALLET_INFO_F("Total nonce: {}", total_nonce);
+	WALLET_DEBUG_F("Total nonce calculated for slate {}.", uuids::to_string(slateId));
 	return total_nonce;
 }
 
@@ -290,11 +290,9 @@ Slate Slate::Deserialize(ByteBuffer& byteBuffer)
 		slate.proofOpt = std::make_optional<SlatePaymentProof>(SlatePaymentProof::Deserialize(byteBuffer));
 	}
 
-	if (slate.kernelFeatures != EKernelFeatures::DEFAULT_KERNEL) {
+	if (slate.kernelFeatures == EKernelFeatures::HEIGHT_LOCKED) {
 		SlateFeatureArgs featureArgs;
-		if (slate.kernelFeatures == EKernelFeatures::HEIGHT_LOCKED) {
-			featureArgs.lockHeightOpt = std::make_optional<uint64_t>(byteBuffer.ReadU64());
-		}
+		featureArgs.lockHeightOpt = std::make_optional<uint64_t>(byteBuffer.ReadU64());
 		slate.featureArgsOpt = std::make_optional<SlateFeatureArgs>(std::move(featureArgs));
 	}
 
@@ -326,8 +324,9 @@ Json::Value Slate::ToJSON() const
 
 	if (kernelFeatures != EKernelFeatures::DEFAULT_KERNEL) {
 		json["feat"] = (uint8_t)kernelFeatures;
-		assert(featureArgsOpt.has_value());
-		json["feat_args"] = featureArgsOpt.value().ToJSON();
+		if (featureArgsOpt.has_value()) {
+			json["feat_args"] = featureArgsOpt.value().ToJSON();
+		}
 	}
 
 	if (ttl != 0) {
@@ -387,7 +386,11 @@ Slate Slate::FromJSON(const Json::Value& json)
 
 	slate.amount = JsonUtil::GetUInt64Opt(json, "amt").value_or(0);
 	slate.kernelFeatures = (EKernelFeatures)JsonUtil::GetUInt8Opt(json, "feat").value_or(0);
-	// TODO: Feat args
+	if (slate.kernelFeatures == EKernelFeatures::HEIGHT_LOCKED) {
+		slate.featureArgsOpt = SlateFeatureArgs::FromJSON(JsonUtil::GetRequiredField(json, "feat_args"));
+	} else if (const auto featureArgs = JsonUtil::GetOptionalField(json, "feat_args")) {
+		slate.featureArgsOpt = SlateFeatureArgs::FromJSON(featureArgs.value());
+	}
 	slate.ttl = JsonUtil::GetUInt64Opt(json, "ttl").value_or(0);
 
 	std::vector<Json::Value> sigs = JsonUtil::GetRequiredArray(json, "sigs");

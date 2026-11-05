@@ -5,6 +5,8 @@
 #include <Wallet/WalletDB/Models/OutputDataEntity.h>
 #include <Wallet/Exceptions/InsufficientFundsException.h>
 
+#include <algorithm>
+
 class OutputBuilder
 {
 public:
@@ -18,13 +20,22 @@ public:
 		const EBulletproofType& bulletproofType)
 	{
 		std::vector<OutputDataEntity> outputs;
-		for (uint8_t i = 0; i < numOutputs; i++)
+		if (numOutputs == 0 || totalAmount == 0)
+		{
+			return outputs;
+		}
+
+		// Never create zero-value outputs: split across at most totalAmount
+		// outputs (each output carries at least one nanogrin).
+		const uint64_t effectiveOutputs = (std::min)((uint64_t)numOutputs, totalAmount);
+
+		for (uint64_t i = 0; i < effectiveOutputs; i++)
 		{
 			// If 3 outputs are requested for 11 nanogrins, the first output will contain 5, while the others contain 3.
-			uint64_t coinAmount = (totalAmount / numOutputs);
+			uint64_t coinAmount = (totalAmount / effectiveOutputs);
 			if (i == 0)
 			{
-				coinAmount += (totalAmount % numOutputs);
+				coinAmount += (totalAmount % effectiveOutputs);
 			}
 
 			KeyChainPath keyChainPath = pBatch->GetNextChildPath(pWallet->GetUserPath());

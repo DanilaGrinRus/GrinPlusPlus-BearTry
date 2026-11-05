@@ -5,6 +5,7 @@
 #include <Common/Secure.h>
 #include <Wallet/WalletDB/WalletStore.h>
 #include <filesystem.h>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -29,5 +30,6 @@ private:
 	fs::path GetDBFile(const std::string& username) const;
 
 	const fs::path& m_walletDirectory;
+	mutable std::mutex m_userDBsMutex;
 	std::unordered_map<std::string, Locked<IWalletDB>> m_userDBs;
 };

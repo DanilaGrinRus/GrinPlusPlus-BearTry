@@ -58,6 +58,12 @@ public:
     Statement::UPtr Query(const std::string& query, const std::vector<IParameter::UPtr>& parameters = {});
     std::string GetError() const;
 
+    // Schema introspection helpers. Table/column names are expected to be
+    // internal constants; TableHasColumn() rejects anything that is not a
+    // simple SQL identifier.
+    bool TableExists(const std::string& table);
+    bool TableHasColumn(const std::string& table, const std::string& column);
+
 private:
     sqlite3* m_pDatabase;
     std::string m_username;

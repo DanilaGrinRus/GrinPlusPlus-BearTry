@@ -3,6 +3,7 @@
 #include <Common/Logger.h>
 #include <Core/Exceptions/WalletException.h>
 #include <Crypto/Crypto.h>
+#include <Wallet/Models/Slate/Slate.h>
 #include <Wallet/Models/Slate/SlateSignature.h>
 
 class SignatureUtil
@@ -16,10 +17,10 @@ public:
 		for (const auto& sig : slate.sigs)
 		{
 			if (sig.partialOpt.has_value()) {
-				WALLET_INFO_F("Aggregating signature: {}", sig.partialOpt.value());
+				WALLET_DEBUG_F("Aggregating signature for slate {}.", uuids::to_string(slate.GetId()));
 				signatures.push_back(sig.partialOpt.value());
 			} else {
-				WALLET_WARNING_F("No signature found for: {}", sig.excess);
+				WALLET_WARNING("No partial signature found for a participant.");
 			}
 		}
 
@@ -53,15 +54,8 @@ public:
 			{
 				if (!Crypto::VerifyPartialSignature(sig.partialOpt.value(), sig.excess, sumPubKeys, sumPubNonces, message))
 				{
-					WALLET_ERROR_F(
-						"Partial signature {} invalid for excess {}, commitment {}, pubkey_sum {}, nonce_sum {}, and message {}",
-						sig.partialOpt.value(),
-						sig.excess,
-						Crypto::ToCommitment(sumPubKeys),
-						sumPubKeys,
-						sumPubNonces,
-						message.ToHex()
-					);
+					// Never log signature/key material: it is slate data.
+					WALLET_ERROR("Partial signature verification failed.");
 					return false;
 				}
 			}

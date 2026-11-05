@@ -6,10 +6,13 @@
 #include "SlateBuilder/SendSlateBuilder.h"
 #include "SlateBuilder/FinalizeSlateBuilder.h"
 #include "SlateBuilder/CoinSelection.h"
+#include "SlateBuilder/PostTransactionResult.h"
 #include "WalletTxLoader.h"
 
+#include <API/Wallet/Owner/Models/TxLifecycle.h>
 #include <Wallet/Exceptions/InvalidMnemonicException.h>
 #include <Wallet/WalletDB/WalletDB.h>
+#include <Wallet/WalletTxType.h>
 #include <Core/Exceptions/WalletException.h>
 #include <Core/Util/FeeUtil.h>
 #include <Crypto/CSPRNG.h>
@@ -88,10 +91,21 @@ LoginResponse WalletManager::RestoreFromSeed(
 	const TorProcess::Ptr& pTorProcess)
 {
 	WALLET_INFO_F("Attempting to restore account with username: {}", criteria.GetUsername());
+
+	// Only mnemonic decoding errors may be reported as an invalid mnemonic.
+	SecureVector entropy;
 	try
 	{
-		SecureVector entropy = Mnemonic::ToEntropy(criteria.GetSeedWords());
+		entropy = Mnemonic::ToEntropy(criteria.GetSeedWords());
+	}
+	catch (const std::exception& e)
+	{
+		WALLET_WARNING_F("Mnemonic invalid for username ({}). Error: {}", criteria.GetUsername(), e.what());
+		throw InvalidMnemonicException();
+	}
 
+	try
+	{
 		const EncryptedSeed encryptedSeed = SeedEncrypter().EncryptWalletSeed(entropy, criteria.GetPassword());
 
 		m_pWalletStore->CreateWallet(criteria.GetUsername(), encryptedSeed);
@@ -107,10 +121,12 @@ LoginResponse WalletManager::RestoreFromSeed(
 			pWallet->GetTorAddress()
 		);
 	}
-	catch (std::exception& e)
+	catch (const std::exception& e)
 	{
-		WALLET_WARNING_F("Mnemonic invalid for username ({}). Error: {}", criteria.GetUsername(), e.what());
-		throw InvalidMnemonicException();
+		// Wallet creation / login failures are not mnemonic errors: preserve the
+		// original reason instead of mislabeling it as InvalidMnemonicException.
+		WALLET_ERROR_F("Failed to restore wallet for username ({}): {}", criteria.GetUsername(), e.what());
+		throw;
 	}
 }
 
@@ -207,6 +223,34 @@ LoginResponse WalletManager::Login(
 		CheckForOutputs(token, false);
 
 		auto pWallet = m_sessionManager.Read()->GetWallet(token).Read();
+
+		// Crash-between-commit-and-post recovery signal: finalized transactions
+		// whose broadcast outcome is unknown (e.g. the process died after the
+		// finalize commit but before/while posting). They are safe to repost.
+		{
+			const SecureVector masterSeed = m_sessionManager.Read()->GetSeed(token);
+			const std::vector<WalletTx> walletTxs = pWallet->GetDatabase().Read()->GetTransactions(masterSeed);
+			size_t pendingBroadcasts = 0;
+			for (const WalletTx& walletTx : walletTxs)
+			{
+				if (walletTx.GetType() == EWalletTxType::SENDING_FINALIZED
+					&& !walletTx.GetConfirmationHeight().has_value()
+					&& !walletTx.GetConfirmationTime().has_value())
+				{
+					++pendingBroadcasts;
+				}
+			}
+
+			if (pendingBroadcasts > 0)
+			{
+				WALLET_WARNING_F(
+					"{} finalized transaction(s) have an unknown broadcast state (crash/restart?); "
+					"they can be retried with repost_tx and inspected with get_tx_status.",
+					pendingBroadcasts
+				);
+			}
+		}
+
 		return LoginResponse(
 			token,
 			pWallet->GetListenerPort(),
@@ -297,12 +341,17 @@ Slate WalletManager::Receive(const ReceiveCriteria& receiveCriteria)
 		recipients.push_back(receiveCriteria.GetSlatepack().value().m_sender);
 	}
 
+	// The builder validates stage/amount/ttl against the current chain height
+	// before any output or wallet transaction is persisted.
+	const uint64_t chainHeight = m_pNodeClient->GetChainHeight();
+
 	Slate slate = ReceiveSlateBuilder().AddReceiverData(
 		wallet,
 		masterSeed,
 		receiveCriteria.GetSlate(),
 		receiveCriteria.GetAddress(),
-		recipients
+		recipients,
+		chainHeight
 	);
 
 	return slate;
@@ -313,19 +362,59 @@ Slate WalletManager::Finalize(const FinalizeCriteria& finalizeCriteria, const To
 	const SecureVector masterSeed = m_sessionManager.Read()->GetSeed(finalizeCriteria.GetToken());
 	Locked<Wallet> wallet = m_sessionManager.Read()->GetWallet(finalizeCriteria.GetToken());
 
-	auto finalized = FinalizeSlateBuilder(wallet.Write().GetShared(), m_pNodeClient).Finalize(
+	FinalizeSlateBuilder::FinalizeResult finalized = FinalizeSlateBuilder(wallet.Write().GetShared(), m_pNodeClient).Finalize(
 		finalizeCriteria.GetSlate()
 	);
+
+	const std::string slateId = uuids::to_string(finalized.slate.GetId());
+
 	if (finalizeCriteria.GetPostMethod().has_value())
 	{
-		PostTransaction(
-			finalized.second,
+		const bool posted = PostTransaction(
+			finalized.transaction,
 			finalizeCriteria.GetPostMethod().value(),
 			pTorProcess
 		);
+
+		if (!posted)
+		{
+			const std::string broadcastError = "The node rejected the transaction or did not accept it.";
+			TxBroadcastRegistry::Record(slateId, EBroadcastResult::FAILED, broadcastError);
+
+			// Do NOT report this as a successful finalize: the wallet state is
+			// SENDING_FINALIZED (safe, coins stay locked) but nothing was
+			// published. repost_tx can retry once the cause is fixed.
+			WALLET_ERROR_F(
+				"Transaction {} (slate {}) was finalized but FAILED to broadcast. Use repost_tx to retry.",
+				finalized.walletTxId,
+				slateId
+			);
+
+			throw TxBroadcastException(
+				"Transaction was finalized but could not be broadcast.",
+				__func__,
+				slateId,
+				broadcastError
+			);
+		}
+
+		TxBroadcastRegistry::Record(
+			slateId,
+			m_pNodeClient->IsPoolAcceptanceAuthoritative()
+				? EBroadcastResult::ACCEPTED
+				: EBroadcastResult::POSTED
+		);
+		WALLET_INFO_F("Transaction {} (slate {}) finalized and broadcast.", finalized.walletTxId, slateId);
+	}
+	else
+	{
+		// Offline slatepack flow: the slate is finalized but the caller did not
+		// ask to publish it.
+		TxBroadcastRegistry::Record(slateId, EBroadcastResult::NOT_REQUESTED);
+		WALLET_INFO_F("Transaction {} (slate {}) finalized; broadcast not requested.", finalized.walletTxId, slateId);
 	}
 
-	return finalized.first;
+	return finalized.slate;
 }
 
 bool WalletManager::PostTransaction(
@@ -336,34 +425,51 @@ bool WalletManager::PostTransaction(
 	const EPostMethod method = postMethod.GetMethod();
 	if (method == EPostMethod::JOIN)
 	{
-		assert(postMethod.GetGrinJoinAddress().has_value());
+		if (!postMethod.GetGrinJoinAddress().has_value())
+		{
+			WALLET_ERROR("GrinJoin address is missing; cannot post transaction.");
+			return false;
+		}
 
 		try
 		{
 			auto pTorConnection = pTorProcess->Connect(postMethod.GetGrinJoinAddress().value());
-			if (pTorConnection != nullptr)
+			if (pTorConnection == nullptr)
 			{
-				Json::Value params;
-				params["tx"] = transaction.ToJSON();
-				RPC::Request receiveTxRequest = RPC::Request::BuildRequest("submit_tx", params);
-				RPC::Response receiveTxResponse = pTorConnection->Invoke(receiveTxRequest, "/v1");
-
-				return !receiveTxResponse.GetError().has_value();
+				WALLET_ERROR("Failed to connect to GrinJoin; transaction was not posted.");
+				return false;
 			}
+
+			Json::Value params;
+			params["tx"] = transaction.ToJSON();
+			RPC::Request receiveTxRequest = RPC::Request::BuildRequest("submit_tx", params);
+			RPC::Response receiveTxResponse = pTorConnection->Invoke(receiveTxRequest, "/v1");
+
+			const PostTransactionOutcome outcome = ParsePostTransactionResponse(receiveTxResponse);
+			if (outcome.status != EPostTransactionStatus::POSTED)
+			{
+				WALLET_ERROR_F("GrinJoin submit_tx was not accepted: {}", outcome.error);
+				return false;
+			}
+
+			return true;
 		}
 		catch (std::exception& e)
 		{
-			WALLET_ERROR_F("Exception thrown: {}", e.what());
+			WALLET_ERROR_F("Exception thrown while posting to GrinJoin: {}", e.what());
+			return false;
 		}
 	}
-	else
-	{
-		const EPoolType poolType = (method == EPostMethod::FLUFF) ? EPoolType::MEMPOOL : EPoolType::STEMPOOL;
 
-		return m_pNodeClient->PostTransaction(std::make_shared<Transaction>(transaction), poolType);
+	const EPoolType poolType = (method == EPostMethod::FLUFF) ? EPoolType::MEMPOOL : EPoolType::STEMPOOL;
+
+	const bool posted = m_pNodeClient->PostTransaction(std::make_shared<Transaction>(transaction), poolType);
+	if (!posted)
+	{
+		WALLET_ERROR("Node rejected the transaction or did not accept it into the pool.");
 	}
 
-	return false;
+	return posted;
 }
 
 bool WalletManager::RepostTx(const RepostTxCriteria& criteria, const TorProcess::Ptr& pTorProcess)
@@ -371,14 +477,58 @@ bool WalletManager::RepostTx(const RepostTxCriteria& criteria, const TorProcess:
 	Locked<Wallet> wallet = GetWallet(criteria.GetToken());
 
 	auto pWalletTx = wallet.Read()->GetTransactionById(criteria.GetTxId());
-	if (pWalletTx != nullptr) {
-		if (pWalletTx->GetTransaction().has_value()) {
-			PostMethodDTO postMethod(criteria.GetMethod(), criteria.GetGrinJoinAddress());
-			return PostTransaction(pWalletTx->GetTransaction().value(), postMethod, pTorProcess);
-		}
+	if (pWalletTx == nullptr)
+	{
+		WALLET_WARNING_F("Repost: transaction {} not found.", criteria.GetTxId());
+		return false;
 	}
 
-	return false;
+	if (!pWalletTx->GetTransaction().has_value())
+	{
+		WALLET_WARNING_F("Repost: transaction {} has no stored finalized transaction.", criteria.GetTxId());
+		return false;
+	}
+
+	if (pWalletTx->GetConfirmationHeight().has_value() || pWalletTx->GetConfirmationTime().has_value())
+	{
+		WALLET_WARNING_F("Repost: transaction {} is already confirmed.", criteria.GetTxId());
+		return false;
+	}
+
+	if (pWalletTx->GetType() != EWalletTxType::SENDING_FINALIZED)
+	{
+		WALLET_WARNING_F(
+			"Repost: transaction {} is in status {}; only finalized transactions can be reposted.",
+			criteria.GetTxId(),
+			WalletTxType::ToString(pWalletTx->GetType())
+		);
+		return false;
+	}
+
+	const std::string slateId = pWalletTx->GetSlateId().has_value()
+		? uuids::to_string(pWalletTx->GetSlateId().value())
+		: std::string();
+
+	PostMethodDTO postMethod(criteria.GetMethod(), criteria.GetGrinJoinAddress());
+	const bool reposted = PostTransaction(pWalletTx->GetTransaction().value(), postMethod, pTorProcess);
+
+	if (reposted)
+	{
+		TxBroadcastRegistry::Record(
+			slateId,
+			m_pNodeClient->IsPoolAcceptanceAuthoritative()
+				? EBroadcastResult::ACCEPTED
+				: EBroadcastResult::POSTED
+		);
+		WALLET_INFO_F("Transaction {} (slate {}) reposted successfully.", criteria.GetTxId(), slateId);
+	}
+	else
+	{
+		TxBroadcastRegistry::Record(slateId, EBroadcastResult::FAILED, "repost rejected");
+		WALLET_ERROR_F("Transaction {} (slate {}) could not be reposted.", criteria.GetTxId(), slateId);
+	}
+
+	return reposted;
 }
 
 namespace WalletAPI
