@@ -13,20 +13,29 @@ TxHashSetZip::TxHashSetZip(const Config& config)
 
 }
 
-bool TxHashSetZip::Extract(const fs::path& path, const BlockHeader& header) const
+fs::path TxHashSetZip::Root(const fs::path& targetRoot) const
 {
+	return targetRoot.empty() ? m_config.GetTxHashSetPath() : targetRoot;
+}
+
+bool TxHashSetZip::Extract(const fs::path& path, const BlockHeader& header, const fs::path& targetRoot) const
+{
+	const fs::path root = Root(targetRoot);
 	try
 	{
 		std::shared_ptr<ZipFile> pZipFile = ZipFile::Load(path);
+		// All ten expected entries share one budget. The wire-size limit alone
+		// cannot bound a maliciously compressed archive after extraction.
+		uint64_t remainingBytes = 16ULL * 1024 * 1024 * 1024;
 
 		// Extract kernel folder.
-		ExtractKernelFolder(*pZipFile);
+		ExtractKernelFolder(*pZipFile, root, remainingBytes);
 
 		// Extract output folder.
-		ExtractFolder(*pZipFile, "output", header);
+		ExtractFolder(*pZipFile, "output", header, root, remainingBytes);
 
 		// Extract rangeProof folder.
-		ExtractFolder(*pZipFile, "rangeproof", header);
+		ExtractFolder(*pZipFile, "rangeproof", header, root, remainingBytes);
 
 		LOG_INFO("Successfully extracted zip file.");
 		return true;
@@ -39,11 +48,12 @@ bool TxHashSetZip::Extract(const fs::path& path, const BlockHeader& header) cons
 	return false;
 }
 
-void TxHashSetZip::ExtractKernelFolder(const ZipFile& zipFile) const
+void TxHashSetZip::ExtractKernelFolder(const ZipFile& zipFile, const fs::path& root,
+	uint64_t& remainingBytes) const
 {
 	std::error_code ec;
 
-	const fs::path kernelPath = m_config.GetTxHashSetPath() / "kernel";
+	const fs::path kernelPath = root / "kernel";
 	const bool exists = fs::exists(kernelPath, ec);
 	if (ec)
 	{
@@ -74,15 +84,16 @@ void TxHashSetZip::ExtractKernelFolder(const ZipFile& zipFile) const
 	const std::vector<std::string> kernelFiles = { "pmmr_data.bin", "pmmr_hash.bin" };
 	for (const std::string& file : kernelFiles)
 	{
-		zipFile.ExtractFile("kernel/" + file, kernelPath / file);
+		zipFile.ExtractFile("kernel/" + file, kernelPath / file, &remainingBytes);
 	}
 }
 
-void TxHashSetZip::ExtractFolder(const ZipFile& zipFile, const std::string& folderName, const BlockHeader& header) const
+void TxHashSetZip::ExtractFolder(const ZipFile& zipFile, const std::string& folderName,
+	const BlockHeader& header, const fs::path& root, uint64_t& remainingBytes) const
 {
 	std::error_code ec;
 
-	const fs::path dir = m_config.GetTxHashSetPath() / folderName;
+	const fs::path dir = root / folderName;
 	const bool exists = fs::exists(dir, ec);
 	if (ec)
 	{
@@ -113,7 +124,7 @@ void TxHashSetZip::ExtractFolder(const ZipFile& zipFile, const std::string& fold
 	const std::vector<std::string> files = { "pmmr_data.bin", "pmmr_hash.bin", "pmmr_prun.bin", "pmmr_leaf.bin." + header.ShortHash() };
 	for (const std::string& file : files)
 	{
-		zipFile.ExtractFile(StringUtil::Format("{}/{}", folderName, file), dir / file);
+		zipFile.ExtractFile(StringUtil::Format("{}/{}", folderName, file), dir / file, &remainingBytes);
 	}
 
 	FileUtil::RenameFile(dir / StringUtil::Format("pmmr_leaf.bin.{}", header.ShortHash()), dir / "pmmr_leaf.bin");

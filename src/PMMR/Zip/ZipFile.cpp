@@ -27,7 +27,8 @@ std::shared_ptr<ZipFile> ZipFile::Load(const fs::path& zipFilePath)
 	return std::shared_ptr<ZipFile>(new ZipFile(zipFilePath, unzFile));
 }
 
-void ZipFile::ExtractFile(const std::string& path, const fs::path& destination) const
+void ZipFile::ExtractFile(const std::string& path, const fs::path& destination,
+	uint64_t* remainingBytes) const
 {
 	if (unzLocateFile(m_unzFile, path.c_str(), 0) != UNZ_OK)
 	{
@@ -46,34 +47,62 @@ void ZipFile::ExtractFile(const std::string& path, const fs::path& destination) 
 	if (!destinationFile.is_open())
 	{
 		LOG_WARNING_F("Failed to write to destination ({}).", destination);
+		unzCloseCurrentFile(m_unzFile);
 		throw FILE_EXCEPTION("Failed to write to destination");
 	}
 
-	unsigned char buffer[256];
-	int readSize;
-	while ((readSize = unzReadCurrentFile(m_unzFile, &buffer, 256)) > 0)
-	{
-		destinationFile.write((const char*)&buffer[0], readSize);
+	// Check every layer: read/decompression errors, short writes and the CRC
+	// reported on close. A partial archive must never become a serving state.
+	try {
+		unsigned char buffer[64 * 1024];
+		int readSize = 0;
+		while ((readSize = unzReadCurrentFile(m_unzFile, buffer, sizeof(buffer))) > 0) {
+			if (remainingBytes != nullptr) {
+				if (static_cast<uint64_t>(readSize) > *remainingBytes) {
+					throw FILE_EXCEPTION("TxHashSet archive exceeds extraction byte budget");
+				}
+				*remainingBytes -= static_cast<uint64_t>(readSize);
+			}
+			destinationFile.write((const char*)buffer, readSize);
+			if (!destinationFile) {
+				throw FILE_EXCEPTION("Failed to write extracted file");
+			}
+		}
+		if (readSize < 0) {
+			throw FILE_EXCEPTION("Failed to decompress zip entry");
+		}
+		destinationFile.close();
+		if (!destinationFile) {
+			throw FILE_EXCEPTION("Failed to close extracted file");
+		}
+	} catch (...) {
+		unzCloseCurrentFile(m_unzFile);
+		throw;
 	}
-
-	destinationFile.close();
-
-	unzCloseCurrentFile(m_unzFile);
+	if (unzCloseCurrentFile(m_unzFile) != UNZ_OK) {
+		throw FILE_EXCEPTION("Zip entry failed CRC or close validation");
+	}
 }
 
 std::vector<std::string> ZipFile::ListFiles() const
 {
 	std::vector<std::string> files;
-	if (unzGoToFirstFile(m_unzFile) == UNZ_OK)
-	{
-		char buffer[256];
-		do
-		{
-			unz_file_info fileInfo;
-			unzGetCurrentFileInfo(m_unzFile, &fileInfo, buffer, 256, NULL, 0, NULL, 0);
-			files.push_back(buffer);
-		} while (unzGoToNextFile(m_unzFile) == UNZ_OK);
+	int status = unzGoToFirstFile(m_unzFile);
+	while (status == UNZ_OK) {
+		unz_file_info info{};
+		if (unzGetCurrentFileInfo(m_unzFile, &info, nullptr, 0, nullptr, 0, nullptr, 0) != UNZ_OK ||
+			info.size_filename > 65535) {
+			throw FILE_EXCEPTION("Invalid zip member metadata");
+		}
+		std::vector<char> name(info.size_filename + 1);
+		if (unzGetCurrentFileInfo(m_unzFile, &info, name.data(), static_cast<unsigned long>(name.size()),
+			nullptr, 0, nullptr, 0) != UNZ_OK) {
+			throw FILE_EXCEPTION("Cannot read zip member name");
+		}
+		files.emplace_back(name.data(), info.size_filename);
+		status = unzGoToNextFile(m_unzFile);
 	}
+	if (status != UNZ_END_OF_LIST_OF_FILE) throw FILE_EXCEPTION("Invalid zip directory");
 
 	return files;
 }

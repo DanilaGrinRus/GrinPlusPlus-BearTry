@@ -1,3 +1,4 @@
+#include "RangeProofBatchVerifier.h"
 #include "TxHashSetValidator.h"
 #include "TxHashSetImpl.h"
 #include "KernelMMR.h"
@@ -62,10 +63,14 @@ std::unique_ptr<BlockSums> TxHashSetValidator::Validate(TxHashSet& txHashSet, co
 
 	// Validate the full kernel history (kernel MMR root for every block header).
 	LOG_DEBUG("Validating kernel history");
-	if (!ValidateKernelHistory(*txHashSet.GetKernelMMR(), blockHeader, syncStatus))
 	{
-		LOG_ERROR("Invalid kernel history");
-		return std::unique_ptr<BlockSums>(nullptr);
+		ScopedSyncPhase phase("kernel_history");
+		if (!ValidateKernelHistory(*txHashSet.GetKernelMMR(), blockHeader, syncStatus))
+		{
+			LOG_ERROR("Invalid kernel history");
+			return std::unique_ptr<BlockSums>(nullptr);
+		}
+		phase.Success();
 	}
 
 	syncStatus.UpdateProcessingStatus(25);
@@ -77,7 +82,9 @@ std::unique_ptr<BlockSums> TxHashSetValidator::Validate(TxHashSet& txHashSet, co
 	std::unique_ptr<BlockSums> pBlockSums = nullptr;
 	try
 	{
+		ScopedSyncPhase phase("kernel_sums");
 		pBlockSums = std::make_unique<BlockSums>(ValidateKernelSums(txHashSet, blockHeader));
+		phase.Success();
 	}
 	catch (...)
 	{
@@ -90,10 +97,14 @@ std::unique_ptr<BlockSums> TxHashSetValidator::Validate(TxHashSet& txHashSet, co
 	// Validate the rangeproof associated with each unspent output.
 	LOG_DEBUG("Validating range proofs");
 	LoggerAPI::Flush();
-	if (!ValidateRangeProofs(txHashSet, syncStatus))
 	{
-		LOG_ERROR("Failed to verify rangeproofs");
-		return std::unique_ptr<BlockSums>(nullptr);
+		ScopedSyncPhase phase("range_proofs");
+		if (!ValidateRangeProofs(txHashSet, syncStatus))
+		{
+			LOG_ERROR("Failed to verify rangeproofs");
+			return std::unique_ptr<BlockSums>(nullptr);
+		}
+		phase.Success();
 	}
 
 	syncStatus.UpdateProcessingStatus(70);
@@ -101,10 +112,14 @@ std::unique_ptr<BlockSums> TxHashSetValidator::Validate(TxHashSet& txHashSet, co
 	// Validate kernel signatures
 	LOG_DEBUG("Validating kernel signatures");
 	LoggerAPI::Flush();
-	if (!ValidateKernelSignatures(*txHashSet.GetKernelMMR(), syncStatus))
 	{
-		LOG_ERROR("Failed to verify kernel signatures");
-		return std::unique_ptr<BlockSums>(nullptr);
+		ScopedSyncPhase phase("kernel_signatures");
+		if (!ValidateKernelSignatures(*txHashSet.GetKernelMMR(), syncStatus))
+		{
+			LOG_ERROR("Failed to verify kernel signatures");
+			return std::unique_ptr<BlockSums>(nullptr);
+		}
+		phase.Success();
 	}
 
 	LOG_DEBUG("Success");
@@ -234,50 +249,7 @@ BlockSums TxHashSetValidator::ValidateKernelSums(TxHashSet& txHashSet, const Blo
 
 bool TxHashSetValidator::ValidateRangeProofs(TxHashSet& txHashSet, SyncStatus& syncStatus) const
 {
-	std::vector<std::pair<Commitment, RangeProof>> rangeProofs;
-
-	size_t i = 0;
-	LOG_INFO("BEGIN");
-	const uint64_t outputMMRSize = txHashSet.GetOutputPMMR()->GetSize();
-	for (LeafIndex leaf_idx = LeafIndex::At(0); leaf_idx.GetPosition() < outputMMRSize; leaf_idx++)
-	{
-		std::unique_ptr<OutputIdentifier> pOutput = txHashSet.GetOutputPMMR()->GetAt(leaf_idx);
-		if (pOutput != nullptr)
-		{
-			std::unique_ptr<RangeProof> pRangeProof = txHashSet.GetRangeProofPMMR()->GetAt(leaf_idx);
-			if (pRangeProof == nullptr)
-			{
-				LOG_ERROR_F("No rangeproof found at leaf index ({})", leaf_idx);
-				return false;
-			}
-
-			rangeProofs.emplace_back(std::make_pair(pOutput->GetCommitment(), *pRangeProof));
-			++i;
-
-			if (rangeProofs.size() >= 1000)
-			{
-				if (!Crypto::VerifyRangeProofs(rangeProofs))
-				{
-					return false;
-				}
-
-				rangeProofs.clear();
-
-				syncStatus.UpdateProcessingStatus((uint8_t)(40 + ((30.0 * leaf_idx.GetPosition()) / outputMMRSize)));
-			}
-		}
-	}
-
-	if (!rangeProofs.empty())
-	{
-		if (!Crypto::VerifyRangeProofs(rangeProofs))
-		{
-			return false;
-		}
-	}
-
-	LOG_INFO_F("SUCCESS ({})", i);
-	return true;
+	return RangeProofBatchVerifier::Verify(txHashSet, syncStatus);
 }
 
 bool TxHashSetValidator::ValidateKernelSignatures(const KernelMMR& kernelMMR, SyncStatus& syncStatus) const

@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 /*
  * Thin wrapper on minizip's unzip library to give simple object oriented access to a zip file
@@ -21,7 +22,8 @@ public:
 	static std::shared_ptr<ZipFile> Load(const fs::path& zipFilePath);
 	~ZipFile();
 
-	void ExtractFile(const std::string& path, const fs::path& destination) const;
+	void ExtractFile(const std::string& path, const fs::path& destination,
+		uint64_t* remainingBytes = nullptr) const;
 	std::vector<std::string> ListFiles() const;
 
 private:
