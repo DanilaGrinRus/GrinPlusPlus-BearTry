@@ -16,10 +16,17 @@ checkout. This draft removes both. What it preserves:
 * header-only installs for fmt/asio/mio/Catch2, compiled installs for
   zlib/minizip/libsodium/secp256k1-zkp/rocksdb/civetweb/roaring.
 
-NOT VERIFIED: this helper was NOT executed end-to-end during the public-fork
-preparation. The local pipeline that produced the published sysroot was run
-earlier from the historical helper. Treat this file as a reviewed starting
-point, not as proven reproduce-the-sysroot code. Run ``--dry-run`` first.
+VERIFIED end-to-end on 2026-11-06 (Windows 11 x64, VS 2022 BuildTools):
+``python tools/deps/build_sysroot.py --repo <repo> --toolchain-dir <work> \
+--sysroot-dir <prefix>`` exits 0 and installs 743 files; manifest
+``0373CBD068518863DC7B16CB3DB56B6317F7682B7E8FE5B06549176B5E5EFA30``.
+The rebuild is functionally equivalent to the published 746-file sysroot but
+NOT byte-identical: 730 files are identical, 13 are compiled artifacts
+(libs/DLLs, zlib.pc, two package configs) that embed build timestamps/paths,
+and 3 published files are absent (the unused ``include/mio/mio.hpp`` and the
+RocksDB config files, which this helper installs to the standard
+``lib/cmake/rocksdb`` instead of ``share/RocksDB``). A project built against
+the rebuilt sysroot compiles and passes its test suite (see reports).
 
 Layout (defaults):
     <repo>\\..\\deps-toolchain\\sources      downloaded archives
@@ -193,7 +200,9 @@ def cmake_build(name, source, extra_defs, build_subdir=None, targets=("install",
             shutil.rmtree(build, ignore_errors=True)
     if not DRY_RUN:
         os.makedirs(build, exist_ok=True)
-    run([CMAKE, "-S", source, "-B", build] + COMMON_DEFS + list(extra_defs))
+    run([CMAKE, "-S", source, "-B", build,
+         f"-DCMAKE_INSTALL_PREFIX={SYSROOT}",
+         f"-DCMAKE_PREFIX_PATH={SYSROOT}"] + COMMON_DEFS + list(extra_defs))
     # Build the install target through MSBuild directly: `cmake --build` does not
     # reliably forward the file-tracker switch here, and the tracker can fail
     # with TRK0002 in restricted shells (host limitation, not a project change).
@@ -622,7 +631,8 @@ def main():
     parser.add_argument("--repo", default="",
                         help="Grin++ repository root (default: auto-detect upward from the script, else cwd)")
     parser.add_argument("--toolchain-dir", default="",
-                        help="working dir for sources/builds/logs (default: <repo>/../deps-toolchain)")
+                        help="working dir for sources/builds/logs, NOT the Visual Studio "
+                             "installation (default: <repo>/../deps-toolchain)")
     parser.add_argument("--sysroot-dir", default="",
                         help="install prefix (default: <repo>/../deps-sysroot)")
     parser.add_argument("--minizip-port-dir", default="",
@@ -678,7 +688,10 @@ def main():
             print(f"ERROR: missing helper file: {required}", file=sys.stderr)
             return 2
 
-    cmake, msbuild = resolve_toolchain(args.toolchain_dir, args.cmake, args.msbuild)
+    # NOTE: --toolchain-dir is the dependency work directory, NOT the Visual Studio
+    # installation. Passing it there made resolve_toolchain() look for CMake/MSBuild
+    # under <toolchain-dir>/Common7/... and fail with WinError 2.
+    cmake, msbuild = resolve_toolchain("", args.cmake, args.msbuild)
     CMAKE, MSBUILD = cmake, msbuild
     log(f"cmake       : {cmake or '(not found)'}")
     log(f"msbuild     : {msbuild or '(not found)'}")

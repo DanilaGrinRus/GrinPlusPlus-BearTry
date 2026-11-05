@@ -47,11 +47,19 @@ python tools/deps/build_sysroot.py
 #   -DCMAKE_PREFIX_PATH=<absoluter Pfad zum Sysroot>
 ```
 
-**Status des Abhängigkeits-Rebuilds:** Der portable Helfer wurde geprüft und im
-Dry-Run ausgeführt, aber während der Public-Fork-Vorbereitung **nicht
-End-to-End** ausgeführt. Das veröffentlichte Sysroot entstand mit der früheren
-lokalen Pipeline aus denselben Pins. „Sysroot mit diesem Helfer neu bauen“ gilt
-als **NOT VERIFIED**, bis jemand es reproduziert und den Manifest-Hash prüft.
+**Status des Abhängigkeits-Rebuilds (verifiziert 06.11.2026):** Der portable
+Helfer wurde korrigiert und End-to-End unter Windows 11 x64 mit VS 2022
+BuildTools ausgeführt. Er endet mit Exit 0 und installiert 743 Dateien; die
+Manifest-SHA-256 ist
+`0373CBD068518863DC7B16CB3DB56B6317F7682B7E8FE5B06549176B5E5EFA30`. Ein sauberer
+Projekt-Build gegen dieses Sysroot kompiliert und besteht die vollständige Suite
+(373 Fälle / 4982 Assertions). Das neu gebaute Sysroot ist funktional äquivalent,
+aber **nicht byte-identisch** zum veröffentlichten (746 Dateien): 730 Dateien
+gleich, 13 kompilierte Artefakte durch Zeitstempel/Pfade unterschiedlich, 3
+veröffentlichte Dateien fehlen (ungenutztes `include/mio/mio.hpp`; RocksDB-Configs
+liegen im Standardpfad `lib/cmake/rocksdb`). Zwei Helfer-Defekte wurden behoben:
+fehlendes `CMAKE_INSTALL_PREFIX`/`CMAKE_PREFIX_PATH` und die Verwendung von
+`--toolchain-dir` als Visual-Studio-Pfad.
 
 Ist der Helfer nicht vorhanden, reproduzieren Sie die Pins aus der Tabelle. Ein
 Sysroot-Manifest mit SHA-256 wird mit der Release-Evidenz veröffentlicht; nutzen

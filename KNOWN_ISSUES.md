@@ -182,6 +182,19 @@ SHA-256 `52658BE6…`, no separate upstream licence, retained as an upstream MIT
 project asset with upstream copyright. No third-party license text is asserted
 for the logo.
 
+
+### KI-21 — Dependency sysroot rebuild is functionally verified, not byte-identical
+
+The portable `tools/deps/build_sysroot.py` was fixed on 2026-11-06 (missing
+`CMAKE_INSTALL_PREFIX`/`CMAKE_PREFIX_PATH`; `--toolchain-dir` misused as the
+Visual Studio path) and executed end-to-end. It exits 0 and installs 743 files,
+manifest SHA-256 `0373CBD0…`. A clean project build against it passes the full
+suite (373/4982). It is **not byte-identical** to the published 746-file sysroot:
+730 identical, 13 compiled artifacts differ by timestamps/paths, and 3 files are
+absent (unused `include/mio/mio.hpp`; RocksDB configs in `lib/cmake/rocksdb`
+instead of `share/RocksDB`). The published sysroot manifest `82FBF0F7…` remains
+the anchor for the shipped binary.
+
 ## Reporting
 
 Do not open a public issue for a security problem; follow

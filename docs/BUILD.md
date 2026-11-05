@@ -47,11 +47,18 @@ python tools/deps/build_sysroot.py
 #   -DCMAKE_PREFIX_PATH=<absolute path to sysroot>
 ```
 
-**Dependency rebuild status:** the portable helper was reviewed and dry-run, but
-it was **not executed end-to-end** during the public-fork preparation. The
-published sysroot was produced by the earlier local pipeline from the same
-pinned versions. Treat "rebuild the sysroot with this helper" as **NOT
-VERIFIED** until someone reproduces it and checks the manifest hash.
+**Dependency rebuild status (verified 2026-11-06):** the portable helper was fixed
+and executed end-to-end on Windows 11 x64 with VS 2022 BuildTools. It exits 0 and
+installs 743 files; manifest SHA-256
+`0373CBD068518863DC7B16CB3DB56B6317F7682B7E8FE5B06549176B5E5EFA30`. A clean project
+build against this rebuilt sysroot compiled and passed the full suite (373 cases /
+4982 assertions). The rebuilt sysroot is functionally equivalent but **not
+byte-identical** to the published 746-file sysroot: 730 files identical, 13 compiled
+artifacts differ by build timestamps/paths, and 3 published files are absent (the
+unused `include/mio/mio.hpp`; RocksDB configs installed to the standard
+`lib/cmake/rocksdb`). Two helper defects were fixed: missing
+`CMAKE_INSTALL_PREFIX`/`CMAKE_PREFIX_PATH`, and `--toolchain-dir` being misused as
+the Visual Studio path.
 
 If the helper is not present, reproduce the pins from the table below. A sysroot
 manifest with SHA-256 values is published with the release evidence; use it as
