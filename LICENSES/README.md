@@ -95,6 +95,8 @@ date and SHA-256 of each text are in [`SOURCES.md`](SOURCES.md).
 |---|---|---|---|
 | Rust `grin` node 5.5.2 (PIBD/NRD adaptation) | `Apache-2.0` | `Apache-2.0.txt` | Copyright The Grin Developers; see `../THIRD_PARTY_NOTICES.md` §5 |
 
+The exact files carrying the §4(c) attribution header are listed in [GRIN-DERIVED-FILES.md](GRIN-DERIVED-FILES.md) (30 files). The short repository-level attribution is the root [../NOTICE](../NOTICE).
+
 ### Project asset
 
 | Asset | Status | Text |

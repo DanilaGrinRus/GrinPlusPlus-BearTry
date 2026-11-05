@@ -1,3 +1,6 @@
+// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
+// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
+// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #include "MessageProcessor.h"
 #include "BlockLocator.h"
 #include "ConnectionManager.h"

@@ -209,8 +209,9 @@ re-license or paraphrase it.
 
 ### 5.2 Affected areas in this repository
 
-The following files contain material derived from, or pinned to, `grin` 5.5.2. The list is
-representative and is maintained alongside the source:
+The **canonical, verified list** is [`LICENSES/GRIN-DERIVED-FILES.md`](LICENSES/GRIN-DERIVED-FILES.md)
+(30 files, each carrying a `Derived from grin 5.5.2 …` attribution header). The list below
+is a representative summary of the main areas:
 
 - `include/Consensus.h` — `TXHASHSET_ARCHIVE_INTERVAL = 12 * 60`, taken from grin's `global::…`.
 - `src/P2P/PIBD/PibdParams.h` — per-tree segment heights ported from grin 5.5.2.
@@ -229,7 +230,7 @@ representative and is maintained alongside the source:
 |---|---|
 | §4(a) — give recipients a copy of the License | **Met.** Full text in `LICENSES/Apache-2.0.txt` and Appendix A below. |
 | §4(b) — retain copyright, patent, trademark and attribution notices | **Met in this file.** “Copyright The Grin Developers” is stated here; the upstream archive contains no `NOTICE` file. |
-| §4(c) — cause modified files to carry prominent notices stating that the recipient changed the files | **NOT YET MET at file level.** This section documents the derivation and modifications, but the affected C++ files still need an Apache-2.0 attribution header naming grin 5.5.2. Tracked as **BLOCKED** (requires a source edit outside this notices draft). |
+| §4(c) — cause modified files to carry prominent notices stating that the recipient changed the files | **Met.** All 30 files in `LICENSES/GRIN-DERIVED-FILES.md` carry a comment-only attribution header: “Derived from grin 5.5.2 (Rust), Copyright The Grin Developers … Modified for the Grin++ C++ fork.” No executable statement was changed. |
 | §4(d) — include any `NOTICE` file contents | **Not applicable.** The upstream archive has no `NOTICE`; nothing to reproduce, and none is fabricated. |
 | §4(e) — do not use Grin/trademarks without permission | **Acknowledged.** This file makes no trademark grant; the fork is not presented as an official Grin/Grin++ product. |
 
@@ -266,10 +267,13 @@ The full Apache-2.0 text is reproduced in Appendix A and shipped as
 ## 8. Assets, fonts, UI
 
 - **`Logo.png`** (10,732 bytes, SHA-256
-  `52658BE6CEFE92685411A733D044C19306B0456B41797904A849498FE7471D92`) is an upstream
-  v1.2.9 project asset with **no separate license file** — **PARTIAL**. It is treated as
-  a project asset covered by the repository-level MIT license, with the upstream
-  copyright retained; it is not a third-party work with its own license text.
+  `52658BE6CEFE92685411A733D044C19306B0456B41797904A849498FE7471D92`) is the upstream
+  project asset introduced in the initial upstream commit `7a4a6619` (2018-12-17, David
+  Burkett), present unchanged at tag `v1.2.9`. Upstream ships **no separate license file**
+  for it, so its status is **PARTIAL**: it is retained as an upstream project asset under
+  the repository-level MIT license, with the upstream copyright retained; no third-party
+  license text is asserted. It is not used by the build and can be removed from a future
+  derivative if stricter asset separation is required. No trademark right is claimed.
 - **Fonts:** none distributed (no `.ttf`, `.otf`, `.woff`, `.woff2` or `.eot` in the
   repository). Not applicable.
 - **UI / Electron (`GrinPlusPlusUI`):** a separate repository, not part of upstream
