@@ -63,13 +63,24 @@ public:
 		const uint8_t magicByte2 = byteBuffer.ReadU8();
 		const std::vector<uint8_t>& magic_bytes = Global::GetMagicBytes();
 		if (magicByte1 != magic_bytes[0] || magicByte2 != magic_bytes[1]) {
-			throw DESERIALIZATION_EXCEPTION("Message header is invalid. Bad magic bytes.");
+			throw DESERIALIZATION_EXCEPTION_F("Message header is invalid. Bad magic bytes: received={:02x}{:02x}, expected={:02x}{:02x}", static_cast<unsigned int>(magicByte1), static_cast<unsigned int>(magicByte2), static_cast<unsigned int>(magic_bytes[0]), static_cast<unsigned int>(magic_bytes[1]));
 		}
 
 		const uint8_t messageType = byteBuffer.ReadU8();
 		const uint64_t messageLength = byteBuffer.ReadU64();
 
-		if (messageLength > MessageTypes::GetMaximumSize((MessageTypes::EMessageType)messageType) * 4) {
+		// Known message types have a per-type cap. Anything else (including future
+		// message types such as PIBD/PIHD) is tolerated and bounded by the default
+		// size, mirroring Grin 5.5.2 `default_max_msg_size()` semantics, so that a
+		// newer peer cannot cause a disconnect by using a message we do not know.
+		uint64_t maxPayloadSize = MessageTypes::GetMaximumSize((MessageTypes::EMessageType)messageType);
+		if (maxPayloadSize == 0 && (MessageTypes::EMessageType)messageType != MessageTypes::Error) {
+			maxPayloadSize = P2P::MAX_BLOCK_SIZE;
+		}
+
+		// Grin 5.5.2 allows 4x the per-type cap for forward compatibility; keep
+		// the same multiplier so a future message variant is not rejected here.
+		if (messageLength > maxPayloadSize * 4) {
 			throw DESERIALIZATION_EXCEPTION("Message header is invalid. Message length too long");
 		}
 

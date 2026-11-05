@@ -66,7 +66,12 @@ Hash MMRHashUtil::GetHashAt(
 			throw std::runtime_error("Hash is compacted");
 		}
 
-		return pHashFile->GetDataAt(mmr_idx.Get() - pPruneList->GetShift(mmr_idx));
+		const uint64_t shift = pPruneList->GetShift(mmr_idx);
+		if (shift > mmr_idx.Get() || (mmr_idx.Get() - shift) >= pHashFile->GetSize()) {
+			throw std::runtime_error("Hash position is outside the shifted hash file");
+		}
+
+		return pHashFile->GetDataAt(mmr_idx.Get() - shift);
 	} else {
 		return pHashFile->GetDataAt(mmr_idx.Get());
 	}
@@ -75,7 +80,12 @@ Hash MMRHashUtil::GetHashAt(
 uint64_t MMRHashUtil::GetShiftedIndex(const Index& mmr_idx, const PruneList::CPtr& pPruneList)
 {
 	if (pPruneList != nullptr) {
-		return mmr_idx.Get() - pPruneList->GetShift(mmr_idx);
+		const uint64_t shift = pPruneList->GetShift(mmr_idx);
+		if (shift > mmr_idx.Get()) {
+			throw std::runtime_error("Prune shift exceeds the requested hash position");
+		}
+
+		return mmr_idx.Get() - shift;
 	} else {
 		return mmr_idx.Get();
 	}

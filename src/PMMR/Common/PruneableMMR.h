@@ -111,6 +111,13 @@ public:
 
 	bool IsCompacted(const Index& index) const
 	{
+		// Rust backend::is_compacted() first checks leaf_set.includes(pos):
+		// an unspent leaf is never compacted, even if its subtree is marked pruned.
+		if (MMRUtil::IsLeaf(index.Get()) && m_pLeafSet != nullptr &&
+			m_pLeafSet->Contains(LeafIndex::From(index))) {
+			return false;
+		}
+
 		return m_pPruneList->IsCompacted(index);
 	}
 
@@ -131,6 +138,36 @@ public:
                 return std::unique_ptr<DATA_TYPE>(nullptr);
             }
         }
+
+		return std::unique_ptr<DATA_TYPE>(nullptr);
+	}
+
+	// Reads the leaf data by position without consulting the leaf set. A spent
+	// leaf keeps its data in the data file (Grin++ never rewrites it in place), and
+	// PIBD serving must return it when the bitmap requires the leaf.
+	std::unique_ptr<DATA_TYPE> GetRawAt(const LeafIndex& leaf_idx) const
+	{
+		if (leaf_idx.GetPosition() >= GetSize() ||
+			m_pPruneList->IsCompacted(leaf_idx.GetIndex())) {
+			return nullptr;
+		}
+
+		const uint64_t shift = m_pPruneList->GetLeafShift(leaf_idx.GetIndex());
+		if (shift > leaf_idx.Get() || leaf_idx.Get() - shift >= m_pDataFile->GetSize()) {
+			return nullptr;
+		}
+		const uint64_t shifted_idx = leaf_idx.Get() - shift;
+
+		try {
+			std::vector<unsigned char> data = m_pDataFile->GetDataAt(shifted_idx);
+			if (data.size() == DATA_SIZE) {
+				ByteBuffer byteBuffer(std::move(data));
+				return std::make_unique<DATA_TYPE>(DATA_TYPE::Deserialize(byteBuffer));
+			}
+		}
+		catch (FileException&) {
+			return std::unique_ptr<DATA_TYPE>(nullptr);
+		}
 
 		return std::unique_ptr<DATA_TYPE>(nullptr);
 	}

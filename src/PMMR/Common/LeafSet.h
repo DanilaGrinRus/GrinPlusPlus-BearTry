@@ -28,7 +28,7 @@ public:
 	{
 		auto pBitmapFile = BitmapFile::Load(path);
 
-		return std::make_shared<LeafSet>(path, BitmapFile::Load(path));
+		return std::make_shared<LeafSet>(path, pBitmapFile);
 	}
 
 	void Add(const LeafIndex& leafIndex) { m_pBitmap->Set(leafIndex.Get()); }

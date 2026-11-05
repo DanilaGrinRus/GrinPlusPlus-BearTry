@@ -41,7 +41,10 @@ public:
 
 	static Hash HashParentWithIndex(const Hash& leftChild, const Hash& rightChild, const uint64_t parentIndex);
 
-private:
+	// Hash of a serialized PMMR element for the given MMR position
+	// (blake2b over the big-endian position followed by the element bytes).
 	static Hash HashLeafWithIndex(const std::vector<uint8_t>& serializedLeaf, const uint64_t mmrIndex);
+
+private:
 	static uint64_t GetShiftedIndex(const Index& mmr_idx, const PruneList::CPtr& pPruneList);
 };
