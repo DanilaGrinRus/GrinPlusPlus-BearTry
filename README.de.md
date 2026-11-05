@@ -23,7 +23,8 @@ Der vollständige, evidenzbasierte Status steht in
 
 | Bereich | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat baut und besteht die vollständige Testsuite. Ein Live-Floonet-Sync wurde auf einem früheren kombinierten Build verifiziert; der Live-Lauf des finalen Kandidaten ist **in Arbeit / noch nicht verifiziert**. |
+| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat baut, besteht die vollständige Testsuite und schloss einen Live-Floonet-Sync bis `FULLY_SYNCED` mit aktuellem Index nach dem Neustart ab (**PASS, begrenzt**; siehe [docs/STATUS.de.md](docs/STATUS.de.md)). |
+| Sauberer Neu-Build | **PASS** — sauberer Klon baut und besteht dieselbe Suite; nicht bitgleich zum Kandidaten (Build-Metadaten) |
 | Mainnet | **NICHT GETESTET** |
 | Node-HTTP/RPC-API | **TEILWEISE** — registrierte Methoden funktionieren lokal, vollständige Rust-Parität wird nicht behauptet |
 | Wallet | **NICHT BEREIT** — aus Upstream enthalten, mit einigen Korrekturen, für dieses Release nicht abgenommen |

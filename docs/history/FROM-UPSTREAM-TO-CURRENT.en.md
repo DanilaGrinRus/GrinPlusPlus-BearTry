@@ -27,8 +27,8 @@ versions are published as `.ru.md` and `.de.md`.
 ### Reconstructed commit groups
 
 Tag `node-beta.1-candidate` is an annotated tag (object
-`fc5174ec7a3499ec16d14decc88737be691a347a`) whose tagged commit is
-`ccc4f356c5f46bd693f1965581c7307d4563d8c9`. The short SHAs below are the
+`317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) whose tagged commit is
+`7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`. The short SHAs below are the
 reconstructed commit series; if the tag is moved before publication, re-read
 `git log v1.2.9..node-beta.1-candidate` and update this table in the same change.
 
@@ -45,8 +45,8 @@ reconstructed commit series; if the tag is moved before publication, re-read
 | I | Rust-compatible node REST/owner API, access control and status schema | `b6b39413` |
 | J | FastInit experimental opt-in header state checkpoint | `67ed50d3` |
 | K | Wallet node client, SQLite store and lifecycle fixes | `9c289387` |
-| L | Third-party notices, dependency licenses and omitted-tools note | `63550938` |
-| M | Integration: wire PIBD, KernelIndex and FastInit into the sync paths | `ccc4f356` |
+| L | Third-party notices, dependency licenses and omitted-tools note | `0f3e3e65` |
+| M | Integration: wire PIBD, KernelIndex and FastInit into the sync paths | `7efdb02e` |
 
 ## Status vocabulary
 
@@ -139,10 +139,14 @@ production.
   `src/P2P/Pipeline/TxHashSetPipe.*`.
 - **Tests and results.** Synthetic archive install + index + restart: 25
   assertions PASS. On the earlier combined build, a live Floonet run downloaded
-  `4998/4998` segments, validated the state and reached `fully_synced`; the
-  candidate live run was still validating at snapshot time. The hidden
-  `FullSweepPpCkpt` test can pass with an empty fixture warning, so it is not
-  evidence of a populated sweep.
+  `4998/4998` segments, validated the state and reached `fully_synced`. On the
+  candidate itself, a fresh isolated Floonet run started PIBD at `3 321 360`,
+  verified `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker,
+  validated the TxHashSet, built KernelIndex generation 2 (`3 357 330` kernels),
+  caught up, restarted at 00:53 with `kernel_index_check result=current` and no
+  rebuild, and reached `FULLY_SYNCED` at `3 324 513` before a graceful stop.
+  The hidden `FullSweepPpCkpt` test can pass with an empty fixture warning, so it
+  is not evidence of a populated sweep.
 - **Compatibility / performance / data impact.** PIBD state is written in the
   same on-disk layout as the ZIP path; the staging/activation directories are
   new. Validation dominates initial sync (about 1987 s in the measured run,

@@ -21,7 +21,8 @@ Read [docs/STATUS.md](docs/STATUS.md) for the full evidence-based status and
 
 | Area | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Candidate builds and passes the full test suite. A live Floonet sync was verified on an earlier combined build; the live run on the final candidate binary is **in progress / not yet verified**. |
+| Node (Windows 11 x64, MSVC 14.44) | Candidate builds, passes the full test suite and completed a live Floonet sync to `FULLY_SYNCED` with a current index on restart (**PASS, scoped**; see [docs/STATUS.md](docs/STATUS.md)). |
+| Clean-copy rebuild | **PASS** — clean clone builds and passes the same suite; not bit-identical to the candidate (build metadata) |
 | Mainnet | **NOT TESTED** |
 | Node HTTP/RPC API | **PARTIAL** — registered methods work locally, full Rust parity is not claimed |
 | Wallet | **NOT READY** — included from upstream with some fixes, not accepted for this release |

@@ -21,6 +21,8 @@ Kandidat: `node-beta.1-candidate`, `GrinNode.exe` `4039086C…`, `Tests.exe`
 | `nrd-kill-manifest.json` | Manifest des erzwungenen Kill/Recovery |
 | `nrd-kill-child.stdout.log`, `nrd-kill-recovery.stdout.log` | Ausgabe des getöteten Prozesses und der Recovery (241 Assertions, Exit 0) |
 | `combined-live-floonet-2026-11-05.md` | Bereinigter Auszug des Live-Floonet-Laufs auf dem kombinierten Build `16C24DB4…` |
+| `candidate-live-floonet-2026-11-05.md` | PASS (begrenzt) des Live-Laufs auf dem Kandidaten `4039086C…` |
+| `candidate-live-node-log-excerpt-2026-11-05.log` | Bereinigter Log-Auszug des Kandidaten (Pfade/IPs entfernt) |
 | `candidate-source-manifest-final.sha256` | Finales Quellmanifest |
 
 ## Zentrale Aussagen
@@ -32,7 +34,7 @@ Kandidat: `node-beta.1-candidate`, `GrinNode.exe` `4039086C…`, `Tests.exe`
 | E-04 | NRD-Kill/Recovery | **PASS** (erzwungener Kill, kein Stromausfall) |
 | E-06 | Lokaler Release-Build des Kandidaten | **PASS (lokal)** |
 | E-07 | Floonet-Live-PASS auf `16C24DB4…` | **PASS (binary-gebunden)** |
-| E-08 | Live-Lauf des Kandidaten `4039086C…` | **IN ARBEIT / NOT VERIFIED** |
+| E-08 | Floonet-Live-Lauf auf dem Kandidaten `4039086C…` | **PASS (begrenzt)**: PIBD ab 3.321.360, 2.948.812/2.948.812 Proofs (1 Worker), `FULLY_SYNCED` 3.324.513, Neustart mit aktuellem Index, `bans=0` |
 | E-09 | Mainnet | **NOT VERIFIED** |
 | E-11/E-12 | KernelIndex Orphan/Faults/Install | **PASS** (lokale Tests) |
 | E-14 | Echter RocksDB-Fehler / Stromausfall | **NOT VERIFIED** |

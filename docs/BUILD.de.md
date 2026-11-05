@@ -242,7 +242,7 @@ Häufige Fehler:
 |---|---|
 | Kandidaten-Release-Build `/W4 /WX` | **PASS** (lokales Build-Log) |
 | Saubere Konfiguration aus Klon | **PASS** (unabhängige Release-Prüfung) |
-| Sauberer Build aus Klon und Tests | **IN ARBEIT** (Release-Prüfung; zum Stand lief die Kompilierung) |
+| Sauberer Build aus Klon und Tests | **PASS** (sauberer Klon baute Release x64 und bestand die volle Suite 373/4982; Binaries nicht bitgleich zum Kandidaten) |
 | CI-Workflow vorbereitet | **JA** (`.github/workflows/ci.yml`) |
 | CI auf GitHub Actions ausgeführt | **NEIN** — Hosted-CI ist keine Evidenz für diesen Stand |
 | Windows-10-x64-Build/Lauf | **NOT VERIFIED** (quellseitig unterstützt) |

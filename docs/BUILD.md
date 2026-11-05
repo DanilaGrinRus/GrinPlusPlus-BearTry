@@ -239,7 +239,7 @@ Common errors:
 |---|---|
 | Candidate Release build `/W4 /WX` | **PASS** (local build log) |
 | Clean-clone configure | **PASS** (independent release verification) |
-| Clean-clone build and test run | **IN PROGRESS** (release verification; build was compiling at snapshot time) |
+| Clean-clone build and test run | **PASS** (clean clone built Release x64 and passed the full suite 373/4982; binaries not bit-identical to the candidate) |
 | CI workflow prepared | **YES** (`.github/workflows/ci.yml`) |
 | CI executed on GitHub Actions | **NO** — hosted CI is not evidence for this snapshot |
 | Windows 10 x64 build/run | **NOT VERIFIED** (source-supported) |

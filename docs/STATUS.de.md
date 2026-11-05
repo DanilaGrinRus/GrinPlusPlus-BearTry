@@ -41,11 +41,11 @@ Die Kriterien stammen aus dem Node-Beta-Dossier. Sie stehen hier, damit
 | # | Kriterium | Status | Grundlage / Restlücke |
 |---|---|---|---|
 | 1 | Vollständiger Mainnet-Sync von Null bis zur aktuellen Höhe und weitere Blockannahme auf einem finalen SHA, ohne künstlich kurze Peer-Liste | **NOT VERIFIED** | Mainnet wurde mit dem Kandidaten nicht gestartet. Floonet ist nicht Mainnet. |
-| 2 | Vollständiges PIBD auf einem finalen SHA: Segmente → Prüfung → Aktivierung → Aufholen, mit Negativfällen und Zustandserhalt | **IN ARBEIT / NOT VERIFIED** | Ein Live-Floonet-Sync von Null bis `fully_synced` bestand auf dem früheren kombinierten Build (`16C24DB4…`). Beim Kandidaten `4039086C…` sind PIBD `4998/4998`, Prüfung und Index-Rebuild abgeschlossen, und der Node holte bis Netzwerkhöhe `3 324 505` auf; finales `fully_synced`/geordnetes Stoppen/Index-Check stehen noch aus. Kein PASS, bis der Lead bestätigt. |
-| 3 | Neustarts über Sync-Stufen: Header, PIBD-Download, Prüfung/Aktivierung, Aufholen; regulärer und kontrollierter Neustart | **PARTIAL** | Neustarts nach abgeschlossenem Sync sind auf dem kombinierten Build verifiziert; Neustart während PIBD-Download/Prüfung und eine Stufenmatrix sind beim Kandidaten NOT VERIFIED. |
+| 2 | Vollständiges PIBD auf einem finalen SHA: Segmente → Prüfung → Aktivierung → Aufholen, mit Negativfällen und Zustandserhalt | **PASS (begrenzt)** | Kandidat `4039086C…`, frisches isoliertes Floonet-Profil, 10 Peers: PIBD ab `3 321 360` (`17d0428f…`); `2 948 812/2 948 812` Range Proofs in `1 215 538 ms` mit 1 Worker; `Successfully validated TxHashSet` um 00:44:15; KernelIndex-Generation 2 mit `3 357 330` Kernels; `PIBD state sync completed and validated` um 00:46:40; Aufholen; geordneter Neustart 00:53:13→00:53:21 mit `kernel_index_check result=current` (Generation 2, Index bei `3 324 510`, `3 360 496` Kernels) und **kein Rebuild**; `FULLY_SYNCED` bei Höhe `3 324 513` (Netz `3 324 513`); geordnetes Stoppen 00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`. Negativfälle und Zustandserhalt sind durch Tests abgedeckt, nicht durch diesen einen Live-Lauf. |
+| 3 | Neustarts über Sync-Stufen: Header, PIBD-Download, Prüfung/Aktivierung, Aufholen; regulärer und kontrollierter Neustart | **PARTIAL** | Neustart nach abgeschlossenem Sync ist **PASS (begrenzt)** beim Kandidaten (Neustart 00:53, `kernel_index_check result=current`, kein Rebuild) und beim kombinierten Build. Neustart während PIBD-Download/Prüfung und eine Stufenmatrix sind NOT VERIFIED. |
 | 4 | Validierungsoptimierung aktiv und unter vergleichbaren Bedingungen nachgewiesen | **PARTIAL** | Parallele Range-Proof-Prüfung existiert; Release-Default ist 1 Worker. Der Vollzustands-Benchmark 1/2/3/4/auto und die automatische Default-Wahl bleiben OPEN. |
 | 5 | Vollständige API-Konsistenz ohne offene Legacy-Probleme, live auf einem SHA geprüft | **NOT VERIFIED** | Registrierte Methoden funktionieren lokal; Schema-Parität pro Methode, mehrere PIBD/Validierungs-Statusfelder und vier Owner-Chain-Control-Methoden sind offen. Siehe [API.de.md](API.de.md). |
-| 6 | Release-Evidenz: exakte Basis, eingefrorene Quellen, Build-Parameter, Hashes, ausreichende Regression | **PARTIAL** | Finales Manifest, Binaries, vollständiges Testlog und gezielte Logs existieren; Kandidaten-Live-Lauf und sauberer Neu-Build laufen noch. |
+| 6 | Release-Evidenz: exakte Basis, eingefrorene Quellen, Build-Parameter, Hashes, ausreichende Regression | **PARTIAL** | Finales Manifest, Binaries, vollständiges Testlog, gezielte Logs, Live-Floonet-PASS (begrenzt) und PASS des sauberen Neu-Builds existieren. Hosted CI wurde nicht ausgeführt; Mainnet gehört nicht zu diesem Kriterium, bleibt aber ungetestet. |
 
 ## Implementiert und verifiziert
 
@@ -60,7 +60,9 @@ Die Kriterien stammen aus dem Node-Beta-Dossier. Sie stehen hier, damit
 | Live-Floonet-Sync auf dem früheren kombinierten Build | **PASS (begrenzt)** | `16C24DB4…`: 10 Verbindungen (PIBD startete mit 9 fähigen Peers), Header `0 → 3 324 027`, PIBD `4998/4998`, Zustandsprüfung `1987 s`, Index-Generation 2 mit `3 356 610` Kernels, `fully_synced` bei `3 324 064`, Neustart mit aktuellem Index, Endhöhe `3 324 082`. An dieses Binary gebunden. |
 | API-Registrierung und lokales Auth-Verhalten | **PASS (begrenzt)** | 27 lokale HTTP/RPC-Prüfungen auf Zwischenkandidaten (`C996B748…`, `36AD1C92…`, `D748B90E…`): Status-Konsistenz, leere Arrays, ungültige Zahlen, Owner-Auth-Fehler, Resync, Shutdown; Owner `ban_peer`/`unban_peer` ohne Secret schlägt fehl, IPv6-Ban/Unban funktioniert. Auf `4039086C…` nicht wiederholt; keine vollständige Schema-Parität. |
 | Früher lokaler HTTP-Health | **PASS** | `/v1/health` erste HTTP-200 nach `0,56–0,62 s` während der Initialisierung; `ready` vor vollständigem Sync. Startphasen-Evidenz ist teilweise: `starting` war unter schwerer Last nicht immer zu beobachten. |
-| Kandidaten-Build | **PASS (lokal)** | Release x64 `/W4 /WX`, lokales Build-Log vorhanden. Sauberer Neu-Build ist IN ARBEIT im Release-Strang. |
+| Kandidaten-Release-Build | **PASS (lokal)** | Release x64 `/W4 /WX`; Build-Log erfasst. Siehe [docs/evidence/INDEX.de.md](evidence/INDEX.de.md) E-06b. |
+| Live-Floonet-Sync auf dem Kandidaten `4039086C…` | **PASS (begrenzt)** | Frisches isoliertes Floonet-Profil, 10 Peers, PIBD ab `3 321 360`: `2 948 812/2 948 812` Range Proofs (1 Worker, `1 215 538 ms`), TxHashSet validiert, KernelIndex-Generation 2 (`3 357 330` Kernels), Aufholen, geordneter Neustart mit `kernel_index_check result=current` ohne Rebuild, `FULLY_SYNCED` bei `3 324 513`, geordnetes Stoppen, `bans=0`. Evidenz: [docs/evidence/files/candidate-live-floonet-2026-11-05.md](evidence/files/candidate-live-floonet-2026-11-05.md). Auf dieses Binary/Szenario begrenzt. |
+| Sauberer Neu-Build | **PASS** | Sauberer Klon baute Release x64 und bestand dieselbe vollständige Suite (373 Fälle / 4982 Assertions). Saubere Binaries `GrinNode 73F35D64…`, `Tests 7DE498F5…`; nicht bitgleich zum Kandidaten (PE-Timestamps/Quellpfad) bei identischen Quellen, Toolchain, Imports und Tests. Hosted CI wurde nicht ausgeführt. |
 
 ## Implementiert, teilweise verifiziert
 
@@ -74,12 +76,11 @@ Die Kriterien stammen aus dem Node-Beta-Dossier. Sie stehen hier, damit
 | Chain-Recovery und Checkpoints | **PARTIAL** | Atomarer `chain.checkpoint`, Repair-Zähler und Fail-Closed-Pfade existieren; Stromausfall und echter Datenträgerfehler sind NOT VERIFIED. |
 | Peer-Diagnose und Block-Sync-Zähler | **PARTIAL** | Zähler trennen Deadline-Ablauf und Cooldown-Reassignment; langfristige Wiederherstellung mit einem Peer ist NOT VERIFIED. |
 
-## Zum Stand in Arbeit
+## Nach dem ersten Stand abgeschlossen
 
-| Punkt | Status | Hinweise |
-|---|---|---|
-| Live-Floonet-Lauf des Kandidaten `4039086C…` | **IN ARBEIT** | Gestartet 05.11.2026 23:33, Neustart 23:52; PIBD `4998/4998`, Zustandsprüfung und KernelIndex-Rebuild abgeschlossen; der Node holte bis Netzwerkhöhe `3 324 505` in 00:48–00:50 auf. Transiente `Output Commitment … not found`- und Block-Deadline-Ereignisse wurden wiederholt; `bans=0`. Endgültiges PASS steht aus, bis `fully_synced`, geordnetes Stoppen und Index-Check vom Lead bestätigt sind. Das ist **kein** PASS. |
-| Sauberer Neu-Build des Repositories | **IN ARBEIT** | Build/Test aus sauberem Klon wird vom Release-Strang durchgeführt. CI-Workflow ist vorbereitet, auf GitHub Actions nicht ausgeführt. |
+Der Live-Lauf des Kandidaten und der saubere Neu-Build endeten nach dem ersten
+Dokumentationsstand. Ihre Ergebnisse stehen in der Tabelle „Implementiert und
+verifiziert“ oben; kein Ergebnis wird auf ein anderes Binary übertragen.
 
 ## Nicht verifiziert
 
@@ -88,6 +89,8 @@ Die Kriterien stammen aus dem Node-Beta-Dossier. Sie stehen hier, damit
 - **Echter Speicherfehler:** echte RocksDB-Write/Commit-Fehler, Post-Commit, volle Platte.
 - **Öffentlicher Reorg:** nur synthetische Unit-/Integration-Szenarien.
 - **Live-feindliche PIBD-Peers:** falsche Segmente, falsche Bans auf P2P-Ebene.
+- **Automatische Range-Proof-Worker:** der Kandidaten-Live-Lauf nutzte den Default mit 1 Worker; `auto` wurde auf einem vollen Live-Zustand nicht geprüft.
+- **FastInit:** im Kandidaten-Live-Lauf nicht verwendet (keine `header_checkpoint_*`-Ereignisse); bleibt experimentell.
 - **Wallet und UI:** siehe unten.
 - **Linux/macOS-Laufzeit:** quellkompatibel, in diesem Fork nicht verifiziert.
 - **Langzeitstabilität:** mehrtägiger Betrieb und Stufen-Neustartmatrix.

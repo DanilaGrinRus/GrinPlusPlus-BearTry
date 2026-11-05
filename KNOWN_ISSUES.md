@@ -12,15 +12,22 @@ No Mainnet sync, catch-up or restart was run for the candidate. Floonet results
 (including the live combined-build run) do not transfer. Treat Mainnet readiness
 as unproven.
 
-### KI-02 — Live run on the final candidate is IN PROGRESS
+### KI-02 — Candidate live run: PASS (scoped), caveats remain
 
-The run on `GrinNode.exe` `4039086C…` started 2026-11-05 23:33, restarted 23:52.
-It completed PIBD `4998/4998`, state validation and the KernelIndex rebuild, then
-caught up to network height `3 324 505` during 00:48–00:50. Transient
-`Output Commitment … not found` and block-deadline events were retried, with
-`bans=0`. It is **NOT VERIFIED** and not PASS until `fully_synced`, graceful stop
-and the index check are confirmed. A completed Floonet PASS exists only for the
-earlier combined build `16C24DB4…`.
+The run on `GrinNode.exe` `4039086C…` reached `FULLY_SYNCED` and stopped
+gracefully. It used a fresh isolated Floonet profile with 10 peers; PIBD started
+at `3 321 360` (`17d0428f…`), verified `2 948 812/2 948 812` range proofs in
+`1 215 538 ms` with 1 worker, validated the TxHashSet at 00:44:15, built
+KernelIndex generation 2 (`3 357 330` kernels), and completed PIBD state sync at
+00:46:40. After a graceful restart (00:53:13→00:53:21) the index check was
+`result=current` (generation 2, indexed height `3 324 510`, `3 360 496` kernels)
+with no rebuild; `FULLY_SYNCED` was reached at `3 324 513`. Graceful shutdown at
+00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`.
+
+This is a **PASS scoped to the documented Floonet scenario and this binary**. It
+does not cover Mainnet, adversarial peers, power loss, reorg, multi-day stability,
+automatic worker mode or FastInit. Evidence:
+[docs/evidence/files/candidate-live-floonet-2026-11-05.md](docs/evidence/files/candidate-live-floonet-2026-11-05.md).
 
 ### KI-03 — API parity is incomplete
 
@@ -35,9 +42,10 @@ earlier combined build `16C24DB4…`.
 
 ### KI-04 — Restart-at-each-sync-stage matrix is NOT VERIFIED
 
-Restart after a complete sync is verified on the combined build. Restart in the
-middle of PIBD download, validation/activation, index build and first catch-up
-is not. A stage-by-stage matrix is open.
+Restart after a complete sync is verified: the candidate restarted at 00:53 with
+`kernel_index_check result=current` generation 2 and no rebuild. Restart in the
+middle of PIBD download, validation/activation, index build and first catch-up is
+not verified. A stage-by-stage matrix is open.
 
 ### KI-05 — Storage failure and power loss are NOT VERIFIED
 
@@ -63,9 +71,10 @@ experimental shortcut, not a solution.
 
 ### KI-08 — Worker benchmark is incomplete
 
-`GRINPP_RANGEPROOF_WORKERS=auto` is opt-in. A comparable full-state
-1/2/3/4/auto benchmark has not been run, so the default stays 1. Do not promise
-a speedup from `auto`.
+`GRINPP_RANGEPROOF_WORKERS=auto` is opt-in. The candidate live run used the
+default single worker (`1 215 538 ms` for `2 948 812` proofs); `auto` was not
+exercised on a full live state. A comparable full-state 1/2/3/4/auto benchmark
+has not been run, so the default stays 1. Do not promise a speedup from `auto`.
 
 ### KI-09 — Status latency under load is unexplained
 
@@ -97,17 +106,17 @@ fallback under a PIBD-less peer set is not re-verified.
 Some runs logged `GetOutputType: Output Commitment … not found` while processing
 a peer block. On the candidate live run these events appeared during catch-up
 after PIBD activation and an index rebuild, alongside block-request deadlines;
-they were retried and the run continued, with `bans=0`. The root cause is not
-established and no controlled reproduction exists. It is not proof of a consensus
-defect, but it is also not explained away; capture the full log and profile if it
-blocks progress. Do not mark a run PASS while these errors repeat without a
-retry/progress path.
+they were retried, no peer was banned, and the node still reached `FULLY_SYNCED`.
+The exact cause of those transient rejections is not established and no
+controlled reproduction exists. It is not proof of a consensus defect, but it is
+also not claimed as fixed; capture the full log and profile if it blocks progress.
 
 ## Experimental / planned features
 
 ### KI-14 — FastInit is EXPERIMENTAL
 
-The header checkpoint is opt-in and gated on an explicit trust anchor. Real
+The header checkpoint is opt-in and gated on an explicit trust anchor. The
+candidate live run did not exercise it (no `header_checkpoint_*` events). Real
 reorg, profile lock and post-kill continuation are NOT VERIFIED. Timings are not
 a final controlled series. Do not enable it on a node whose profile you cannot
 afford to re-verify.
@@ -134,9 +143,10 @@ VERIFIED. CI is prepared but never executed on GitHub Actions.
 
 ### KI-18 — Builds are not bit-reproducible
 
-Rebuilding the same source can produce a different executable SHA because of
-toolchain, SDK, paths and link order. Verify your own artifacts; do not expect
-`4039086C…` from a local rebuild.
+A clean-copy rebuild passed the same suite but produced different executable
+hashes (`GrinNode 73F35D64…`, `Tests 7DE498F5…`) because of PE timestamps and
+source paths. Rebuilding the same source can therefore produce a different SHA;
+verify your own artifacts and do not expect `4039086C…` from a local rebuild.
 
 ## Reporting
 

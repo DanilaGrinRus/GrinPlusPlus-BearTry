@@ -16,7 +16,7 @@ Ziel: eindeutige Identität und Evidenz des Kandidaten.
 | NRD-Kill-Recovery | **PASS** | 241 Assertions, Recovery Exit 0 |
 | Veraltetes Manifest bereinigt | **PASS** | In der Doku nur das finale Manifest |
 | Rekonstruierte Commit-Historie | **PASS** | `node-beta.1-candidate` (annotiertes Tag-Objekt `fc5174ec…`) zeigt auf Commit `ccc4f356…`; Tree-Verifikation PASS |
-| Sauberer Neu-Build | **IN ARBEIT** | Sauberer Klon baut und besteht dieselbe Suite (oder Abweichung erklärt) |
+| Sauberer Neu-Build | **PASS** | Sauberer Klon baute Release x64 und bestand dieselbe Suite (373/4982); saubere Binaries `73F35D64…`/`7DE498F5…`, nicht bitgleich zum Kandidaten wegen Build-Metadaten |
 
 ## Phase 1 — Live-Verifikation des Kandidaten
 
@@ -24,8 +24,8 @@ Ziel: abgeschlossener Floonet-Live-Lauf, an das Kandidaten-Binary gebunden.
 
 | Punkt | Status | Exit-Kriterium |
 |---|---|---|
-| Floonet-Live-Sync des Kandidaten | **IN ARBEIT** | Frisches isoliertes Profil: Header → PIBD → Prüfung → Aufholen → `fully_synced`; Evidenz an `4039086C…` gebunden |
-| Neustart nach vollständigem Sync | **PARTIAL** | Tip/Zustand bleiben, Fortsetzung ohne State-Redownload |
+| Floonet-Live-Sync des Kandidaten | **PASS (begrenzt)** | Frisches isoliertes Profil: Header → PIBD → Prüfung → Aufholen → `fully_synced`; Evidenz an `4039086C…` gebunden |
+| Neustart nach vollständigem Sync | **PASS (begrenzt)** | Neustart 00:53:13→00:53:21 behielt Generation 2, `kernel_index_check result=current`, kein Rebuild; Fortsetzung bis `FULLY_SYNCED` bei 3.324.513 |
 | Neustart während PIBD-Download | **NOT VERIFIED** | Stufe dokumentiert; Zustand erhalten oder sicher neu gestartet |
 | Neustart während Prüfung/Aktivierung | **NOT VERIFIED** | Marker-Recovery geprüft; kein Teilzustand live |
 | Neustart während Index-Build / erstem Aufholen | **NOT VERIFIED** | Fortsetzung oder sicherer Rebuild; kein Datenverlust |

@@ -1,0 +1,39 @@
+# Sanitized excerpt of the candidate live node log (Node.log).
+# Original kept local; absolute paths and peer IPv4 addresses replaced.
+# Candidate: GrinNode.exe sha256 4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC
+[11/05/26 23:33:09.798+07:00] [info] [THREAD:15984] Run(144) - Starting Grin++ v1.2.9
+[11/05/26 23:33:09.879+07:00] [info] [THREAD:15984] Ensure(353) - kernel_index_check state=missing chain_height=0 chain_kernels=1 txhashset_kernels=1
+[11/05/26 23:33:09.879+07:00] [info] [THREAD:15984] Ensure(474) - kernel_index_rebuild_entries generation=1 kernels=1 elapsed_ms=0
+[11/05/26 23:33:09.879+07:00] [info] [THREAD:15984] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_commit_entries duration_ms=0 outcome=success
+[11/05/26 23:33:09.879+07:00] [info] [THREAD:15984] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_verify duration_ms=0 outcome=success
+[11/05/26 23:33:09.879+07:00] [info] [THREAD:15984] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_publish duration_ms=0 outcome=success
+[11/05/26 23:33:09.883+07:00] [info] [THREAD:15984] Create(63) - PIBD archive serving: DISABLED (default)
+[11/05/26 23:48:54.200+07:00] [info] [THREAD:4288] Run(144) - Starting Grin++ v1.2.9
+[11/05/26 23:49:13.429+07:00] [info] [THREAD:4288] Ensure(363) - kernel_index_check state=present generation=1 indexed_height=0 indexed_kernels=1 entries=1 chain_height=0 chain_kernels=1 txhashset_kernels=1
+[11/05/26 23:49:13.429+07:00] [info] [THREAD:4288] Ensure(376) - kernel_index_check result=current generation=1 kernels=1 tip=edc758c1370d43e1d733f70f58cf187c3be8242830429b1676b89fd91ccf2dab
+[11/05/26 23:49:13.440+07:00] [info] [THREAD:4288] Create(63) - PIBD archive serving: DISABLED (default)
+[11/05/26 23:52:24.117+07:00] [info] [THREAD:4288] Run(213) - Closing Grin++ v1.2.9
+[11/05/26 23:52:24.117+07:00] [info] [THREAD:4288] ~Node(33) - Shutting down node daemon
+[11/05/26 23:52:32.310+07:00] [info] [THREAD:27864] Run(144) - Starting Grin++ v1.2.9
+[11/05/26 23:52:54.892+07:00] [info] [THREAD:27864] Ensure(363) - kernel_index_check state=present generation=1 indexed_height=0 indexed_kernels=1 entries=1 chain_height=0 chain_kernels=1 txhashset_kernels=1
+[11/05/26 23:52:54.892+07:00] [info] [THREAD:27864] Ensure(376) - kernel_index_check result=current generation=1 kernels=1 tip=edc758c1370d43e1d733f70f58cf187c3be8242830429b1676b89fd91ccf2dab
+[11/05/26 23:52:54.902+07:00] [info] [THREAD:27864] Create(63) - PIBD archive serving: DISABLED (default)
+[11/06/26 00:14:17.578+07:00] [info] [SYNC:16620] TryPibd(385) - Starting PIBD state sync at height 3321360 (header hash 17d0428f8ad093d4f1a96e55fe9bba3e9275fb7cafda08d83107fdc59d5aabab), 10 capable peer(s), primary 103.98.150.38.
+[11/06/26 00:18:21.082+07:00] [info] [SYNC:16620] ValidateTxHashSet(88) - Validating TxHashSet for block 17d0428f8ad093d4f1a96e55fe9bba3e9275fb7cafda08d83107fdc59d5aabab
+[11/06/26 00:41:33.716+07:00] [info] [SYNC:16620] LogBatchSummary(212) - G49T phase=range_proofs mode=sequential workers=1 batches=2949 verified_batches=2949 proofs=2948812 verified_proofs=2948812 last_batch=812 last_leaf_position=6863498 ms=1215538 proofs_per_s=2425.9 batch_ms_min=318 batch_ms_median=406 batch_ms_avg=410.4 batch_ms_max=582 worker_busy_ms=1210347 max_queue_depth=0 queue_capacity=0
+[11/06/26 00:44:15.452+07:00] [info] [SYNC:16620] ValidateTxHashSet(92) - Successfully validated TxHashSet
+[11/06/26 00:45:10.117+07:00] [info] [SYNC:16620] Ensure(363) - kernel_index_check state=present generation=1 indexed_height=0 indexed_kernels=1 entries=1 chain_height=3321360 chain_kernels=3357330 txhashset_kernels=3357330
+[11/06/26 00:46:20.954+07:00] [info] [SYNC:16620] Ensure(474) - kernel_index_rebuild_entries generation=2 kernels=3357330 elapsed_ms=70836
+[11/06/26 00:46:30.856+07:00] [info] [SYNC:16620] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_commit_entries duration_ms=9902 outcome=success
+[11/06/26 00:46:33.166+07:00] [info] [SYNC:16620] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_verify duration_ms=2309 outcome=success
+[11/06/26 00:46:33.167+07:00] [info] [SYNC:16620] ~ScopedTiming(27) - startup_timing name=kernel_index_rebuild_publish duration_ms=1 outcome=success
+[11/06/26 00:46:40.963+07:00] [info] [SYNC:16620] TryPibd(454) - PIBD state sync completed and validated.
+[11/06/26 00:47:09.304+07:00] [info] [SYNC:16620] ArchivePibdState(751) - Archived TxHashSet at height 3321360 for serving (<work-root>\runs\live-merged\data\NODE\TXHASHSET\archive\TxHashSet.3321360.17d0428f8ad0.zip)
+[11/06/26 00:53:13.138+07:00] [info] [THREAD:27864] Run(213) - Closing Grin++ v1.2.9
+[11/06/26 00:53:13.138+07:00] [info] [THREAD:27864] ~Node(33) - Shutting down node daemon
+[11/06/26 00:53:21.554+07:00] [info] [THREAD:14352] Run(144) - Starting Grin++ v1.2.9
+[11/06/26 00:54:30.351+07:00] [info] [THREAD:14352] Ensure(363) - kernel_index_check state=present generation=2 indexed_height=3324510 indexed_kernels=3360496 entries=3360496 chain_height=3324510 chain_kernels=3360496 txhashset_kernels=3360496
+[11/06/26 00:54:34.644+07:00] [info] [THREAD:14352] Ensure(376) - kernel_index_check result=current generation=2 kernels=3360496 tip=289d9465787ee4b17cae48f8251cf69f8af91a591d32f81228d5a671188f83c0
+[11/06/26 00:54:34.661+07:00] [info] [THREAD:14352] Create(63) - PIBD archive serving: DISABLED (default)
+[11/06/26 00:55:53.817+07:00] [info] [THREAD:14352] Run(213) - Closing Grin++ v1.2.9
+[11/06/26 00:55:53.817+07:00] [info] [THREAD:14352] ~Node(33) - Shutting down node daemon

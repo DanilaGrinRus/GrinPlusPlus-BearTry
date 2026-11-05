@@ -77,6 +77,13 @@ genau dieser Reihenfolge: Header `0 → 3 324 027`, PIBD `4998/4998` Segmente,
 Zustandsprüfung etwa `1987 s`, KernelIndex-Generation 2 mit `3 356 610` Kernels,
 Aufholen bis `3 324 064`, Endhöhe `3 324 082` nach weiteren Blöcken.
 
+Der Kandidat `4039086C…` durchlief danach dieselbe Reihenfolge auf einem frischen
+isolierten Profil: PIBD ab `3 321 360` (`17d0428f…`), `2 948 812/2 948 812` Range
+Proofs in `1 215 538 ms` mit 1 Worker, TxHashSet validiert, KernelIndex-Generation
+2 (`3 357 330` Kernels), Aufholen, geordneter Neustart um 00:53 mit
+`kernel_index_check result=current` und kein Rebuild, sowie `FULLY_SYNCED` bei
+`3 324 513` vor dem geordneten Stoppen.
+
 ## 4. PIBD: Segmente, Peers, Resume und Recovery
 
 PIBD ersetzt das monolithische ZIP durch unabhängige MMR-Segmente und folgt dem

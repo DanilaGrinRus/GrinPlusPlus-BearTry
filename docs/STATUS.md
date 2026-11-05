@@ -40,11 +40,11 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 | # | Criterion | Status | Basis / remaining gap |
 |---|---|---|---|
 | 1 | Full fresh Mainnet sync to the current height and continued block acceptance on one final SHA, no artificial short peer list | **NOT VERIFIED** | Mainnet has not been run on the candidate. Floonet is not Mainnet. |
-| 2 | Full PIBD on one final SHA: segments → validation → activation → catch-up, with negative cases and state preservation | **IN PROGRESS / NOT VERIFIED** | A live Floonet sync from zero to `fully_synced` passed on the earlier combined build (`16C24DB4…`). On the candidate `4039086C…`, PIBD `4998/4998`, validation and the index rebuild completed and the node caught up to network height `3 324 505`; final `fully_synced`/graceful-stop/index confirmation is still pending. Not PASS until the Lead confirms. |
-| 3 | Restarts across sync stages: headers, PIBD download, validation/activation, catch-up; normal and controlled-interruption restart | **PARTIAL** | Restarts after a complete sync are verified on the combined build; restart during PIBD download/validation and a stage-by-stage matrix are NOT VERIFIED on the candidate. |
+| 2 | Full PIBD on one final SHA: segments → validation → activation → catch-up, with negative cases and state preservation | **PASS (scoped)** | Candidate `4039086C…`, fresh isolated Floonet profile, 10 peers: PIBD from `3 321 360` (`17d0428f…`); `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker; `Successfully validated TxHashSet` at 00:44:15; KernelIndex generation 2 with `3 357 330` kernels; `PIBD state sync completed and validated` at 00:46:40; catch-up; graceful restart 00:53:13→00:53:21 with `kernel_index_check result=current` (generation 2, indexed height `3 324 510`, `3 360 496` kernels) and **no rebuild**; `FULLY_SYNCED` at height `3 324 513` (network `3 324 513`); graceful stop 00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`. Negative cases and state-preservation are covered by tests, not by this single live run. |
+| 3 | Restarts across sync stages: headers, PIBD download, validation/activation, catch-up; normal and controlled-interruption restart | **PARTIAL** | Restart after a complete sync is PASS (scoped) on the candidate (00:53 restart, `kernel_index_check result=current`, no rebuild) and on the combined build. Restart during PIBD download/validation and a stage-by-stage matrix are NOT VERIFIED. |
 | 4 | Validation optimization enabled and proven correct in comparable conditions | **PARTIAL** | Parallel range-proof verification exists; the release default is 1 worker. The full-state 1/2/3/4/auto benchmark and automatic default selection remain OPEN. |
 | 5 | Full API consistency with all legacy issues closed, live-verified on one SHA | **NOT VERIFIED** | Registered methods work locally; per-method schema parity, several PIBD/validation status fields and four owner chain-control methods are open. See [API.md](API.md). |
-| 6 | Release evidence: exact baseline, frozen sources, build parameters, hashes, sufficient regression | **PARTIAL** | Final source manifest, binaries, full test log and targeted logs exist; the candidate live run and the clean-copy rebuild are still in progress. |
+| 6 | Release evidence: exact baseline, frozen sources, build parameters, hashes, sufficient regression | **PARTIAL** | Final source manifest, binaries, full test log, targeted logs, candidate live Floonet PASS (scoped) and a clean-copy rebuild PASS exist. Hosted CI was not executed; Mainnet is not part of this criterion but remains untested. |
 
 ## Implemented and verified
 
@@ -59,7 +59,9 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 | Live Floonet sync on the earlier combined build | **PASS (scoped)** | `16C24DB4…`: 10 connections (PIBD started with 9 capable peers), headers `0 → 3 324 027`, PIBD `4998/4998`, state validation `1987 s`, index generation 2 with `3 356 610` kernels, `fully_synced` at `3 324 064`, restart with current index, final height `3 324 082`. Bound to that binary. |
 | API registration and local auth behaviour | **PASS (scope-limited)** | 27 local HTTP/RPC checks on intermediate candidates (`C996B748…`, `36AD1C92…`, `D748B90E…`): status consistency, empty arrays, invalid numbers, owner auth failure, resync, shutdown; owner `ban_peer`/`unban_peer` without a secret fails and IPv6 ban/unban works. Not re-run on `4039086C…`; not full schema parity. |
 | Fast local HTTP health | **PASS** | `/v1/health` returned first HTTP 200 at `0.56–0.62 s` while initialization was running; `ready` precedes full sync. Startup-phase evidence is partial: the `starting` state was not always observed under heavy load. |
-| Candidate build | **PASS (local)** | Release x64 `/W4 /WX` build log for the candidate. A clean-copy rebuild is IN PROGRESS in the release workstream. |
+| Candidate Release build | **PASS (local)** | Release x64 `/W4 /WX`; build log recorded. See [docs/evidence/INDEX.md](evidence/INDEX.md) E-06b. |
+| Live Floonet sync on the candidate `4039086C…` | **PASS (scoped)** | Fresh isolated Floonet profile, 10 peers, PIBD from `3 321 360`: `2 948 812/2 948 812` range proofs (1 worker, `1 215 538 ms`), TxHashSet validated, KernelIndex generation 2 (`3 357 330` kernels), catch-up, graceful restart with `kernel_index_check result=current` and no rebuild, `FULLY_SYNCED` at `3 324 513`, graceful stop, `bans=0`. Evidence: [docs/evidence/files/candidate-live-floonet-2026-11-05.md](evidence/files/candidate-live-floonet-2026-11-05.md). Scoped to this binary/scenario. |
+| Clean-copy rebuild | **PASS** | A clean clone built Release x64 and passed the same full suite (373 cases / 4982 assertions). Clean binaries `GrinNode 73F35D64…`, `Tests 7DE498F5…`; not bit-identical to the candidate (PE timestamps/source path) with identical source, toolchain, imports and tests. Hosted CI was not run. |
 
 ## Implemented, partially verified
 
@@ -73,12 +75,11 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 | Chain recovery and checkpoints | **PARTIAL** | Atomic `chain.checkpoint`, repair counts and fail-closed paths exist; power-loss and real disk-failure scenarios are NOT VERIFIED. |
 | Peer diagnostics and block-sync counters | **PARTIAL** | Counters split deadline expiry from cooldown reassignment; long-run single-peer recovery is NOT VERIFIED. |
 
-## In progress at snapshot time
+## Completed after the initial snapshot
 
-| Item | Status | Notes |
-|---|---|---|
-| Live Floonet run on candidate `4039086C…` | **IN PROGRESS** | Started 2026-11-05 23:33, restarted 23:52; PIBD `4998/4998`, state validation and KernelIndex rebuild completed; the node caught up to network height `3 324 505` during 00:48–00:50. Transient `Output Commitment … not found` and block-deadline events were retried; `bans=0`. Final PASS is pending `fully_synced`, graceful stop and index check confirmed by the Lead. This is **not** a PASS yet. |
-| Clean-copy rebuild of the repository | **IN PROGRESS** | Build/test verification from a clean clone is performed by the release workstream. CI workflow is prepared, not executed on GitHub Actions. |
+The live candidate run and the clean-copy rebuild finished after the first
+documentation snapshot. Their results are recorded in the verified table above;
+no claim from them is transferred to another binary.
 
 ## Not verified
 
@@ -87,6 +88,8 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 - **Real storage failure:** real RocksDB write/commit failure, post-commit failure, disk-full.
 - **Public reorg:** only synthetic unit/integration reorg scenarios.
 - **Live adversarial PIBD peers:** wrong segments, false-ban behaviour at the P2P layer.
+- **Automatic range-proof workers:** the candidate live run used the default single worker; `auto` was not exercised on a full live state.
+- **FastInit:** not exercised in the candidate live run (no `header_checkpoint_*` events); still experimental.
 - **Wallet and UI:** see below.
 - **Linux/macOS runtime:** source-compatible, not verified in this fork.
 - **Long-duration stability:** multi-day operation and stage-by-stage restart matrix.

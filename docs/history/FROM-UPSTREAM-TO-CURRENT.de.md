@@ -27,8 +27,8 @@ offen bleibt. Kanonisch ist Englisch:
 ### Rekonstruierte Commit-Gruppen
 
 Der Tag `node-beta.1-candidate` ist ein annotierter Tag (Objekt
-`fc5174ec7a3499ec16d14decc88737be691a347a`) auf dem Commit
-`ccc4f356c5f46bd693f1965581c7307d4563d8c9`. Die kurzen SHAs unten sind die
+`317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) auf dem Commit
+`7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`. Die kurzen SHAs unten sind die
 rekonstruierte Serie; wird der Tag vor der Veröffentlichung verschoben, lesen Sie
 `git log v1.2.9..node-beta.1-candidate` neu und aktualisieren Sie die Tabelle in
 derselben Änderung.
@@ -46,8 +46,8 @@ derselben Änderung.
 | I | Rust-kompatible REST-/Owner-API, Zugriffskontrolle und Status | `b6b39413` |
 | J | Experimenteller Opt-in-FastInit-Header-Checkpoint | `67ed50d3` |
 | K | Wallet-Node-Client, SQLite-Store und Lifecycle-Fixes | `9c289387` |
-| L | Drittanbieter-Hinweise, Abhängigkeitslizenzen, Omitted-Tools | `63550938` |
-| M | Integration: PIBD, KernelIndex und FastInit in den Sync-Pfaden | `ccc4f356` |
+| L | Drittanbieter-Hinweise, Abhängigkeitslizenzen, Omitted-Tools | `0f3e3e65` |
+| M | Integration: PIBD, KernelIndex und FastInit in den Sync-Pfaden | `7efdb02e` |
 
 ## Statusvokabular
 
@@ -136,10 +136,15 @@ VERIFIED** — keine qualifizierende Evidenz; **PLANNED** — nur Entwurf;
   `src/P2P/Pipeline/TxHashSetPipe.*`.
 - **Tests/Ergebnisse.** Synthetische Archivinstallation + Index + Neustart: 25
   Assertions PASS. Auf dem früheren kombinierten Build lud ein Live-Floonet-Lauf
-  `4998/4998` Segmente, validierte den Zustand und erreichte `fully_synced`; der
-  Kandidaten-Lauf validierte zum Stand noch. Der versteckte `FullSweepPpCkpt`-Test
-  kann mit leerer Fixture-Warnung bestehen — kein Beweis für einen gefüllten
-  Sweep.
+  `4998/4998` Segmente, validierte den Zustand und erreichte `fully_synced`. Beim
+  Kandidaten selbst begann ein frischer isolierter Floonet-Lauf PIBD bei
+  `3 321 360`, verifizierte `2 948 812/2 948 812` Range Proofs in `1 215 538 ms`
+  mit 1 Worker, validierte das TxHashSet, baute KernelIndex-Generation 2
+  (`3 357 330` Kernels), holte auf, startete um 00:53 mit
+  `kernel_index_check result=current` ohne Rebuild neu und erreichte
+  `FULLY_SYNCED` bei `3 324 513` vor dem geordneten Stoppen. Der versteckte
+  `FullSweepPpCkpt`-Test kann mit leerer Fixture-Warnung bestehen — kein Beweis
+  für einen gefüllten Sweep.
 - **Kompatibilität/Performance/Daten.** PIBD schreibt dasselbe On-Disk-Layout wie
   ZIP; Staging-/Aktivierungsverzeichnisse sind neu. Validierung dominiert den
   Erst-Sync (~1987 s im Messlauf, größtenteils Range Proofs).

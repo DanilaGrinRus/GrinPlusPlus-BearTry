@@ -40,7 +40,10 @@ transfer a result to another binary or commit.
 | [`files/build-final.log`](files/build-final.log) | Candidate Release build result (`GrinNode`/`Tests`) | `64644CDD401DABEB3C39EF986684A5DAB321C98E83719D027B473A16D8320178` |
 | [`files/configure.log`](files/configure.log) | CMake configure parameters and toolchain | `243CAB979AF339309260C5BA599B761BEE28DC1D1151FBF96A8476D81D7A3038` |
 | [`files/combined-live-floonet-2026-11-05.md`](files/combined-live-floonet-2026-11-05.md) | Sanitized live Floonet run on the earlier combined build | extracted from `3734E46E73E204F96996FBAA456DDA4D9FB69BE291D056C62CDCE3EC494AE08B` |
+| [`files/candidate-live-floonet-2026-11-05.md`](files/candidate-live-floonet-2026-11-05.md) | Scoped PASS of the live Floonet run on the candidate | `7DF875EE763C8B1483C45DD8CF1D5F4642A420AAC6295C838ABABBF3285AF2CD` |
+| [`files/candidate-live-node-log-excerpt-2026-11-05.log`](files/candidate-live-node-log-excerpt-2026-11-05.log) | Sanitized log excerpt of the candidate live run | original `Node.log`: `A1145D0FF79ACE243E49B423D1983BF66FD75DAB59A7EBC6F8C261BFE0FB5F99` |
 | [`files/candidate-source-manifest-final.sha256`](files/candidate-source-manifest-final.sha256) | Final source file list + hashes (1528 lines) | `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |
+| [`SANITIZATION_TABLE.md`](SANITIZATION_TABLE.md) | Redaction table for the public evidence copies | — |
 | [`ORIGINALS.md`](ORIGINALS.md) | Original local paths, sizes, hashes and redaction notes | — |
 
 ## Claims
@@ -55,16 +58,17 @@ transfer a result to another binary or commit.
 | E-04 | Forced-kill recovery of the NRD index | **PASS** | [`files/nrd-kill-manifest.json`](files/nrd-kill-manifest.json), [`files/nrd-kill-recovery.stdout.log`](files/nrd-kill-recovery.stdout.log) | Child killed ~300 ms after a state marker; recovery `RebuildKillRecovery` = 241 assertions, exit 0 | Fault-injected kill, not power loss; NRD index is in-memory and rebuilt from headers+kernel MMR |
 | E-05 | Candidate source identity | **PASS** | [`files/candidate-source-manifest-final.sha256`](files/candidate-source-manifest-final.sha256) | 1528 files, SHA-256 `964B2DD8…` | Supersedes the stale `source-manifest.sha256`; see [ORIGINALS.md](ORIGINALS.md) |
 | E-06 | Configure parameters match the documented build | **PASS** | [`files/configure.log`](files/configure.log) | `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DGRINPP_TESTS=ON -DGRINPP_TOOLS=OFF` | Sysroot supplied prebuilt; Windows/MSVC only |
-| E-06b | Candidate Release build used for the tests | **PASS (local)** | [`files/build-final.log`](files/build-final.log) | MSBuild Release x64 `/W4 /WX`, `GrinNode` + `Tests` | Clean-clone rebuild was still in progress; hosted CI was not run |
+| E-06b | Candidate Release build used for the tests | **PASS (local)** | [`files/build-final.log`](files/build-final.log) | MSBuild Release x64 `/W4 /WX`, `GrinNode` + `Tests` | Candidate build; the hosted CI was not run |
+| E-06c | Clean-copy rebuild reproduces the build and tests | **PASS (not bit-reproducible)** | release verification report (local) | Clean clone, Release x64, full suite 373/4982; clean binaries `GrinNode 73F35D64…`, `Tests 7DE498F5…` | Not bit-identical to the candidate (PE timestamps/source path); identical source, toolchain, imports and tests; hosted CI not run |
 
 ### Sync and live network
 
 | ID | Claim | Status | Evidence | Scenario | Limitations |
 |---|---|---|---|---|---|
 | E-07 | Live Floonet sync from zero to `fully_synced` on combined build `16C24DB4…` | **PASS (scoped to that binary)** | [`files/combined-live-floonet-2026-11-05.md`](files/combined-live-floonet-2026-11-05.md) | Fresh isolated profile, 10 connections (9 PIBD-capable peers), headers `0 → 3 324 027`, PIBD `4998/4998`, validation ~`1987 s`, index generation 2 `3 356 610` kernels, catch-up `3 324 064`, restarts current, final `3 324 082` | This is **not** the candidate binary. Peer addresses redacted. No Mainnet. |
-| E-08 | Live Floonet run on candidate `4039086C…` | **IN PROGRESS / NOT VERIFIED** | No completed public artifact yet | Started 2026-11-05 23:33, restarted 23:52; PIBD `4998/4998`, validation and KernelIndex rebuild done; caught up to network height `3 324 505` at 00:48–00:50; transient `Output Commitment`/deadline events were retried, `bans=0` | Must become PASS only after the Lead confirms `fully_synced` + graceful stop + index check; bind evidence to this binary |
+| E-08 | Live Floonet sync and restart on candidate `4039086C…` | **PASS (scoped to that binary)** | [`files/candidate-live-floonet-2026-11-05.md`](files/candidate-live-floonet-2026-11-05.md), [`files/candidate-live-node-log-excerpt-2026-11-05.log`](files/candidate-live-node-log-excerpt-2026-11-05.log) | Fresh isolated profile, 10 peers, PIBD from `3 321 360`; `2 948 812/2 948 812` proofs in `1 215 538 ms` (1 worker); TxHashSet validated 00:44:15; KernelIndex generation 2 `3 357 330` kernels; PIBD sync complete 00:46:40; graceful restart 00:53:13→00:53:21 with `kernel_index_check result=current` (indexed `3 324 510`, `3 360 496` kernels) and no rebuild; `FULLY_SYNCED` at `3 324 513`; graceful stop; `bans=0` | Scoped to this Floonet scenario and binary; Mainnet, adversarial peers, power loss, reorg, multi-day, `auto` workers and FastInit are NOT VERIFIED; transient `Output Commitment`/deadline events were retried, cause not established |
 | E-09 | Mainnet synchronisation | **NOT VERIFIED** | — | — | No Mainnet run exists for the candidate; Floonet ≠ Mainnet |
-| E-10 | Restart behaviour across sync stages | **PARTIAL** | E-07 (restart after sync) and local reports | Restart after complete sync on the combined build | Restart during PIBD download/validation and a stage matrix are NOT VERIFIED |
+| E-10 | Restart behaviour across sync stages | **PARTIAL / PASS (scoped)** | E-08 (candidate restart with current index), E-07 | Restart after complete sync on the candidate and earlier combined build | Restart during PIBD download/validation and a stage matrix are NOT VERIFIED |
 
 ### KernelIndex and recovery
 
@@ -72,7 +76,7 @@ transfer a result to another binary or commit.
 |---|---|---|---|---|---|
 | E-11 | KernelIndex orphan regression and write-fault behaviour | **PASS** | [`files/target-final.json`](files/target-final.json); local KernelIndex report | Orphan 17 assertions; fault injection 81 assertions | Proxy boundary around real index transaction, not real RocksDB failure |
 | E-12 | KernelIndex after TxHashSet install + clean restart | **PASS** | [`files/target-final.json`](files/target-final.json); local report | Synthetic archive install through `ProcessTransactionHashSet`, 25 assertions | Archive install, not live network PIBD |
-| E-13 | Index current at the tip after a live run | **PASS (scoped)** | E-07 | Generation 2, `3 356 610` kernels, no rebuild on restart | Combined build, not candidate |
+| E-13 | Index current at the tip after a live run | **PASS (scoped)** | E-08, E-07 | Candidate: generation 2, `3 360 496` kernels at restart, `result=current`, no rebuild. Combined build: generation 2, `3 356 610` kernels | Scoped to the two tested binaries; real RocksDB failure/power loss NOT VERIFIED |
 | E-14 | Real RocksDB failure / power loss | **NOT VERIFIED** | — | — | Kill harness ≠ power loss |
 | E-15 | Chunked rebuild memory reduction | **PLANNED** | local KernelIndex report | Estimate ~2.0–2.5 GB vs measured `5 715 MB` peak | Not implemented |
 
@@ -80,7 +84,7 @@ transfer a result to another binary or commit.
 
 | ID | Claim | Status | Evidence | Scenario | Limitations |
 |---|---|---|---|---|---|
-| E-16 | Parallel range-proof validation exists; default is 1 worker | **PARTIAL** | local G-49 / auto-worker reports | Unit + synthetic 10 001-proof benchmark; historical full-state 2/4-worker runs | Full-state 1/2/3/4/auto benchmark OPEN; `auto` is opt-in |
+| E-16 | Parallel range-proof validation exists; default is 1 worker | **PARTIAL** | candidate evidence (E-08); local G-49 / auto-worker reports | Candidate live run: `2 948 812` proofs in `1 215 538 ms` with 1 worker; synthetic 10 001-proof benchmark; historical full-state 2/4-worker runs | Full-state 1/2/3/4/auto benchmark OPEN; `auto` did not run on the candidate live state |
 | E-17 | Windows Job Object memory accounting and worker policy | **PASS** | local auto-worker report | Focused tests 41 assertions | Host-specific; thresholds not proven for all machines |
 | E-18 | Multi-peer PIBD scheduler policy | **PASS** | [`files/target-final.json`](files/target-final.json) | `PibdScheduler*`: 68 assertions / 9 cases | Deterministic policy only; live adversarial peers NOT VERIFIED |
 
@@ -124,7 +128,7 @@ public tree. Their identity and original SHA-256 are in
 | `work/merged-final-20261105/logs/nrd-kill-evidence/…` | NRD kill/recovery (public sanitized copies exist) |
 | `work/node-wallet-api-unified-20261104/…` | API HTTP check artifacts (27 checks) on intermediate candidates |
 | `work/merged-final-20261105/build-final.log`, `configure.log` | Candidate build configuration and result |
-| `work/merged-final-20261105/runs/live-merged/` | Candidate live run profile and logs (IN PROGRESS; not published) |
+| `work/merged-final-20261105/runs/live-merged/` | Candidate live run profile and logs (sanitized excerpt published; raw profile stays local) |
 
 ## Provenance notes
 

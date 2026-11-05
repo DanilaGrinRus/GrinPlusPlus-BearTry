@@ -76,11 +76,11 @@ results to the commit `node-beta.1-candidate` and to the executable hashes in
 ### Known limitations
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and [docs/STATUS.md](docs/STATUS.md).
-Highlights: Mainnet NOT TESTED; the live run on the final candidate is IN
-PROGRESS; four Rust owner chain-control methods are NOT IMPLEMENTED; full API
-parity and restart-at-each-stage are NOT VERIFIED; real RocksDB failure and
-power loss are NOT VERIFIED; FastInit is EXPERIMENTAL; wallet/UI are not part of
-this release.
+Highlights: Mainnet NOT TESTED; the candidate Floonet live run is a **PASS
+scoped** to the documented scenario (Mainnet unaffected); four Rust owner
+chain-control methods are NOT IMPLEMENTED; full API parity and
+restart-at-each-stage are NOT VERIFIED; real RocksDB failure and power loss are
+NOT VERIFIED; FastInit is EXPERIMENTAL; wallet/UI are not part of this release.
 
 ---
 
