@@ -29,13 +29,20 @@ Instead of inventing a plausible history, the fork does the following:
 - The **content** of the final commit is verified: the tree must match the
   candidate source manifest (`964B2DD8…`, 1528 files, excluding documented
   omissions such as build outputs, profiles and local audit dumps). The
-  verification report records: 1386 files checked, 1384 identical after
-  CR-normalisation, 2 intentional differences (`.gitignore`,
-  `OMITTED_LOCAL_TOOLS.md`), 0 content differences and 0 missing files —
-  **PASS**.
+  verification report records: 1386 files checked, 1383 identical after
+  CR-normalisation, 3 intentional differences (`.gitignore`,
+  `OMITTED_LOCAL_TOOLS.md`, `tools/audit/nrd/README.md`), 0 content differences
+  and 0 missing files — **PASS**.
 - The tag `node-beta.1-candidate` is an annotated tag (object
-  `317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) whose tagged commit is
-  `7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`.
+  `fc5174ec7a3499ec16d14decc88737be691a347a`) whose tagged commit is
+  `ccc4f356c5f46bd693f1965581c7307d4563d8c9`.
+- Private absolute paths that had leaked into the first publication of the
+  omitted-tools note and the audit README were removed by a metadata-preserving
+  rewrite of the reconstructed range `v1.2.9..HEAD` (same messages, authors and
+  committer dates; only those two blobs changed). The annotated tag was then
+  recreated on the rewritten tag commit. No commit in the range contains the
+  private paths; see `reports/scripts/rewrite_paths.py` in the preparation
+  workspace.
 - The **ordering** is logical, not chronological. A file touched by several
   workstreams is assigned to the earliest group that needs it; later groups
   build on it.
@@ -72,14 +79,18 @@ risk is in
 Publishing the fork added commits on top of the tagged candidate. They do not
 change the candidate source tree verified against the manifest:
 
-- `33d89265` and `b7223ede` — remove private absolute paths from audit/tooling
-  text;
-- `94a90aa1` — history reconstruction note (this file's first version);
-- `2aea52aa` — replace the legacy upstream CI workflow with a Windows
+- `10e9672c` and `a0776081` — publication-hygiene wording for the omitted-tools
+  note and the audit README (the private paths themselves were already removed
+  by the path-sanitizing rewrite described above);
+- `4f267cb7` — history reconstruction note (this file's first version);
+- `2e2c2b95` — replace the legacy upstream CI workflow with a Windows
   static-sysroot build; **prepared, not executed on GitHub Actions**;
-- `15e231b9` — portable dependency sysroot helper (`tools/deps/build_sysroot.py`,
+- `46d2b993` — portable dependency sysroot helper (`tools/deps/build_sysroot.py`,
   pinned refs); reviewed and dry-run, **end-to-end rebuild NOT VERIFIED**;
-- `8d5e9842` — public documentation (this documentation set).
+- `4c03f482` — public documentation (this documentation set);
+- `2345ec77` — publish sanitized verification evidence logs and refresh API notes;
+- `20252553` — refresh candidate-live status notes;
+- `32bf22f6` — align the status label with the Lead's explicit wording.
 
 Read `git log --oneline node-beta.1-candidate..main` for the exact current list.
 

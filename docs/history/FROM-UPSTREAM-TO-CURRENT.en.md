@@ -27,8 +27,8 @@ versions are published as `.ru.md` and `.de.md`.
 ### Reconstructed commit groups
 
 Tag `node-beta.1-candidate` is an annotated tag (object
-`317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) whose tagged commit is
-`7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`. The short SHAs below are the
+`fc5174ec7a3499ec16d14decc88737be691a347a`) whose tagged commit is
+`ccc4f356c5f46bd693f1965581c7307d4563d8c9`. The short SHAs below are the
 reconstructed commit series; if the tag is moved before publication, re-read
 `git log v1.2.9..node-beta.1-candidate` and update this table in the same change.
 
@@ -45,8 +45,8 @@ reconstructed commit series; if the tag is moved before publication, re-read
 | I | Rust-compatible node REST/owner API, access control and status schema | `b6b39413` |
 | J | FastInit experimental opt-in header state checkpoint | `67ed50d3` |
 | K | Wallet node client, SQLite store and lifecycle fixes | `9c289387` |
-| L | Third-party notices, dependency licenses and omitted-tools note | `0f3e3e65` |
-| M | Integration: wire PIBD, KernelIndex and FastInit into the sync paths | `7efdb02e` |
+| L | Third-party notices, dependency licenses and omitted-tools note | `63550938` |
+| M | Integration: wire PIBD, KernelIndex and FastInit into the sync paths | `ccc4f356` |
 
 ## Status vocabulary
 

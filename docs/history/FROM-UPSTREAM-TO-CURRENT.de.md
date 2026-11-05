@@ -27,8 +27,8 @@ offen bleibt. Kanonisch ist Englisch:
 ### Rekonstruierte Commit-Gruppen
 
 Der Tag `node-beta.1-candidate` ist ein annotierter Tag (Objekt
-`317d143d2fc0d8b7ca8a7190521bca3e2f211a38`) auf dem Commit
-`7efdb02e2a4d714d406b88b5610cb6e1c9d2bf59`. Die kurzen SHAs unten sind die
+`fc5174ec7a3499ec16d14decc88737be691a347a`) auf dem Commit
+`ccc4f356c5f46bd693f1965581c7307d4563d8c9`. Die kurzen SHAs unten sind die
 rekonstruierte Serie; wird der Tag vor der Veröffentlichung verschoben, lesen Sie
 `git log v1.2.9..node-beta.1-candidate` neu und aktualisieren Sie die Tabelle in
 derselben Änderung.
@@ -46,8 +46,8 @@ derselben Änderung.
 | I | Rust-kompatible REST-/Owner-API, Zugriffskontrolle und Status | `b6b39413` |
 | J | Experimenteller Opt-in-FastInit-Header-Checkpoint | `67ed50d3` |
 | K | Wallet-Node-Client, SQLite-Store und Lifecycle-Fixes | `9c289387` |
-| L | Drittanbieter-Hinweise, Abhängigkeitslizenzen, Omitted-Tools | `0f3e3e65` |
-| M | Integration: PIBD, KernelIndex und FastInit in den Sync-Pfaden | `7efdb02e` |
+| L | Drittanbieter-Hinweise, Abhängigkeitslizenzen, Omitted-Tools | `63550938` |
+| M | Integration: PIBD, KernelIndex und FastInit in den Sync-Pfaden | `ccc4f356` |
 
 ## Statusvokabular
 
