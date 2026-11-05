@@ -3,6 +3,7 @@
 #include <Core/Models/BlockHeader.h>
 #include <Core/Models/SpentOutput.h>
 #include <Core/Traits/Batchable.h>
+#include <Database/KernelIndexState.h>
 #include <unordered_map>
 #include <memory>
 
@@ -65,4 +66,33 @@ public:
 	virtual void AddSpentPositions(const Hash& blockHash, const std::vector<SpentOutput>& outputPositions) = 0;
 	virtual std::unordered_map<Commitment, OutputLocation> GetSpentPositions(const Hash& blockHash) const = 0;
 	virtual void ClearSpentPositions() = 0;
+
+	// Persistent kernel excess -> PMMR position index.
+	virtual std::unique_ptr<KernelIndexState> GetKernelIndexState() const = 0;
+	virtual void SetKernelIndexState(const KernelIndexState& state) = 0;
+	virtual void AddKernelPosition(uint64_t generation, const Commitment& kernelExcess, const OutputLocation& location) = 0;
+	virtual std::unique_ptr<OutputLocation> GetKernelPosition(uint64_t generation, const Commitment& kernelExcess) const = 0;
+	// Removes one exact kernel position (excess + location). Excess-only removal
+	// is deliberately not exposed: with duplicate excesses it could delete a
+	// surviving earlier occurrence.
+	virtual void RemoveKernelPosition(uint64_t generation, const Commitment& kernelExcess, const OutputLocation& location) = 0;
+	virtual void ClearKernelPositions(uint64_t generation) = 0;
+	virtual void ClearAllKernelPositions() = 0;
+	// Removes every primary/secondary index entry at or above firstLeafIndex and
+	// returns {removedCount, XOR of the removed entry hashes}. Used by a verified
+	// reorg rewind; the default refuses (0 removed) so an alternate implementation
+	// cannot silently keep a stale index -- callers fall back to a full rebuild.
+	virtual std::pair<uint64_t, Hash> RemoveKernelPositionsFrom(uint64_t generation, uint64_t firstLeafIndex)
+	{
+		(void)generation;
+		(void)firstLeafIndex;
+		return { 0, Hash() };
+	}
+	virtual uint64_t GetKernelPositionCount(uint64_t generation) const = 0;
+	virtual Hash GetKernelPositionChecksum(uint64_t generation) const = 0;
+	// Default preserves compatibility with alternate database implementations.
+	virtual std::pair<uint64_t, Hash> GetKernelPositionDigest(uint64_t generation) const
+	{
+		return { GetKernelPositionCount(generation), GetKernelPositionChecksum(generation) };
+	}
 };

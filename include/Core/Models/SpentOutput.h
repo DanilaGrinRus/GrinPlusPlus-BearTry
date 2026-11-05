@@ -92,7 +92,13 @@ public:
 
 	static SpentOutputs Deserialize(ByteBuffer& byteBuffer)
 	{
-		assert(byteBuffer.ReadU8() == 0);
+		// Must consume the version byte in every build. The old assert(...) was
+		// compiled out under NDEBUG (Release), leaving the version byte in the
+		// stream and decoding every non-empty record as an empty vector.
+		const uint8_t version = byteBuffer.ReadU8();
+		if (version != 0) {
+			throw DESERIALIZATION_EXCEPTION_F("Unsupported SpentOutputs version {}", version);
+		}
 
 		const uint16_t numOutputs = byteBuffer.ReadU16();
 

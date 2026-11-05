@@ -117,15 +117,6 @@ public:
 	{
 		if (m_txHashSetWriter.IsNull())
 		{
-			//auto pTxHashSet = m_pTxHashSetManager->GetTxHashSet();
-			//if (pTxHashSet != nullptr)
-			//{
-			//	m_txHashSetWriter = pTxHashSet->BatchWrite();
-			//}
-			//else
-			//{
-			//	return nullptr;
-			//}
 			m_txHashSetWriter = m_pTxHashSetManager->BatchWrite();
 		}
 
@@ -136,15 +127,6 @@ public:
 	{
 		if (m_txHashSetWriter.IsNull())
 		{
-			//auto pTxHashSet = m_pTxHashSetManager->GetTxHashSet();
-			//if (pTxHashSet != nullptr)
-			//{
-			//	return pTxHashSet->Read();
-			//}
-			//else
-			//{
-			//	return Reader<ITxHashSet>::Create(nullptr, nullptr, false, false);
-			//}
 			return m_pTxHashSetManager->Read();
 		}
 
@@ -177,4 +159,6 @@ private:
 	Writer<IBlockDB> m_blockDBWriter;
 	Writer<IHeaderMMR> m_headerMMRWriter;
 	Writer<TxHashSetManager> m_txHashSetWriter;
+
+	uint64_t m_checkpointSequence = 0;
 };

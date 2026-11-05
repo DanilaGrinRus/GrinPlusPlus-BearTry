@@ -10,11 +10,14 @@
 #include <rocksdb/db.h>
 #include <rocksdb/slice.h>
 #include <rocksdb/options.h>
+#include <rocksdb/write_batch.h>
 #include <rocksdb/utilities/optimistic_transaction_db.h>
 #include <rocksdb/utilities/transaction.h>
 #include <filesystem.h>
 #include <cassert>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 class RocksDB : public Traits::IBatchable
@@ -92,6 +95,35 @@ public:
 	std::unique_ptr<T> Get(const std::string& tableName, const rocksdb::Slice& key, const EProtocolVersion protocol = EProtocolVersion::V1) const
 	{
 		return Get<T>(GetTable(tableName), key, protocol);
+	}
+
+	// Diagnostic-only raw read used by GRINPP_SPENT_DIAG. Returns nullopt when the
+	// key is absent; throws on any other RocksDB error. No default-path caller.
+	std::optional<std::string> GetRawValue(const std::string& tableName, const rocksdb::Slice& key) const
+	{
+		const RocksDBTable& table = GetTable(tableName);
+		std::string value;
+		rocksdb::Status status;
+		if (m_pTransaction != nullptr)
+		{
+			status = m_pTransaction->Get(rocksdb::ReadOptions(), table.GetHandle(), key, &value);
+		}
+		else
+		{
+			status = m_pTransactionDB->GetBaseDB()->Get(rocksdb::ReadOptions(), table.GetHandle(), key, &value);
+		}
+
+		if (status.IsNotFound())
+		{
+			return std::nullopt;
+		}
+
+		if (!status.ok())
+		{
+			throw DATABASE_EXCEPTION_F("Failed to read raw value from {}", tableName);
+		}
+
+		return value;
 	}
 
 	template<typename T,
@@ -226,6 +258,28 @@ public:
 		{
 			Delete(table, key);
 		}
+	}
+
+	// Keep compaction atomic when called without an outer transaction.
+	void DeleteBatch(const std::string& tableName, const std::vector<std::string>& keys)
+	{
+		if (keys.empty()) return;
+		const RocksDBTable& table = GetTable(tableName);
+		rocksdb::Status status;
+		if (m_pTransaction != nullptr) {
+			for (const std::string& key : keys) {
+				status = m_pTransaction->Delete(table.GetHandle(), rocksdb::Slice(key));
+				if (!status.ok()) throw DATABASE_EXCEPTION_F("Error staging delete in {}: {}", tableName, status.ToString());
+			}
+			return;
+		}
+		rocksdb::WriteBatch batch;
+		for (const std::string& key : keys) {
+			status = batch.Delete(table.GetHandle(), rocksdb::Slice(key));
+			if (!status.ok()) throw DATABASE_EXCEPTION_F("Error staging delete in {}: {}", tableName, status.ToString());
+		}
+		status = m_pTransactionDB->Write(rocksdb::WriteOptions(), &batch);
+		if (!status.ok()) throw DATABASE_EXCEPTION_F("Error applying delete batch in {}: {}", tableName, status.ToString());
 	}
 
 	void DeleteAll(const RocksDBTable& table)

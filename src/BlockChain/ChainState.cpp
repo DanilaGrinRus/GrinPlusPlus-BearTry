@@ -1,4 +1,7 @@
 #include "ChainState.h"
+#include "DbCheckpoint.h"
+#include <Common/Logger.h>
+#include <Core/File/FileSync.h>
 
 #include <Consensus.h>
 #include <Crypto/Crypto.h>
@@ -22,7 +25,10 @@ ChainState::ChainState(
 	m_pTxHashSetManager(pTxHashSetManager),
 	m_pOrphanPool(std::make_shared<OrphanPool>())
 {
-
+	DbCheckpointData checkpoint;
+	if (DbCheckpoint::Read(config.GetChainPath() / "chain.checkpoint", checkpoint)) {
+		m_checkpointSequence = checkpoint.Sequence;
+	}
 }
 
 ChainState::~ChainState()
@@ -46,7 +52,7 @@ std::shared_ptr<Locked<ChainState>> ChainState::Create(
 {
 	std::shared_ptr<const Chain> pCandidateChain = pChainStore->Read()->GetCandidateChain();
 	const uint64_t candidateHeight = pCandidateChain->GetTip()->GetHeight();
-	if (candidateHeight == 0)
+	if (candidateHeight == 0 && pDatabase->Read()->GetBlockHeader(genesisBlock.GetHash()) == nullptr)
 	{
 		auto locked = MultiLocker().Lock(*pDatabase, *pHeaderMMR);
 		std::get<0>(locked)->AddBlockHeader(genesisBlock.GetHeader());
@@ -76,6 +82,16 @@ void ChainState::UpdateSyncStatus(SyncStatus& syncStatus) const
 	{
 		syncStatus.UpdateHeaderStatus(pCandidateHead->GetHeight(), pCandidateHead->GetTotalDifficulty());
 	}
+	else
+	{
+		// The chain store can know the tip before its header is readable from the
+		// block DB (e.g. immediately after a PIBD flush). Do not leave Ping at 0.
+		// BlockChain::UpdateSyncStatus holds a ChainState read lease across this
+		// call, so both lookups observe the same chain tip (one read transaction).
+		syncStatus.UpdateHeaderStatus(
+			GetHeight(EChainType::CANDIDATE),
+			GetTotalDifficulty(EChainType::CANDIDATE));
+	}
 
 	const Hash& confirmedHeadHash = GetChainStore()->GetChain(EChainType::CONFIRMED)->GetTipHash();
 	auto pConfirmedHead = GetBlockDB()->GetBlockHeader(confirmedHeadHash);
@@ -86,6 +102,13 @@ void ChainState::UpdateSyncStatus(SyncStatus& syncStatus) const
 			pConfirmedHead->GetTotalDifficulty(),
 			pConfirmedHead->GetTimestamp()
 		);
+	}
+	else
+	{
+		syncStatus.UpdateBlockStatus(
+			GetHeight(EChainType::CONFIRMED),
+			GetTotalDifficulty(EChainType::CONFIRMED),
+			0);
 	}
 }
 
@@ -197,6 +220,7 @@ std::unique_ptr<BlockWithOutputs> ChainState::GetBlockWithOutputs(const uint64_t
 std::vector<std::pair<uint64_t, Hash>> ChainState::GetBlocksNeeded(const uint64_t maxNumBlocks) const
 {
     std::vector<std::pair<uint64_t, Hash>> blocksNeeded;
+    if (maxNumBlocks == 0) return blocksNeeded;
     blocksNeeded.reserve(maxNumBlocks);
 
     std::shared_ptr<const Chain> pCandidateChain = GetChainStore()->GetCandidateChain();
@@ -239,6 +263,38 @@ void ChainState::Commit()
 	if (!m_txHashSetWriter.IsNull())
 	{
 		m_txHashSetWriter->Commit();
+	}
+
+	// All stores above are durable now; publish one checkpoint that describes
+	// this exact state. It is the only cross-store commit point: on load every
+	// store is truncated to it (G-48).
+	if (!m_chainStoreWriter.IsNull() && !m_headerMMRWriter.IsNull())
+	{
+		// Make the writes durable before the checkpoint is renamed into place.
+		// A failed flush must not be followed by a checkpoint that claims the
+		// data is durable; leave the previous checkpoint in place.
+		const fs::path chainPath = m_config.GetChainPath();
+		if (!FileSync::Flush(chainPath / "header_mmr.bin") ||
+			!FileSync::Flush(chainPath / "candidate.chain") ||
+			!FileSync::Flush(chainPath / "confirmed.chain")) {
+			throw std::runtime_error("Failed to flush chain stores before publishing the DB checkpoint");
+		}
+		DbCheckpointData checkpoint;
+		checkpoint.Sequence = ++m_checkpointSequence;
+		const uint64_t candidateEntries =
+			m_chainStoreWriter.GetShared()->GetCandidateChain()->GetHeight() + 1;
+		checkpoint.CandidateEntries = candidateEntries;
+		// After a successful commit the header MMR has exactly one leaf per
+		// candidate entry. Querying the MMR here would take the base file's read
+		// lock while the batch writer still holds the write lock (self-deadlock),
+		// so the invariant is recorded directly.
+		checkpoint.MmrLeaves = candidateEntries;
+		checkpoint.ConfirmedEntries =
+			m_chainStoreWriter.GetShared()->GetConfirmedChain()->GetHeight() + 1;
+
+		if (!DbCheckpoint::Write(m_config.GetChainPath() / "chain.checkpoint", checkpoint)) {
+			throw std::runtime_error("Failed to publish the DB checkpoint");
+		}
 	}
 }
 

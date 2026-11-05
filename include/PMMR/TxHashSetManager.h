@@ -18,14 +18,18 @@ public:
 	TxHashSetManager(const Config& config);
 	~TxHashSetManager() = default;
 
-	std::shared_ptr<ITxHashSet> Open(const BlockHeaderPtr& pConfirmedTip);
+	std::shared_ptr<ITxHashSet> Open(const BlockHeaderPtr& pConfirmedTip, bool recover = true);
 	void Close() { m_pTxHashSet.reset(); }
 
 	std::shared_ptr<ITxHashSet> GetTxHashSet() { return m_pTxHashSet; }
 	std::shared_ptr<const ITxHashSet> GetTxHashSet() const { return m_pTxHashSet; }
 	void SetTxHashSet(ITxHashSetPtr pTxHashSet) { m_pTxHashSet = pTxHashSet; }
 
-	static ITxHashSetPtr LoadFromZip(const Config& config, const fs::path& zipFilePath, BlockHeaderPtr pHeader);
+	static ITxHashSetPtr LoadFromZip(
+		const Config& config,
+		const fs::path& zipFilePath,
+		BlockHeaderPtr pHeader,
+		const fs::path& targetRoot = fs::path());
 	fs::path SaveSnapshot(std::shared_ptr<IBlockDB> pBlockDB, BlockHeaderPtr pHeader) const;
 
 	void Commit() final

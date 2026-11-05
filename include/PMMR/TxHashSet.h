@@ -1,10 +1,13 @@
 #pragma once
 
 #include <string>
+#include <optional>
+#include <utility>
 #include <Core/Models/BlockSums.h>
 #include <Core/Models/BlockHeader.h>
 #include <Core/Models/OutputLocation.h>
 #include <Core/Models/DTOs/OutputRange.h>
+#include <Core/Models/TransactionKernel.h>
 #include <Core/Models/TxHashSetRoots.h>
 #include <Core/Traits/Batchable.h>
 #include <BlockChain/Chain.h>
@@ -120,7 +123,24 @@ public:
 	//
 	// Get Output by OutputLocation
 	//
+	virtual uint64_t GetNumKernels() const = 0;
+	// Rebuild the in-memory NRD recent-kernel index (last 2 weeks) from block history.
+	virtual void RebuildRecentKernelIndex(
+		const std::shared_ptr<const IBlockDB>& pBlockDB,
+		const BlockHeader& tip) = 0;
+	virtual std::unique_ptr<TransactionKernel> GetKernelByLeafIndex(const uint64_t leafIndex) const = 0;
+
 	virtual OutputDTO GetOutput(const OutputLocation& location) const = 0;
+
+	//
+	// Find a kernel by excess commitment within the optional 1-based kernel MMR
+	// index range [minIndex, maxIndex]. Returns the kernel and its MMR index.
+	//
+	virtual std::optional<std::pair<TransactionKernel, uint64_t>> FindKernelByExcess(
+		const Commitment& excess,
+		const std::optional<uint64_t>& minIndex,
+		const std::optional<uint64_t>& maxIndex
+	) const = 0;
 
 	virtual BlockHeaderPtr GetFlushedBlockHeader() const noexcept = 0;
 
