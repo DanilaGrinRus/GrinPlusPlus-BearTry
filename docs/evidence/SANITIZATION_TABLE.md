@@ -10,3 +10,5 @@
 | nrd-kill-manifest.json | `6e3f5feac79daf78d627a79c222d11acb0469d8d19d2a5ad97b508be1b5ad6cf` | `ee9d53183172df921af6538bf5367af3354e073cd048ce3da906133cd343d636` | {'<candidate-source>': 1, '<work-root>': 2} |
 | nrd-kill-child.stdout.log | `fd06037b327cf50c6383bfd837a919f6430c691a660f9233126cd09a62e23725` | `ffc3acecff1f172778ae1b213c22848b40c10e187e105f208b4bd5b8970b145b` | {} |
 | nrd-kill-recovery.stdout.log | `eaf152d52cfd61a90198f7eaf35abbcf6aec53cf49537a8fc65a3713a21c1fc0` | `c22f1ccea0c926af1ec2556161c6d7a549fb7f16ab95c6d01cc0cbc4bae2849f` | {} |
+| candidate-live-floonet-2026-11-05.md | curated from Node.log + run metadata (see ORIGINALS.md) | `7df875ee763c8b1483c45dd8cf1d5f4642a420aac6295c838ababbf3285af2cd` | absolute paths and peer IPv4s removed; no values changed |
+| candidate-live-node-log-excerpt-2026-11-05.log | `a1145d0ff79ace243e49b423d1983bf66fd75dab59a7ebc6f8c261bfe0fb5f99` (original Node.log, 85,813 B) | `84dfea615ff3aeba2b90ef6456f98b62fe9b15a45fc1eff6b3109d954beb6826` | absolute workspace paths and peer IPv4s replaced; 36 selected log lines |
