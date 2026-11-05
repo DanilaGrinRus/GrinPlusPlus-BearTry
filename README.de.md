@@ -3,8 +3,8 @@
 Dieses Repository ist ein **unabhängiger** Community-Fork von
 [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus). Es ist **kein**
 offizieller Release des Upstream-Projekts und wird nicht vom Upstream-Team
-betreut. Der Fork konzentriert sich zuerst auf das **Node-Modul** (GrinNode);
-Wallet und UI gehören **nicht** zur Node-Beta-Abnahme.
+betreut. Der Fork entwickelt das **Grin++-Node-Modul und seine HTTP/RPC-API**; Wallet und UI gehören
+**nicht zum Release- oder Abnahmeumfang** und werden nicht zur Nutzung empfohlen.
 
 | | |
 |---|---|
@@ -24,13 +24,13 @@ Der vollständige, evidenzbasierte Status steht in
 
 | Bereich | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat baut, besteht die vollständige Testsuite und schloss einen Live-Floonet-Sync (`PIBD 4999/4999` Segmente, dann Prüfung, Index-Rebuild und Aufholen) bis `FULLY_SYNCED` mit aktuellem Index nach dem Neustart ab (**PASS, begrenzt**; siehe [docs/STATUS.de.md](docs/STATUS.de.md)). |
+| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat `GrinNode.exe` `4039086C…` baut, besteht die vollständige Testsuite und schloss einen Live-Floonet-Sync (`PIBD 4999/4999` Segmente, dann Prüfung, Index-Rebuild und Aufholen) bis `FULLY_SYNCED` mit aktuellem Index nach dem Neustart ab (**PASS, begrenzt**; siehe [docs/STATUS.de.md](docs/STATUS.de.md)). |
 | Sauberer Neu-Build | **PASS** — sauberer Klon baut und besteht dieselbe Suite; nicht bitgleich zum Kandidaten (Build-Metadaten) |
 | Mainnet | **NICHT GETESTET** |
-| Node-HTTP/RPC-API | **TEILWEISE** — registrierte Methoden funktionieren lokal, vollständige Rust-Parität wird nicht behauptet |
-| Wallet | **NICHT BEREIT** — aus Upstream enthalten, mit einigen Korrekturen, für dieses Release nicht abgenommen |
+| Node-HTTP/RPC-API | **TEILWEISE** — 13 Foreign- und 5 Owner-Methoden registriert; `validate_chain`, `compact_chain`, `reset_chain_head`, `invalidate_header` sind **NICHT IMPLEMENTIERT**; volle Rust-Parität wird nicht behauptet |
+| Wallet | **NICHT BEREIT / NICHT EMPFOHLEN** — Upstream-Wallet-Code ist nur zur Abstammung und Build-Kompatibilität im Quellbaum; er gehört nicht zum Node-Beta-Release/Abnahme und es gab keine Live-Wallet-Prüfung |
 | UI | Nicht in diesem Repository; **NICHT BEREIT** |
-| FastInit Header-Checkpoint | **EXPERIMENTELL**, nur Opt-in |
+| FastInit Header-Checkpoint | **EXPERIMENTELL**, nur Opt-in; im Live-Lauf des Kandidaten nicht geprüft |
 | PIHD (Header-Sync-Erweiterung) | **GEPLANT / EXPERIMENTELL**, standardmäßig aus |
 | Multi-Peer-PIBD-Scheduler | Implementiert und deterministisch getestet; Live-Multi-Peer-PIBD im kombinierten Lauf verifiziert |
 | Automatische Range-Proof-Worker | Opt-in (`GRINPP_RANGEPROOF_WORKERS=auto`); Standard bleibt 1 |

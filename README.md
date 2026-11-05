@@ -2,8 +2,8 @@
 
 This repository is an **independent fork** of [GrinPlusPlus](https://github.com/GrinPlusPlus/GrinPlusPlus).
 It is a community fork, **not** an official release of the upstream project, and is not
-maintained by the upstream team. The fork is focused on the **node module first** (GrinNode);
-the wallet and UI are **not** part of the Node Beta acceptance.
+maintained by the upstream team. The fork develops the **Grin++ node module and its HTTP/RPC API**; the wallet and UI are
+**not part of the release or acceptance scope** and are not recommended for use.
 
 | | |
 |---|---|
@@ -22,13 +22,13 @@ Read [docs/STATUS.md](docs/STATUS.md) for the full evidence-based status and
 
 | Area | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Candidate builds, passes the full test suite and completed a live Floonet sync (`PIBD 4999/4999` segments, then validation, index rebuild and catch-up) to `FULLY_SYNCED` with a current index on restart (**PASS, scoped**; see [docs/STATUS.md](docs/STATUS.md)). |
+| Node (Windows 11 x64, MSVC 14.44) | Candidate `GrinNode.exe` `4039086C…` builds, passes the full suite and completed a live Floonet sync (`PIBD 4999/4999`, validation, index rebuild, catch-up) to `FULLY_SYNCED` with a current index on restart (**PASS, scoped to this binary**; see [docs/STATUS.md](docs/STATUS.md)). |
 | Clean-copy rebuild | **PASS** — clean clone builds and passes the same suite; not bit-identical to the candidate (build metadata) |
 | Mainnet | **NOT TESTED** |
-| Node HTTP/RPC API | **PARTIAL** — registered methods work locally, full Rust parity is not claimed |
-| Wallet | **NOT READY** — included from upstream with some fixes, not accepted for this release |
+| Node HTTP/RPC API | **PARTIAL** — 13 foreign + 5 owner methods registered; `validate_chain`, `compact_chain`, `reset_chain_head`, `invalidate_header` are **NOT IMPLEMENTED**; full Rust parity is not claimed |
+| Wallet | **NOT READY / NOT RECOMMENDED** — upstream wallet code is present in the source tree for lineage and build compatibility only; it is not part of the Node Beta release or acceptance and has no live wallet validation |
 | UI | Not in this repository; **NOT READY** |
-| FastInit header checkpoint | **EXPERIMENTAL**, opt-in only |
+| FastInit header checkpoint | **EXPERIMENTAL**, opt-in only; not exercised in the candidate live run |
 | PIHD header sync extension | **PLANNED / EXPERIMENTAL**, disabled by default |
 | Multi-peer PIBD scheduler | Implemented and deterministically tested; live multi-peer PIBD verified in the combined run |
 | Automatic range-proof workers | Opt-in (`GRINPP_RANGEPROOF_WORKERS=auto`); default remains 1 |
