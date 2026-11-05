@@ -5,6 +5,7 @@
 #include <Net/Servers/RPC/RPCMethod.h>
 #include <API/Wallet/Foreign/Models/FinalizeTxRequest.h>
 #include <API/Wallet/Foreign/Models/FinalizeTxResponse.h>
+#include <API/Wallet/Owner/Models/TxLifecycle.h>
 #include <optional>
 
 class FinalizeTxHandler : public RPCMethod
@@ -41,6 +42,22 @@ public:
 				StringUtil::Format("Failed to deserialize slate: {}", e.what())
 			);
 		}
+		catch (const TxBroadcastException& e)
+		{
+			Json::Value data;
+			data["type"] = "TX_BROADCAST_FAILED";
+			data["lifecycle"] = TxLifecycle::ToString(ETxLifecycleState::FINALIZED_NOT_BROADCAST);
+			data["broadcast"] = TxLifecycle::ToString(EBroadcastResult::FAILED);
+			data["finalized"] = true;
+			data["tx_slate_id"] = e.GetSlateId();
+			data["broadcast_error"] = e.GetBroadcastError();
+			return RPC::Response::BuildError(
+				request.GetId(),
+				RPC::ErrorCode::INTERNAL_ERROR,
+				e.what(),
+				data
+			);
+		}
 		catch (const APIException& e)
 		{
 			return request.BuildError(e.GetErrorCode(), e.what());
@@ -51,7 +68,8 @@ public:
 		}
 	}
 
-	bool ContainsSecrets() const noexcept final { return false; }
+	// The request contains the full slate; it must not be written to Wallet.log.
+	bool ContainsSecrets() const noexcept final { return true; }
 
 private:
 	IWalletManager& m_walletManager;

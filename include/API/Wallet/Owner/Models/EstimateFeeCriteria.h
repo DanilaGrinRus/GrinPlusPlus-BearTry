@@ -27,7 +27,7 @@ public:
 		const uint64_t feeBase = JsonUtil::GetRequiredUInt64(json, "fee_base");
 		const Json::Value selectionStrategyJSON = JsonUtil::GetRequiredField(json, "selection_strategy");
 		const SelectionStrategyDTO selectionStrategy = SelectionStrategyDTO::FromJSON(selectionStrategyJSON);
-		uint8_t changeOutputs = (uint8_t)json.get("change_outputs", Json::Value(1)).asUInt();
+		uint8_t changeOutputs = JsonUtil::CheckedUInt<uint8_t>(json.get("change_outputs", Json::Value(1)));
 
 		// No change outputs when sending all
 		if (!amountOpt.has_value()) {

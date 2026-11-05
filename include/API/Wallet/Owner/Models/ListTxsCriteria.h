@@ -33,7 +33,7 @@ public:
 		std::transform(
 			ids_json.cbegin(), ids_json.cend(),
 			std::inserter(ids, ids.end()),
-			[](const Json::Value& id_json) { return (uint32_t)JsonUtil::ConvertToUInt64(id_json); }
+			[](const Json::Value& id_json) { return JsonUtil::CheckedUInt<uint32_t>(id_json); }
 		);
 
 		std::optional<std::chrono::system_clock::time_point> start_range = std::nullopt;

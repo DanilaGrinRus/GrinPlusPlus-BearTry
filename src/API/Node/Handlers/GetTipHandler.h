@@ -16,6 +16,10 @@ public:
 	RPC::Response Handle(const RPC::Request& request) const final
 	{
 		auto pTip = m_pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
+		if (pTip == nullptr)
+		{
+			return request.BuildError("INTERNAL_ERROR", "Failed to find tip.");
+		}
 
 		Json::Value tipJson;
 		tipJson["height"] = pTip->GetHeight();

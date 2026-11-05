@@ -1,4 +1,5 @@
 #include "HeaderAPI.h"
+#include "NodeAPIParsing.h"
 #include "../NodeContext.h"
 
 #include <Net/Util/HTTPUtil.h>
@@ -85,8 +86,9 @@ BlockHeaderPtr HeaderAPI::GetHeader(const std::string& requestedHeader, const IB
 	{
 		try
 		{
-			std::string::size_type sz = 0;
-			const uint64_t height = std::stoull(requestedHeader, &sz, 0);
+			const auto parsedHeight = NodeAPIParsing::UnsignedDecimal(requestedHeader);
+			if (!parsedHeight.has_value()) return nullptr;
+			const uint64_t height = *parsedHeight;
 
 			auto pHeader = pBlockChain->GetBlockHeaderByHeight(height, EChainType::CANDIDATE);
 			if (pHeader != nullptr)

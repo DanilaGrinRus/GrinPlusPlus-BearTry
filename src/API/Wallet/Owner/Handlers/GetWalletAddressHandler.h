@@ -29,7 +29,7 @@ public:
 		return request.BuildResult(address.ToJSON());
 	}
 
-	bool ContainsSecrets() const noexcept final { return false; }
+	bool ContainsSecrets() const noexcept final { return true; }
 
 private:
 	IWalletManagerPtr m_pWalletManager;

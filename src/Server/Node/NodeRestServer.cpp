@@ -11,18 +11,41 @@
 #include <Common/Logger.h>
 #include <Core/Global.h>
 #include <Net/Util/HTTPUtil.h>
+#include <Net/Servers/RPC/ApiAccess.h>
 
 static int Shutdown_Handler(struct mg_connection* conn, void*)
 {
+	if (HTTPUtil::GetHTTPMethod(conn) != HTTP::EHTTPMethod::POST)
+	{
+		return HTTPUtil::BuildNotFoundResponse(conn, "Not Found");
+	}
+	if (!ApiAccess::Check(conn, ApiAccess::Level::ADMIN, Global::GetConfig().GetRestAPIPort()))
+	{
+		return HTTPUtil::BuildUnauthorizedResponse(conn, "Unauthorized");
+	}
+
 	Global::Shutdown();
 	return HTTPUtil::BuildSuccessResponse(conn, "");
 }
 
-NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_ptr<NodeContext> pNodeContext)
+ServerPtr NodeRestServer::StartInitializing(const Config& config, const std::shared_ptr<NodeStartupHealth>& pHealth)
 {
-	const uint16_t port = config.GetRestAPIPort();
-	ServerPtr pServer = Server::Create(EServerType::LOCAL, std::make_optional<uint16_t>(port));
-	NodeServer::UPtr pV2Server = NodeServer::Create(pServer, pNodeContext->m_pBlockChain, pNodeContext->m_pP2PServer);
+	ServerPtr pServer = Server::Create(EServerType::LOCAL, std::make_optional<uint16_t>(config.GetRestAPIPort()));
+	pServer->AddListener("/v1/health", NodeStartupHealth::Handle, pHealth.get());
+	return pServer;
+}
+
+NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_ptr<NodeContext> pNodeContext, const ServerPtr& pServer, const std::shared_ptr<NodeStartupHealth>& pHealth)
+{
+	ApiAccess::Initialize(config.GetDataDirectory());
+	NodeServer::UPtr pV2Server = NodeServer::Create(
+		pServer,
+		pNodeContext->m_pBlockChain,
+		pNodeContext->m_pP2PServer,
+		pNodeContext->m_pTransactionPool,
+		pNodeContext->m_pTxHashSetManager,
+		pNodeContext->m_pDatabase
+	);
 
 	/* Add v1 handlers */
 	pServer->AddListener("/v1/status", ServerAPI::GetStatus_Handler, pNodeContext.get());
@@ -34,6 +57,7 @@ NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_pt
 	pServer->AddListener("/v1/chain", ChainAPI::GetChain_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/peers/all", PeersAPI::GetAllPeers_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/peers/connected", PeersAPI::GetConnectedPeers_Handler, pNodeContext.get());
+	pServer->AddListener("/v1/peers/diagnostics", PeersAPI::GetDiagnostics_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/peers/", PeersAPI::Peer_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/txhashset/roots", TxHashSetAPI::GetRoots_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/txhashset/lastkernels", TxHashSetAPI::GetLastKernels_Handler, pNodeContext.get());
@@ -43,5 +67,7 @@ NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_pt
 	pServer->AddListener("/v1/shutdown", Shutdown_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/", ServerAPI::V1_Handler, pNodeContext.get());
 
-	return std::make_unique<NodeRestServer>(pNodeContext, std::move(pV2Server));
+	auto pNodeRestServer = std::make_unique<NodeRestServer>(pNodeContext, pHealth, std::move(pV2Server));
+	pHealth->ready.store(true);
+	return pNodeRestServer;
 }

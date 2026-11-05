@@ -10,6 +10,20 @@
 #define RPC_LOG_INFO_F(logFile, message, ...) LoggerAPI::LogInfo(logFile, __func__, __LINE__, StringUtil::Format(message, __VA_ARGS__))
 #define RPC_LOG_ERROR_F(logFile, message, ...) LoggerAPI::LogError(logFile, __func__, __LINE__, StringUtil::Format(message, __VA_ARGS__))
 
+namespace RPC
+{
+	//
+	// Error message for a request body that could not be parsed as JSON.
+	//
+	// This message reaches the wallet log and the RPC error reply, so it must
+	// never include the body: request bodies contain session tokens and armored
+	// slatepacks. Only the size is reported.
+	//
+	// Defined in src/Net/Util/HTTPUtil.cpp (the only producer of this error).
+	//
+	std::string FormatInvalidJsonBodyError(const std::string& requestBody);
+}
+
 class RPCServer
 {
 public:
@@ -73,7 +87,17 @@ private:
 				auto iter = instance.m_methods.find(method);
 				if (iter != instance.m_methods.end())
 				{
-					if (!iter->second->ContainsSecrets())
+					if (iter->second->GetAccessLevel() != ApiAccess::Level::PUBLIC &&
+						!ApiAccess::Check(pConnection, iter->second->GetAccessLevel(), instance.m_pServer->GetPortNumber()))
+					{
+						RPC_LOG_ERROR_F(instance.m_logFile, "Unauthorized access to method: {}", method);
+						return request.BuildError(
+							RPC::ErrorCode::UNAUTHORIZED,
+							"Unauthorized: valid API secret required"
+						);
+					}
+
+					if (instance.m_logFile != LoggerAPI::LogFile::WALLET && !iter->second->ContainsSecrets())
 					{
 						RPC_LOG_INFO_F(instance.m_logFile, "REQUEST: {}", request.ToString());
 					}
@@ -88,7 +112,7 @@ private:
 					
 					auto response = iter->second->Handle(request);
 
-					if (!iter->second->ContainsSecrets())
+					if (instance.m_logFile != LoggerAPI::LogFile::WALLET && !iter->second->ContainsSecrets())
 					{
 						RPC_LOG_INFO_F(instance.m_logFile, "REPLY: {}", response.ToString());
 					}
@@ -98,7 +122,7 @@ private:
 							instance.m_logFile,
 							"Method: {}, Error: {}",
 							method,
-							response.GetError().value().ToString()
+							response.GetError().value().GetCode()
 						);
 					}
 

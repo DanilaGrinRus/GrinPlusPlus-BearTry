@@ -42,5 +42,7 @@ public:
 		return request.BuildResult(config_json);
 	}
 
+	ApiAccess::Level GetAccessLevel() const noexcept final { return ApiAccess::Level::PRIVATE; }
+
 	bool ContainsSecrets() const noexcept final { return false; }
 };

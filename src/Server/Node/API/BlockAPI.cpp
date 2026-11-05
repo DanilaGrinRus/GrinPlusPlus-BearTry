@@ -1,4 +1,5 @@
 #include "BlockAPI.h"
+#include "NodeAPIParsing.h"
 #include "../NodeContext.h"
 
 #include <Net/Util/HTTPUtil.h>
@@ -104,8 +105,9 @@ std::unique_ptr<FullBlock> BlockAPI::GetBlock(
 	{
 		try
 		{
-			std::string::size_type sz = 0;
-			const uint64_t height = std::stoull(requestedBlock, &sz, 0);
+			const auto parsedHeight = NodeAPIParsing::UnsignedDecimal(requestedBlock);
+			if (!parsedHeight.has_value()) return std::unique_ptr<FullBlock>(nullptr);
+			const uint64_t height = *parsedHeight;
 
 			std::unique_ptr<FullBlock> pBlock = pBlockChain->GetBlockByHeight(height);
 			if (pBlock != nullptr)

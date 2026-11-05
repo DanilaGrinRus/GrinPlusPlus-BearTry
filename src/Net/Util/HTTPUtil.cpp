@@ -7,6 +7,19 @@
 
 #include <civetweb.h>
 
+namespace RPC
+{
+	//
+	// Declared in Net/Servers/RPC/RPCServer.h (shared with the RPC layer and its
+	// tests). Kept body-free: the request body can contain session tokens and
+	// armored slatepacks and this string is logged/replied on parse failure.
+	//
+	std::string FormatInvalidJsonBodyError(const std::string& requestBody)
+	{
+		return StringUtil::Format("Failed to parse json request body ({} bytes)", requestBody.size());
+	}
+}
+
 // Strips away the base URI and any query strings.
 // Ex: Given "/v1/blocks/<hash>?compact" and baseURI "/v1/blocks/", this would return <hash>.
 std::string HTTPUtil::GetURIParam(mg_connection* conn, const std::string& baseURI)
@@ -121,7 +134,9 @@ std::optional<Json::Value> HTTPUtil::GetRequestBody(mg_connection* conn)
 	Json::Value json;
 	if (!JsonUtil::Parse(requestBody, json))
 	{
-		throw DESERIALIZATION_EXCEPTION_F("Failed to parse json: {}", requestBody);
+		// Never include the body: it may contain the session token and/or an
+		// armored slatepack, and this exception message is logged.
+		throw DESERIALIZATION_EXCEPTION(RPC::FormatInvalidJsonBodyError(requestBody));
 	}
 
 	return std::make_optional(json);

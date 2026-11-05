@@ -1,9 +1,11 @@
 #include "TxHashSetAPI.h"
+#include "NodeAPIParsing.h"
 #include "../NodeContext.h"
 
 #include <Net/Util/HTTPUtil.h>
 #include <Common/Util/StringUtil.h>
 #include <Crypto/Hasher.h>
+#include <algorithm>
 #include <json/json.h>
 
 /*
@@ -58,19 +60,22 @@ int TxHashSetAPI::GetLastKernels_Handler(struct mg_connection* conn, void* pNode
 				return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/txhashset/lastkernels?n=###");
 			}
 
-			std::string numHashesStr = queryString.substr(2);
-			numHashes = std::stoull(numHashesStr);
+			const auto value = NodeAPIParsing::UnsignedDecimal(queryString.substr(2));
+			if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid n.");
+			numHashes = (std::min)(*value, uint64_t{1000});
 		}
 
 		auto pTxHashSet = pServer->m_pTxHashSetManager->GetTxHashSet();
 		if (pTxHashSet != nullptr)
 		{
-			Json::Value json;
+			Json::Value json(Json::arrayValue);
 
 			std::vector<Hash> hashes = pTxHashSet->GetLastKernelHashes(numHashes);
 			for (const Hash& hash : hashes)
 			{
-				json.append(hash.ToHex());
+				Json::Value kernelNode;
+				kernelNode["hash"] = hash.ToHex();
+				json.append(kernelNode);
 			}
 
 			return HTTPUtil::BuildSuccessResponse(conn, json.toStyledString());
@@ -100,14 +105,15 @@ int TxHashSetAPI::GetLastOutputs_Handler(struct mg_connection* conn, void* pNode
 				return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/txhashset/lastoutputs?n=###");
 			}
 
-			std::string numHashesStr = queryString.substr(2);
-			numHashes = std::stoull(numHashesStr);
+			const auto value = NodeAPIParsing::UnsignedDecimal(queryString.substr(2));
+			if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid n.");
+			numHashes = (std::min)(*value, uint64_t{1000});
 		}
 
 		auto pTxHashSet = pServer->m_pTxHashSetManager->GetTxHashSet();
 		if (pTxHashSet != nullptr)
 		{
-			Json::Value rootNode;
+			Json::Value rootNode(Json::arrayValue);
 
 			std::vector<Hash> hashes = pTxHashSet->GetLastOutputHashes(numHashes);
 			for (const Hash& hash : hashes)
@@ -144,14 +150,15 @@ int TxHashSetAPI::GetLastRangeproofs_Handler(struct mg_connection* conn, void* p
 				return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/txhashset/lastrangeproofs?n=###");
 			}
 
-			std::string numHashesStr = queryString.substr(2);
-			numHashes = std::stoull(numHashesStr);
+			const auto value = NodeAPIParsing::UnsignedDecimal(queryString.substr(2));
+			if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid n.");
+			numHashes = (std::min)(*value, uint64_t{1000});
 		}
 
 		auto pTxHashSet = pServer->m_pTxHashSetManager->GetTxHashSet();
 		if (pTxHashSet != nullptr)
 		{
-			Json::Value rootNode;
+			Json::Value rootNode(Json::arrayValue);
 
 			std::vector<Hash> hashes = pTxHashSet->GetLastRangeProofHashes(numHashes);
 			for (const Hash& hash : hashes)
@@ -213,7 +220,9 @@ int TxHashSetAPI::GetOutputs_Handler(struct mg_connection* conn, void* pNodeCont
 						return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/txhashset/outputs?start_index=1&max=100");
 					}
 
-					startIndex = std::stoull(startIndexTokens[1]);
+					const auto value = NodeAPIParsing::UnsignedDecimal(startIndexTokens[1]);
+					if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid start_index.");
+					startIndex = *value;
 				}
 				else if (StringUtil::StartsWith(token, "max="))
 				{
@@ -223,7 +232,9 @@ int TxHashSetAPI::GetOutputs_Handler(struct mg_connection* conn, void* pNodeCont
 						return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/txhashset/outputs?start_index=1&max=100");
 					}
 
-					max = std::stoull(maxTokens[1]);
+					const auto value = NodeAPIParsing::UnsignedDecimal(maxTokens[1]);
+					if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid max.");
+					max = *value;
 				}
 			}
 		}
@@ -238,12 +249,16 @@ int TxHashSetAPI::GetOutputs_Handler(struct mg_connection* conn, void* pNodeCont
 		{
 			Json::Value rootNode;
 
-			auto pBlockDB = pServer->m_pDatabase->GetBlockDB()->Read();
-			OutputRange range = pTxHashSet->GetOutputsByLeafIndex(pBlockDB.GetShared(), startIndex, max);
+			std::shared_ptr<const IBlockDB> pBlockDB;
+			{
+				const auto pReader = pServer->m_pDatabase->GetBlockDB()->Read();
+				pBlockDB = pReader.GetShared();
+			}
+			OutputRange range = pTxHashSet->GetOutputsByLeafIndex(pBlockDB, startIndex, max);
 			rootNode["highest_index"] = range.GetHighestIndex();
 			rootNode["last_retrieved_index"] = range.GetLastRetrievedIndex();
 
-			Json::Value outputsNode;
+			Json::Value outputsNode(Json::arrayValue);
 			for (const OutputDTO& info : range.GetOutputs())
 			{
 				Json::Value outputNode;

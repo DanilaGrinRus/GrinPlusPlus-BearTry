@@ -1,4 +1,5 @@
 #include "ChainAPI.h"
+#include "NodeAPIParsing.h"
 #include "../NodeContext.h"
 
 #include <Net/Util/HTTPUtil.h>
@@ -56,7 +57,9 @@ int ChainAPI::GetChainOutputsByHeight_Handler(struct mg_connection* conn, void* 
 						return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/chain/outputs/byheight?start_height=1&end_height=100");
 					}
 
-					startHeight = std::stoull(startHeightTokens[1]);
+					const auto value = NodeAPIParsing::UnsignedDecimal(startHeightTokens[1]);
+					if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid start_height.");
+					startHeight = *value;
 				}
 				else if (StringUtil::StartsWith(token, "end_height="))
 				{
@@ -66,7 +69,9 @@ int ChainAPI::GetChainOutputsByHeight_Handler(struct mg_connection* conn, void* 
 						return HTTPUtil::BuildBadRequestResponse(conn, "Expected /v1/chain/outputs/byheight?start_height=1&end_height=100");
 					}
 
-					endHeight = std::stoull(endHeightTokens[1]);
+					const auto value = NodeAPIParsing::UnsignedDecimal(endHeightTokens[1]);
+					if (!value.has_value()) return HTTPUtil::BuildBadRequestResponse(conn, "Invalid end_height.");
+					endHeight = *value;
 				}
 			}
 		}
@@ -76,7 +81,7 @@ int ChainAPI::GetChainOutputsByHeight_Handler(struct mg_connection* conn, void* 
 			endHeight = startHeight;
 		}
 
-		Json::Value json;
+		Json::Value json(Json::arrayValue);
 
 		std::vector<BlockWithOutputs> blocksWithOutputs = pServer->m_pBlockChain->GetOutputsByHeight(startHeight, endHeight);
 		for (const BlockWithOutputs& block : blocksWithOutputs)
@@ -104,7 +109,7 @@ int ChainAPI::GetChainOutputsByHeight_Handler(struct mg_connection* conn, void* 
 			Json::Value blockJSON;
 			blockJSON["header"] = block.GetBlockIdentifier().ToJSON();
 
-			Json::Value outputsJSON;
+			Json::Value outputsJSON(Json::arrayValue);
 			for (const OutputDTO& output : block.GetOutputs())
 			{
 				outputsJSON.append(output.ToJSON());
@@ -153,7 +158,7 @@ int ChainAPI::GetChainOutputsByIds_Handler(struct mg_connection* conn, void* pNo
 
 		std::shared_ptr<Locked<IBlockDB>> pBlockDB = pServer->m_pDatabase->GetBlockDB();
 
-		Json::Value rootNode;
+		Json::Value rootNode(Json::arrayValue);
 		for (const std::string& id : ids)
 		{
 			Commitment commitment = Commitment::FromHex(id);

@@ -63,7 +63,8 @@ public:
 		}
 	}
 
-	bool ContainsSecrets() const noexcept final { return false; }
+	// The request contains the full slate; it must not be written to Wallet.log.
+	bool ContainsSecrets() const noexcept final { return true; }
 
 private:
 	IWalletManager& m_walletManager;

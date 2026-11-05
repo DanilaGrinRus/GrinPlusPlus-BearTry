@@ -17,7 +17,9 @@ enum ErrorCode
 	INVALID_REQUEST = -32600,	// Invalid Request
 	METHOD_NOT_FOUND = -32601,	// Method not found
 	INVALID_PARAMS = -32602,	// Invalid params
-	INTERNAL_ERROR = -32603		// Internal error
+	INTERNAL_ERROR = -32603,	// Internal error
+	UNAUTHORIZED = -32001,		// Missing or invalid API secret
+	FORBIDDEN = -32002			// Authenticated but Host/Origin not allowed
 };
 
 class Error

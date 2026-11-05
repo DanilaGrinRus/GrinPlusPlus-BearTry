@@ -1,10 +1,12 @@
 #pragma once
 
 #include <Core/Util/JsonUtil.h>
+#include <Core/Exceptions/APIException.h>
 #include <Wallet/SessionToken.h>
 #include <Wallet/Models/DTOs/PostMethodDTO.h>
 #include <Wallet/Models/DTOs/SelectionStrategyDTO.h>
 #include <Wallet/Models/Slatepack/SlatepackAddress.h>
+#include <API/Wallet/Owner/Models/Errors.h>
 #include <optional>
 
 class SendCriteria
@@ -57,7 +59,40 @@ public:
 		const SessionToken token = SessionToken::FromBase64(JsonUtil::GetRequiredString(json, "session_token"));
 		std::optional<uint64_t> amountOpt = JsonUtil::GetUInt64Opt(json, "amount");
 		const uint64_t feeBase = JsonUtil::GetRequiredUInt64(json, "fee_base");
-		const uint8_t numOutputs = (uint8_t)json.get("change_outputs", Json::Value(1)).asUInt();
+
+		// change_outputs is a uint8 in the slate/tx weight calculation. Reject
+		// values that would silently truncate (256 -> 0) instead of building a
+		// transaction with an unintended fee or output count.
+		const uint64_t numOutputsRaw = json.isMember("change_outputs")
+			? JsonUtil::ConvertToUInt64(json["change_outputs"])
+			: 1;
+		if (numOutputsRaw > 255)
+		{
+			throw API_EXCEPTION(
+				RPC::Errors::INVALID_CHANGE_OUTPUTS.GetCode(),
+				"change_outputs must be between 0 and 255"
+			);
+		}
+
+		if (amountOpt.has_value() && numOutputsRaw == 0)
+		{
+			// With an explicit amount, "0 change outputs" would turn the whole
+			// remainder into the fee. Require an explicit choice to send all.
+			throw API_EXCEPTION(
+				RPC::Errors::INVALID_CHANGE_OUTPUTS.GetCode(),
+				"change_outputs must be at least 1 when amount is specified"
+			);
+		}
+
+		if (amountOpt.has_value() && amountOpt.value() == 0)
+		{
+			throw API_EXCEPTION(
+				RPC::Errors::INVALID_AMOUNT.GetCode(),
+				"amount must be greater than 0"
+			);
+		}
+
+		const uint8_t numOutputs = (uint8_t)numOutputsRaw;
 		const Json::Value selectionStrategyJSON = JsonUtil::GetRequiredField(json, "selection_strategy");
 		const SelectionStrategyDTO selectionStrategy = SelectionStrategyDTO::FromJSON(selectionStrategyJSON);
 		const std::optional<std::string> addressStrOpt = JsonUtil::GetStringOpt(json, "address");

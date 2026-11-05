@@ -1,48 +1,40 @@
 #include "ServerAPI.h"
+#include <API/Node/NodeStatus.h>
+#include <BlockChain/DbRecovery.h>
 #include "../NodeContext.h"
 
+#include <Core/Global.h>
 #include <Net/Util/HTTPUtil.h>
+#include <Net/Servers/RPC/ApiAccess.h>
 #include <P2P/Common.h>
 #include <json/json.h>
 
-/*
-	mg_set_request_handler(ctx, "/v1/status", ServerAPI::GetStatus_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/headers/", HeaderAPI::GetHeader_Handler, m_pBlockChainServer);
-	mg_set_request_handler(ctx, "/v1/blocks/", BlockAPI::GetBlock_Handler, m_pBlockChainServer);
-	mg_set_request_handler(ctx, "/v1/chain/outputs/byids", ChainAPI::GetChainOutputsByIds_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/chain/outputs/byheight", ChainAPI::GetChainOutputsByHeight_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/chain", ChainAPI::GetChain_Handler, m_pBlockChainServer);
-	mg_set_request_handler(ctx, "/v1/peers/all", PeersAPI::GetAllPeers_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/peers/connected", PeersAPI::GetConnectedPeers_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/peers/", PeersAPI::Peer_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/txhashset/roots", TxHashSetAPI::GetRoots_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/txhashset/lastkernels", TxHashSetAPI::GetLastKernels_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/txhashset/lastoutputs", TxHashSetAPI::GetLastOutputs_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/txhashset/lastrangeproofs", TxHashSetAPI::GetLastRangeproofs_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/txhashset/outputs", TxHashSetAPI::GetOutputs_Handler, &m_nodeContext);
-	mg_set_request_handler(ctx, "/v1/", ServerAPI::V1_Handler, &m_nodeContext);
-*/
 int ServerAPI::V1_Handler(struct mg_connection* conn, void*)
 {
 	if (HTTPUtil::GetHTTPMethod(conn) == HTTP::EHTTPMethod::GET)
 	{
 		Json::Value json;
-		json.append("GET /v1/blocks/<hash>?compact");
-		json.append("GET /v1/blocks/<height>?compact");
-		json.append("GET /v1/blocks/<output commit>?compact");
-		json.append("GET /v1/chain/");
+		json.append("GET /v1/health");
+		json.append("GET /v1/status");
+		json.append("GET|POST /v1/resync");
+		json.append("POST /v1/shutdown");
+		json.append("GET /v1/headers/<hash|height>");
+		json.append("GET /v1/blocks/<hash|height|output commit>?compact");
+		json.append("GET /v1/chain");
 		json.append("GET /v1/chain/outputs/byids?id=xxx,yyy&id=zzz");
 		json.append("GET /v1/chain/outputs/byheight?start_height=100&end_height=200");
 		json.append("GET /v1/peers/all");
 		json.append("GET /v1/peers/connected");
-		json.append("GET /v1/peers/a.b.c.d");
-		json.append("POST /v1/peers/ban?a.b.c.d");
-		json.append("POST /v1/peers/unban?a.b.c.d");
+		json.append("GET /v1/peers/diagnostics");
+		json.append("GET /v1/peers/<a.b.c.d>");
+		json.append("POST /v1/peers/<a.b.c.d>/ban");
+		json.append("POST /v1/peers/<a.b.c.d>/unban");
 		json.append("GET /v1/txhashset/roots");
 		json.append("GET /v1/txhashset/lastkernels?n=###");
 		json.append("GET /v1/txhashset/lastoutputs?n=###");
 		json.append("GET /v1/txhashset/lastrangeproofs?n=###");
 		json.append("GET /v1/txhashset/outputs?start_index=1&max=100");
+		json.append("GET /v1/");
 
 		return HTTPUtil::BuildSuccessResponse(conn, json.toStyledString());
 	}
@@ -68,12 +60,34 @@ int ServerAPI::GetStatus_Handler(struct mg_connection* conn, void* pNodeContext)
 
 	SyncStatusConstPtr pSyncStatus = pServer->m_pP2PServer->GetSyncStatus();
 	statusNode["sync_status"] = GetStatusString(*pSyncStatus);
+	statusNode["waiting_reason"] = pSyncStatus->GetCurrentWaitingReason();
+	statusNode["db_repaired"] = Json::UInt64(DbRecovery::GetRepairCount());
+	statusNode["db_last_repair"] = Json::Int64(DbRecovery::GetLastRepairTime());
+
+	Json::Value blockSyncNode;
+	blockSyncNode["requests"] = Json::UInt64(pSyncStatus->GetBlockRequests());
+	blockSyncNode["timeouts"] = Json::UInt64(pSyncStatus->GetBlockTimeouts());
+	blockSyncNode["reassignments"] = Json::UInt64(pSyncStatus->GetBlockReassignments());
+	blockSyncNode["cooldown_reassignments"] = Json::UInt64(pSyncStatus->GetBlockCooldownReassignments());
+	blockSyncNode["retries"] = Json::UInt64(pSyncStatus->GetBlockRetries());
+	blockSyncNode["bans_fraud_height"] = Json::UInt64(pSyncStatus->GetBansFraudHeight());
+	blockSyncNode["bans_invalid_data"] = Json::UInt64(pSyncStatus->GetBansInvalidData());
+	statusNode["block_sync"] = blockSyncNode;
 
 	Json::Value stateNode;
 	stateNode["downloaded"] = pSyncStatus->GetDownloaded();
 	stateNode["download_size"] = pSyncStatus->GetDownloadSize();
 	stateNode["processing_status"] = pSyncStatus->GetProcessingStatus();
+	stateNode["sync_failed"] = pSyncStatus->GetStatus() == ESyncStatus::TXHASHSET_SYNC_FAILED;
 	statusNode["state"] = stateNode;
+
+	// Add PIBD counters without changing legacy ZIP byte counters.
+	if (pSyncStatus->GetPibdStarted() > 0) {
+		Json::Value pibd;
+		pibd["received_segments"] = Json::UInt64(pSyncStatus->GetPibdReceived());
+		pibd["required_segments"] = Json::UInt64(pSyncStatus->GetPibdRequired());
+		statusNode["pibd"] = pibd;
+	}
 
 	Json::Value networkNode;
 	networkNode["height"] = pSyncStatus->GetNetworkHeight();
@@ -92,6 +106,18 @@ int ServerAPI::GetStatus_Handler(struct mg_connection* conn, void* pNodeContext)
 
 	const uint64_t headerHeight = pServer->m_pBlockChain->GetHeight(EChainType::CANDIDATE);
 	statusNode["header_height"] = headerHeight;
+
+	// Compatibility contract: keep all legacy fields above for existing
+	// clients, and expose the exact Rust Status object under "rust". This avoids
+	// two different builders for the same live snapshot.
+	const Json::Value rustStatus = NodeStatus::Build(pServer->m_pBlockChain, pServer->m_pP2PServer, pTip);
+	if (!rustStatus.isNull()) {
+		statusNode["rust"] = rustStatus;
+		statusNode["tip"] = rustStatus["tip"];
+		statusNode["connections"] = rustStatus["connections"];
+		statusNode["chain_type"] = rustStatus["chain"];
+		statusNode["sync_status_rust"] = rustStatus["sync_status"];
+	}
 
 	return HTTPUtil::BuildSuccessResponse(conn, statusNode.toStyledString());
 }
@@ -133,10 +159,20 @@ std::string ServerAPI::GetStatusString(const SyncStatus& syncStatus)
 
 int ServerAPI::ResyncChain_Handler(struct mg_connection* conn, void* pNodeContext)
 {
+	if (!ApiAccess::Check(conn, ApiAccess::Level::ADMIN, Global::GetConfig().GetRestAPIPort()))
+	{
+		return HTTPUtil::BuildUnauthorizedResponse(conn, "Unauthorized");
+	}
+
 	NodeContext* pServer = (NodeContext*)pNodeContext;
 
-	pServer->m_pBlockChain->ResyncChain();
-	pServer->m_pP2PServer->UnbanAllPeers();
+	try {
+		pServer->m_pBlockChain->ResyncChain();
+		pServer->m_pP2PServer->UnbanAllPeers();
+	} catch (const std::exception& e) {
+		LOG_ERROR_F("Resync or peer unban failed: {}", e.what());
+		return HTTPUtil::BuildInternalErrorResponse(conn, "Resync or unban failed; state may have changed.");
+	}
 
 	return HTTPUtil::BuildSuccessResponse(conn, "");
 }
