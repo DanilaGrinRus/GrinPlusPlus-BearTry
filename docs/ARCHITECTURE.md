@@ -73,16 +73,18 @@ termination only.
 
 The observed live Floonet run on the combined build
 (`16C24DB4…`) followed exactly this sequence: headers `0 → 3 324 027`, PIBD
-`4998/4998` segments, state validation about `1987 s`, KernelIndex generation 2
-with `3 356 610` kernels, block catch-up to `3 324 064`, and a final height of
-`3 324 082` after further blocks.
+`4998/4998` segments at horizon `3 320 640`, state validation about `1987 s`,
+KernelIndex generation 2 with `3 356 610` kernels, block catch-up to `3 324 064`,
+and a final height of `3 324 082` after further blocks.
 
 The candidate `4039086C…` then completed the same sequence on a fresh isolated
-profile: PIBD from `3 321 360` (`17d0428f…`), `2 948 812/2 948 812` range proofs
-in `1 215 538 ms` with 1 worker, TxHashSet validated, KernelIndex generation 2
-(`3 357 330` kernels), catch-up, a graceful restart at 00:53 with
-`kernel_index_check result=current` and no rebuild, and `FULLY_SYNCED` at
-`3 324 513` before a graceful stop.
+profile: PIBD from `3 321 360` (`17d0428f…`), `4999/4999` segments,
+`2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker, TxHashSet
+validated, KernelIndex generation 2 (`3 357 330` kernels), catch-up, a graceful
+restart at 00:53 with `kernel_index_check result=current` and no rebuild, and
+`FULLY_SYNCED` at `3 324 513` before a graceful stop. The one-segment difference
+between the two runs follows from the different horizon heights; counts are not
+transferred between builds.
 
 ## 4. PIBD: segments, peers, resume and recovery
 

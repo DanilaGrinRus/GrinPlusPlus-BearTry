@@ -16,18 +16,27 @@ as unproven.
 
 The run on `GrinNode.exe` `4039086C…` reached `FULLY_SYNCED` and stopped
 gracefully. It used a fresh isolated Floonet profile with 10 peers; PIBD started
-at `3 321 360` (`17d0428f…`), verified `2 948 812/2 948 812` range proofs in
-`1 215 538 ms` with 1 worker, validated the TxHashSet at 00:44:15, built
-KernelIndex generation 2 (`3 357 330` kernels), and completed PIBD state sync at
-00:46:40. After a graceful restart (00:53:13→00:53:21) the index check was
-`result=current` (generation 2, indexed height `3 324 510`, `3 360 496` kernels)
-with no rebuild; `FULLY_SYNCED` was reached at `3 324 513`. Graceful shutdown at
-00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`.
+at `3 321 360` (`17d0428f…`) and downloaded `4999/4999` segments, verified
+`2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker, validated the
+TxHashSet at 00:44:15, built KernelIndex generation 2 (`3 357 330` kernels), and
+completed PIBD state sync at 00:46:40. After a graceful restart
+(00:53:13→00:53:21) the index check was `result=current` (generation 2, indexed
+height `3 324 510`, `3 360 496` kernels) with no rebuild; `FULLY_SYNCED` was
+reached at `3 324 513`. Graceful shutdown at 00:55:53;
+`bans_fraud_height=0`, `bans_invalid_data=0`.
+
+Segment counts are run-specific: the earlier combined build (`16C24DB4…`)
+reports `4998/4998` at horizon `3 320 640`, while the candidate reports
+`4999/4999` at `3 321 360`. The one-segment difference follows from the
+different horizon and is not a defect; counts are never transferred between
+builds. Evidence:
+[docs/evidence/files/candidate-live-floonet-2026-11-05.md](docs/evidence/files/candidate-live-floonet-2026-11-05.md)
+and
+[docs/evidence/files/pibd-segment-counts-2026-11-05.md](docs/evidence/files/pibd-segment-counts-2026-11-05.md).
 
 This is a **PASS scoped to the documented Floonet scenario and this binary**. It
 does not cover Mainnet, adversarial peers, power loss, reorg, multi-day stability,
-automatic worker mode or FastInit. Evidence:
-[docs/evidence/files/candidate-live-floonet-2026-11-05.md](docs/evidence/files/candidate-live-floonet-2026-11-05.md).
+automatic worker mode or FastInit.
 
 ### KI-03 — API parity is incomplete
 
@@ -147,6 +156,31 @@ A clean-copy rebuild passed the same suite but produced different executable
 hashes (`GrinNode 73F35D64…`, `Tests 7DE498F5…`) because of PE timestamps and
 source paths. Rebuilding the same source can therefore produce a different SHA;
 verify your own artifacts and do not expect `4039086C…` from a local rebuild.
+
+### KI-19 — `Tests.exe` is verification-only and not safe for general use
+
+`Tests.exe` is **not shipped in the user-facing release package**; it is
+provided separately under `verification/` for reproducibility. It binds a
+hard-coded wallet-owner port **3421**: a second instance or a busy port produces
+`Create - mg_start failed 127.0.0.1:3421` and 14 failures, and one Slatepack test
+failed under a different working directory. A run against the real user profile
+aborted (`0xC0000409`) on the preparation machine. If you run it, use isolated
+`HOMEDRIVE`/`HOMEPATH`/`TEMP`, a free port 3421 with only one instance, and the
+repository/build root as the working directory. The known-good full-suite result
+is the release workstream's clean-copy run (373 cases / 4982 assertions). Do not
+claim general safe execution.
+
+### KI-20 — Grin-derived Apache-2.0 attribution
+
+The Apache-2.0 §4(c) file-level obligation is **met**: 30 Grin-derived files
+carry comment-only attribution headers, listed in
+[LICENSES/GRIN-DERIVED-FILES.md](LICENSES/GRIN-DERIVED-FILES.md), with the
+component notice in [NOTICE](NOTICE) and the full text in
+[LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt). `Logo.png` is **PARTIAL**:
+upstream asset from initial commit `7a4a6619` (2018-12-17, David Burkett),
+SHA-256 `52658BE6…`, no separate upstream licence, retained as an upstream MIT
+project asset with upstream copyright. No third-party license text is asserted
+for the logo.
 
 ## Reporting
 

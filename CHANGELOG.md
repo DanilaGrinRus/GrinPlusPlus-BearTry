@@ -7,8 +7,9 @@ the fork (the upstream engine version remains `1.2.9`).
 ## [Node Beta 1 candidate] — 2026-11-06
 
 A candidate snapshot, not an accepted Beta 1 and not a stable release. Bind all
-results to the commit `node-beta.1-candidate` and to the executable hashes in
-[docs/STATUS.md](docs/STATUS.md).
+results to the source/build tag `node-beta.1-candidate` and to the executable
+hashes in [docs/STATUS.md](docs/STATUS.md). The release tag `node-beta.1` points
+at the final documentation commit.
 
 ### Added
 
@@ -73,6 +74,19 @@ results to the commit `node-beta.1-candidate` and to the executable hashes in
 - Admin operations require the secret and a loopback Host/Origin.
 - Never run this build on Mainnet with real funds.
 
+### Verification
+
+- Candidate live Floonet run (`GrinNode 4039086C…`): PIBD `4999/4999` segments
+  at horizon 3,321,360, `2 948 812/2 948 812` range proofs with 1 worker,
+  TxHashSet validated, KernelIndex generation 2, graceful restart with a current
+  index and no rebuild, `FULLY_SYNCED` at 3,324,513, graceful stop, no bans.
+  Scoped to that binary/scenario; Mainnet is not tested.
+- Earlier combined build (`16C24DB4…`): `4998/4998` segments at horizon
+  3,320,640. The one-segment difference is horizon-driven, not a defect.
+- Clean-copy rebuild: full suite `373` cases / `4982` assertions; binaries are
+  not bit-identical to the candidate (PE timestamps/source path).
+- `Tests.exe` is verification-only, not part of the user-facing release package.
+
 ### Known limitations
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and [docs/STATUS.md](docs/STATUS.md).
@@ -80,7 +94,8 @@ Highlights: Mainnet NOT TESTED; the candidate Floonet live run is a **PASS
 scoped** to the documented scenario (Mainnet unaffected); four Rust owner
 chain-control methods are NOT IMPLEMENTED; full API parity and
 restart-at-each-stage are NOT VERIFIED; real RocksDB failure and power loss are
-NOT VERIFIED; FastInit is EXPERIMENTAL; wallet/UI are not part of this release.
+NOT VERIFIED; FastInit is EXPERIMENTAL; `Tests.exe` is verification-only;
+wallet/UI are not part of this release.
 
 ---
 

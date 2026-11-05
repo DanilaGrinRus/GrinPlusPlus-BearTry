@@ -24,7 +24,7 @@ Goal: a completed live Floonet run bound to the candidate binary.
 
 | Item | Status | Exit criterion |
 |---|---|---|
-| Candidate live Floonet sync | **PASS (scoped)** | Fresh isolated profile: headers → PIBD → validation → catch-up → `fully_synced`; evidence bound to `4039086C…` |
+| Candidate live Floonet sync | **PASS (scoped)** | Fresh isolated profile: headers → PIBD `4999/4999` (horizon 3,321,360; the combined build's 4998/4998 is a different horizon) → validation → catch-up → `fully_synced`; evidence bound to `4039086C…` |
 | Restart after full sync | **PASS (scoped)** | Restart 00:53:13→00:53:21 kept generation 2, `kernel_index_check result=current`, no rebuild; continued to `FULLY_SYNCED` at 3,324,513 |
 | Restart during PIBD download | **NOT VERIFIED** | Documented stage; state preserved or safely restarted |
 | Restart during validation/activation | **NOT VERIFIED** | Marker recovery path exercised; no partial live state |

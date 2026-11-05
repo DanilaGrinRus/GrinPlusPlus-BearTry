@@ -16,6 +16,7 @@ Profile: fresh isolated Floonet profile inside the work tree; `--floonet --headl
 | 23:48:54 | restart with the final candidate binary |
 | 23:52:32 | restart; `kernel_index_check result=current`, generation 1 (height 0) |
 | 00:14:17 | PIBD state sync starts at height **3,321,360**, hash `17d0428f…`, **10 capable peers** |
+| 00:16:58 | `pibd_download_completed received_segments=4999 required_segments=4999` (primary `sync-stages.log`) |
 | 00:18:12 | PIBD staging complete; activation file removed |
 | 00:18:21 | `ValidateTxHashSet` for block `17d0428f…` begins |
 | 00:41:33 | range-proof phase ends: **2,948,812 / 2,948,812 proofs verified**, 1 worker, 1,215,538 ms, 2,425.9 proofs/s |

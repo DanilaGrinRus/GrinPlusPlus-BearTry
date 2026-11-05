@@ -136,15 +136,17 @@ VERIFIED** — keine qualifizierende Evidenz; **PLANNED** — nur Entwurf;
   `src/P2P/Pipeline/TxHashSetPipe.*`.
 - **Tests/Ergebnisse.** Synthetische Archivinstallation + Index + Neustart: 25
   Assertions PASS. Auf dem früheren kombinierten Build lud ein Live-Floonet-Lauf
-  `4998/4998` Segmente, validierte den Zustand und erreichte `fully_synced`. Beim
-  Kandidaten selbst begann ein frischer isolierter Floonet-Lauf PIBD bei
-  `3 321 360`, verifizierte `2 948 812/2 948 812` Range Proofs in `1 215 538 ms`
-  mit 1 Worker, validierte das TxHashSet, baute KernelIndex-Generation 2
-  (`3 357 330` Kernels), holte auf, startete um 00:53 mit
-  `kernel_index_check result=current` ohne Rebuild neu und erreichte
-  `FULLY_SYNCED` bei `3 324 513` vor dem geordneten Stoppen. Der versteckte
-  `FullSweepPpCkpt`-Test kann mit leerer Fixture-Warnung bestehen — kein Beweis
-  für einen gefüllten Sweep.
+  `4998/4998` Segmente bei Horizont `3 320 640`, validierte den Zustand und
+  erreichte `fully_synced`. Beim Kandidaten selbst begann ein frischer isolierter
+  Floonet-Lauf PIBD bei `3 321 360`, lud `4999/4999` Segmente, verifizierte
+  `2 948 812/2 948 812` Range Proofs in `1 215 538 ms` mit 1 Worker, validierte
+  das TxHashSet, baute KernelIndex-Generation 2 (`3 357 330` Kernels), holte auf,
+  startete um 00:53 mit `kernel_index_check result=current` ohne Rebuild neu und
+  erreichte `FULLY_SYNCED` bei `3 324 513` vor dem geordneten Stoppen. Die
+  Ein-Segment-Differenz zwischen `4998/4998` und `4999/4999` folgt aus den
+  unterschiedlichen Horizonthöhen und ist kein Defekt; Zähler werden nicht
+  zwischen Builds übertragen. Der versteckte `FullSweepPpCkpt`-Test kann mit
+  leerer Fixture-Warnung bestehen — kein Beweis für einen gefüllten Sweep.
 - **Kompatibilität/Performance/Daten.** PIBD schreibt dasselbe On-Disk-Layout wie
   ZIP; Staging-/Aktivierungsverzeichnisse sind neu. Validierung dominiert den
   Erst-Sync (~1987 s im Messlauf, größtenteils Range Proofs).
@@ -173,8 +175,10 @@ VERIFIED** — keine qualifizierende Evidenz; **PLANNED** — nur Entwurf;
 - **Komponenten.** `src/P2P/PIBD/PibdScheduler.h`, `PibdSync.h`,
   `src/P2P/Sync/StateSyncer.*`, `src/P2P/MessageProcessor.cpp`.
 - **Tests/Ergebnisse.** `PibdScheduler*`: 68 Assertions / 9 Fälle PASS. Normaler
-  Live-Multi-Peer-Download beobachtet (9 Peers, `4998/4998`). Live-feindliches
-  Verhalten und False-Ban auf P2P-Ebene sind **NOT VERIFIED**.
+  Live-Multi-Peer-Download wurde auf dem kombinierten Build (9 Peers,
+  `4998/4998`) und auf dem Kandidaten (10 Peers, `4999/4999` bei anderem
+  Horizont) beobachtet. Live-feindliches Verhalten und False-Ban auf P2P-Ebene
+  sind **NOT VERIFIED**.
 - **Kompatibilität/Performance/Daten.** Kein Formatwechsel; bessere Resilienz.
   Live-Durchsatz N Peers gegen 1 ist nicht verglichen.
 - **Rest.** Live-Matrix N vs 1, Per-Peer-Durchsatz, Ban-Verhalten bei bösartigen

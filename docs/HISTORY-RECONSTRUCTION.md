@@ -33,9 +33,11 @@ Instead of inventing a plausible history, the fork does the following:
   CR-normalisation, 3 intentional differences (`.gitignore`,
   `OMITTED_LOCAL_TOOLS.md`, `tools/audit/nrd/README.md`), 0 content differences
   and 0 missing files — **PASS**.
-- The tag `node-beta.1-candidate` is an annotated tag (object
+- The source/build tag `node-beta.1-candidate` is an annotated tag (object
   `fc5174ec7a3499ec16d14decc88737be691a347a`) whose tagged commit is
-  `ccc4f356c5f46bd693f1965581c7307d4563d8c9`.
+  `ccc4f356c5f46bd693f1965581c7307d4563d8c9`. The separate release tag
+  `node-beta.1` points at the final documentation commit; the tag object is
+  recorded with the release.
 - Private absolute paths that had leaked into the first publication of the
   omitted-tools note and the audit README were removed by a metadata-preserving
   rewrite of the reconstructed range `v1.2.9..HEAD` (same messages, authors and

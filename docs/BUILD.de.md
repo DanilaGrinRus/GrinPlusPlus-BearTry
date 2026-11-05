@@ -131,6 +131,15 @@ Sie die SHA-256 Ihrer eigenen Artefakte.
 
 ## 5. Tests
 
+`Tests.exe` ist **nicht im nutzerseitigen Release-Paket** enthalten; es wird
+separat unter `verification/` nur zur Reproduzierbarkeit bereitgestellt. Es
+bindet den fest kodierten Wallet-Owner-Port **3421**: nur eine Instanz starten,
+Port 3421 muss frei sein, und das Arbeitsverzeichnis muss die Repository-/Build-
+Wurzel sein. Nutzen Sie isolierte `HOMEDRIVE`/`HOMEPATH`/`TEMP`; ein Lauf gegen
+ein echtes Nutzerprofil brach auf der Vorbereitungsmaschine mit `0xC0000409` ab.
+Keine allgemeine sichere Ausführung behaupten. Der bekannte gute Volllauf ist der
+saubere Build des Release-Strangs (`373` Fälle / `4982` Assertions).
+
 Führen Sie Tests immer in einem isolierten Home-Verzeichnis aus. Die
 Test-Binaries schreiben Profile unter `%HOME%\.GrinPP`; ein Lauf gegen ein
 echtes Profil kann es verändern.
@@ -245,6 +254,7 @@ Häufige Fehler:
 | Sauberer Build aus Klon und Tests | **PASS** (sauberer Klon baute Release x64 und bestand die volle Suite 373/4982; Binaries nicht bitgleich zum Kandidaten) |
 | CI-Workflow vorbereitet | **JA** (`.github/workflows/ci.yml`) |
 | CI auf GitHub Actions ausgeführt | **NEIN** — Hosted-CI ist keine Evidenz für diesen Stand |
+| `Tests.exe`-Paketierung | **Nur Verifikation**, nicht im nutzerseitigen Release-Paket (separates `verification/`; isoliertes Home/TEMP, freier Port 3421, Repo-/Build-Wurzel als cwd) |
 | Windows-10-x64-Build/Lauf | **NOT VERIFIED** (quellseitig unterstützt) |
 | Linux-/macOS-Build | **NOT VERIFIED** |
 | EXE importiert auf der getesteten Maschine nur OS-DLLs | **PASS** (Release-Prüfung); Netzwerkfreigabe NOT VERIFIED |

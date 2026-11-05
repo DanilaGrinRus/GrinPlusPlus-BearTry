@@ -20,10 +20,11 @@ Status vocabulary used everywhere in this documentation:
 | Item | Value |
 |---|---|
 | Release stage | **Node Beta 1 candidate**; the Beta 1 label is not assigned by this document |
-| Git tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
+| Build/source tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
+| Release tag | `node-beta.1` — points at the final documentation commit; the tag object is recorded with the release |
 | Base upstream | GrinPlusPlus `v1.2.9`, commit `a0958a391c30cf630e3e08534fbc6fe9fb194326` (2024-10-22) |
 | `GrinNode.exe` SHA-256 | `4039086CE339106DE37D7C6A98D54873171458699507DB18E938AFD938C80EFC` |
-| `Tests.exe` SHA-256 | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |
+| `Tests.exe` SHA-256 | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` — verification-only, not in the user package |
 | Candidate source manifest | `1528` files, SHA-256 `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |
 | Verified platform | Windows 11 x64, MSVC 14.44 (Visual Studio 2022), Release, `/W4 /WX`, static CRT |
 
@@ -31,6 +32,12 @@ A result belongs to the binary and source tree that produced it. All results
 below are from the candidate unless marked otherwise. The earlier combined build
 `GrinNode.exe` SHA-256 `16C24DB404702595EDB4CEDA7A057D2C187339FB92664473D211DFDB5F3FF3A2`
 is cited only where it is the tested artifact.
+
+PIBD segment counts are run-specific: the candidate started at horizon
+`3 321 360` and reports `4999/4999`; the earlier combined build started at
+`3 320 640` and reports `4998/4998`. The one-segment difference follows from the
+different horizon height and is not a defect; counts are never transferred
+between builds.
 
 ## Node Beta 1 acceptance criteria
 
@@ -40,7 +47,7 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 | # | Criterion | Status | Basis / remaining gap |
 |---|---|---|---|
 | 1 | Full fresh Mainnet sync to the current height and continued block acceptance on one final SHA, no artificial short peer list | **NOT VERIFIED** | Mainnet has not been run on the candidate. Floonet is not Mainnet. |
-| 2 | Full PIBD on one final SHA: segments → validation → activation → catch-up, with negative cases and state preservation | **PASS (scoped)** | Candidate `4039086C…`, fresh isolated Floonet profile, 10 peers: PIBD from `3 321 360` (`17d0428f…`); `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker; `Successfully validated TxHashSet` at 00:44:15; KernelIndex generation 2 with `3 357 330` kernels; `PIBD state sync completed and validated` at 00:46:40; catch-up; graceful restart 00:53:13→00:53:21 with `kernel_index_check result=current` (generation 2, indexed height `3 324 510`, `3 360 496` kernels) and **no rebuild**; `FULLY_SYNCED` at height `3 324 513` (network `3 324 513`); graceful stop 00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`. Negative cases and state-preservation are covered by tests, not by this single live run. |
+| 2 | Full PIBD on one final SHA: segments → validation → activation → catch-up, with negative cases and state preservation | **PASS (scoped)** | Candidate `4039086C…`, fresh isolated Floonet profile, 10 peers: PIBD from `3 321 360` (`17d0428f…`), `4999/4999` segments; `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker; `Successfully validated TxHashSet` at 00:44:15; KernelIndex generation 2 with `3 357 330` kernels; `PIBD state sync completed and validated` at 00:46:40; catch-up; graceful restart 00:53:13→00:53:21 with `kernel_index_check result=current` (generation 2, indexed height `3 324 510`, `3 360 496` kernels) and **no rebuild**; `FULLY_SYNCED` at height `3 324 513` (network `3 324 513`); graceful stop 00:55:53; `bans_fraud_height=0`, `bans_invalid_data=0`. Negative cases and state-preservation are covered by tests, not by this single live run. |
 | 3 | Restarts across sync stages: headers, PIBD download, validation/activation, catch-up; normal and controlled-interruption restart | **PARTIAL** | Restart after a complete sync is PASS (scoped) on the candidate (00:53 restart, `kernel_index_check result=current`, no rebuild) and on the combined build. Restart during PIBD download/validation and a stage-by-stage matrix are NOT VERIFIED. |
 | 4 | Validation optimization enabled and proven correct in comparable conditions | **PARTIAL** | Parallel range-proof verification exists; the release default is 1 worker. The full-state 1/2/3/4/auto benchmark and automatic default selection remain OPEN. |
 | 5 | Full API consistency with all legacy issues closed, live-verified on one SHA | **NOT VERIFIED** | Registered methods work locally; per-method schema parity, several PIBD/validation status fields and four owner chain-control methods are open. See [API.md](API.md). |
@@ -56,11 +63,11 @@ The criteria come from the Node Beta dossier. They are repeated here so that
 | KernelIndex after TxHashSet install (synthetic archive) | **PASS** | 25 assertions: install, index at installed tip, restart without rebuild. Not a network PIBD run. |
 | Multi-peer PIBD scheduler policy | **PASS** | 68 assertions / 9 cases: peer binding, per-peer/global capacity, send-failure and disconnect release, wrong-peer rejection without segment loss, late/duplicate responses. Live adversarial peers are NOT VERIFIED. |
 | BlockPipe local-error classification (no false ban) | **PASS** | 41 assertions / 6 cases. A local exception, including an injected index-commit error, does not ban the peer. Real RocksDB failure is NOT VERIFIED. |
-| Live Floonet sync on the earlier combined build | **PASS (scoped)** | `16C24DB4…`: 10 connections (PIBD started with 9 capable peers), headers `0 → 3 324 027`, PIBD `4998/4998`, state validation `1987 s`, index generation 2 with `3 356 610` kernels, `fully_synced` at `3 324 064`, restart with current index, final height `3 324 082`. Bound to that binary. |
+| Live Floonet sync on the earlier combined build | **PASS (scoped)** | `16C24DB4…`: 10 connections (PIBD started with 9 capable peers), headers `0 → 3 324 027`, PIBD `4998/4998` at horizon `3 320 640`, state validation `1987 s`, index generation 2 with `3 356 610` kernels, `fully_synced` at `3 324 064`, restart with current index, final height `3 324 082`. Bound to that binary; the count is not comparable to the candidate's different horizon. |
 | API registration and local auth behaviour | **PASS (scope-limited)** | 27 local HTTP/RPC checks on intermediate candidates (`C996B748…`, `36AD1C92…`, `D748B90E…`): status consistency, empty arrays, invalid numbers, owner auth failure, resync, shutdown; owner `ban_peer`/`unban_peer` without a secret fails and IPv6 ban/unban works. Not re-run on `4039086C…`; not full schema parity. |
 | Fast local HTTP health | **PASS** | `/v1/health` returned first HTTP 200 at `0.56–0.62 s` while initialization was running; `ready` precedes full sync. Startup-phase evidence is partial: the `starting` state was not always observed under heavy load. |
 | Candidate Release build | **PASS (local)** | Release x64 `/W4 /WX`; build log recorded. See [docs/evidence/INDEX.md](evidence/INDEX.md) E-06b. |
-| Live Floonet sync on the candidate `4039086C…` | **PASS (scoped)** | Fresh isolated Floonet profile, 10 peers, PIBD from `3 321 360`: `2 948 812/2 948 812` range proofs (1 worker, `1 215 538 ms`), TxHashSet validated, KernelIndex generation 2 (`3 357 330` kernels), catch-up, graceful restart with `kernel_index_check result=current` and no rebuild, `FULLY_SYNCED` at `3 324 513`, graceful stop, `bans=0`. Evidence: [docs/evidence/files/candidate-live-floonet-2026-11-05.md](evidence/files/candidate-live-floonet-2026-11-05.md). Scoped to this binary/scenario. |
+| Live Floonet sync on the candidate `4039086C…` | **PASS (scoped)** | Fresh isolated Floonet profile, 10 peers, PIBD from `3 321 360`: `4999/4999` segments, `2 948 812/2 948 812` range proofs (1 worker, `1 215 538 ms`), TxHashSet validated, KernelIndex generation 2 (`3 357 330` kernels), catch-up, graceful restart with `kernel_index_check result=current` and no rebuild, `FULLY_SYNCED` at `3 324 513`, graceful stop, `bans=0`. Evidence: [docs/evidence/files/candidate-live-floonet-2026-11-05.md](evidence/files/candidate-live-floonet-2026-11-05.md) and [pibd-segment-counts](evidence/files/pibd-segment-counts-2026-11-05.md). Scoped to this binary/scenario. |
 | Clean-copy rebuild | **PASS** | A clean clone built Release x64 and passed the same full suite (373 cases / 4982 assertions). Clean binaries `GrinNode 73F35D64…`, `Tests 7DE498F5…`; not bit-identical to the candidate (PE timestamps/source path) with identical source, toolchain, imports and tests. Hosted CI was not run. |
 
 ## Implemented, partially verified
@@ -123,6 +130,18 @@ be represented as shipped or supported.
   guide documents the pinned dependency revisions and the local sysroot route.
 - The GitHub Actions workflow is **prepared, not executed** in this fork. Local
   scripts are not hosted-CI evidence.
+- **Licensing:** the fork is MIT. Thirty files derived from the Rust `grin`
+  5.5.2 node carry comment-only Apache-2.0 attribution headers; the §4(c)
+  file-level requirement is **met** (see
+  [LICENSES/GRIN-DERIVED-FILES.md](../LICENSES/GRIN-DERIVED-FILES.md) and
+  [NOTICE](../NOTICE)). `Logo.png` is **PARTIAL**: upstream asset from initial
+  commit `7a4a6619` (2018-12-17, David Burkett), SHA-256 `52658BE6…`, no separate
+  upstream licence, retained as an upstream MIT project asset.
+- **Packaging:** the user-facing release package contains `GrinNode.exe` and
+  documentation, not `Tests.exe`. `Tests.exe` is distributed only under
+  `verification/` for reproducibility; it must run with isolated
+  `HOMEDRIVE`/`HOMEPATH`/`TEMP` because a run against a real user profile caused
+  a `0xC0000409` abort on the preparation machine.
 
 ## Evidence
 

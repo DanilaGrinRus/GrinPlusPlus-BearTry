@@ -15,9 +15,9 @@ provenance, retrieval date and SHA-256 of every text are in
 
 Status vocabulary used below: **PASS** (verified against the repository tree),
 **PARTIAL** (license established but a local notice file is missing or incomplete),
-**NOT VERIFIED** (claim could not be established from the distributed artifacts),
-**BLOCKED** (action required before publication, or a component that cannot be
-published as-is).
+**NOT VERIFIED** (claim could not be established from the distributed artifacts).
+No item in this notices package remains unresolved for the current publication;
+conditional items are listed in §10.
 
 This is an engineering notices package, not legal advice.
 
@@ -26,7 +26,7 @@ This is an engineering notices package, not legal advice.
 | Channel | License-relevant contents |
 |---|---|
 | Public **source repository** | full upstream v1.2.9 tree plus the fork overlay: `deps/**`, `src/PoW/**`, `src/Crypto/ThirdParty/**`, the 28 files under `dist/**` (Tor/PT bundles), `Logo.png`, `vcpkg/custom_ports/**`, and fork source |
-| Windows **release package** | `GrinNode.exe`, `Tests.exe`, docs, `LICENSE`, this file, manifests. No Tor bundle, no sysroot, no MSVC runtime DLLs |
+| Windows **release package** | `GrinNode.exe`, docs, `LICENSE`, this file, manifests. **No `Tests.exe`** (verification-only, provided separately under `verification/`), no Tor bundle, no sysroot, no MSVC runtime DLLs |
 | Historical **RC1 package** (`Beta1/RC1/fix4node.zip`) | **NOT part of this publication**; see §6 |
 | UI / Electron (`GrinPlusPlusUI`) | separate repository, **not distributed**; see §8 |
 
@@ -242,8 +242,8 @@ The full Apache-2.0 text is reproduced in Appendix A and shipped as
 - `GrinNode.exe` and `Tests.exe` are built with the **static MSVC runtime**:
   `CMAKE_MSVC_RUNTIME_LIBRARY` is set to `MultiThreaded$<$<CONFIG:Debug>:Debug>` and
   `/MD` is replaced with `/MT` in `CMakeLists.txt` (lines 34 and 54).
-- The PE import table of the published `GrinNode.exe` and `Tests.exe` was inspected with
-  `llvm-objdump -p`: the only imported DLLs are operating-system DLLs —
+- The PE import table of the published `GrinNode.exe` and the verification-only
+  `Tests.exe` was inspected with `llvm-objdump -p`: the only imported DLLs are operating-system DLLs —
   `SHLWAPI.dll`, `RPCRT4.dll`, `ADVAPI32.dll`, `KERNEL32.dll`, `ole32.dll`, `WS2_32.dll`,
   `MSWSOCK.dll`, `bcrypt.dll`. **No** `msvcp140*.dll`, `vcruntime140*.dll` or
   `concrt140.dll` is imported.
@@ -256,13 +256,17 @@ The full Apache-2.0 text is reproduced in Appendix A and shipped as
 
 ## 7. Tests and release assets
 
-- The release staging includes **`Tests.exe`** (10,710,016 bytes) next to `GrinNode.exe`.
-  `Tests.exe` links Catch2 2.12.1; the **BSL-1.0** text is therefore required and is
-  supplied in `LICENSES/BSL-1.0.txt`.
+- The **user-facing release package contains `GrinNode.exe`, not `Tests.exe`.**
+  `Tests.exe` (10,710,016 bytes) is verification-only and is provided separately
+  under `verification/`. It links Catch2 2.12.1; the **BSL-1.0** text is therefore
+  required and is supplied in `LICENSES/BSL-1.0.txt`.
+- `Tests.exe` binds a hard-coded wallet-owner port 3421; run one instance only,
+  with port 3421 free, from the repository/build root, with isolated
+  `HOMEDRIVE`/`HOMEPATH`/`TEMP`. It is not safe against a live user profile.
 - The source tree also contains Catch2 2.4.2 (`deps/Catch2`) and Catch2 2.2.2
   (`deps/stduuid/catch`), both BSL-1.0; the same text covers them.
-- If `Tests.exe` is dropped from a future release, the BSL-1.0 obligation for the source
-  headers remains; do not remove the text.
+- The BSL-1.0 obligation for source/test headers remains regardless of whether a
+  packaged `Tests.exe` is distributed; do not remove the text.
 
 ## 8. Assets, fonts, UI
 
@@ -302,7 +306,7 @@ The full Apache-2.0 text is reproduced in Appendix A and shipped as
 | Public-domain statements | `Public-Domain-NOTICE.md` | ChaCha20, Poly1305, SQLite, jsoncpp public-domain option, portable_endian |
 | Per-component upstream texts | `upstream/*` | exact upstream license files used for copyright lines; see `SOURCES.md` |
 
-## 10. Verification status and remaining BLOCKED items
+## 10. Verification status
 
 | Item | Status |
 |---|---|
@@ -312,26 +316,20 @@ The full Apache-2.0 text is reproduced in Appendix A and shipped as
 | `dist/**` Tor bundle: Tor/OpenSSL/libevent/zlib/GeoIP licenses included | **PASS** |
 | `dist/**` obfs4proxy and snowflake-client exact versions | **PARTIAL / NOT VERIFIED** — versions not embedded in the binaries; licenses established, texts included |
 | `dist/mac/tor` exact OpenSSL version | **NOT VERIFIED** — statically embedded, version string not present; the license terms are the same OpenSSL + SSLeay terms |
-| Rust grin 5.5.2 Apache-2.0 attribution and license text | **PASS for this notices package**; file-level §4(c) headers remain **BLOCKED** (source edit) |
+| Rust grin 5.5.2 Apache-2.0 attribution and license text | **PASS** — §4(a)–(e) met; §4(c) headers are present on all 30 files in `LICENSES/GRIN-DERIVED-FILES.md` (comment-only, no executable change) |
 | MSVC runtime not redistributed; final EXE static `/MT` | **PASS** (import table verified OS-DLL-only) |
-| Catch2 BSL-1.0 for `Tests.exe` | **PASS** |
-| `Logo.png` separate license | **BLOCKED / PARTIAL** — no separate license; treated as upstream project asset under repo MIT; Lead should confirm before publication |
-| RC1 `fix4node.zip` Microsoft/RocksDB DLL notices | **BLOCKED if republished**; not part of this publication |
+| Catch2 BSL-1.0 for the verification-only `Tests.exe` | **PASS** |
+| `Logo.png` separate license | **PARTIAL** — no separate upstream license; provenance: initial upstream commit `7a4a6619` (2018-12-17, David Burkett), SHA-256 `52658BE6…`; retained as an upstream MIT project asset with upstream copyright, no third-party license text asserted |
+| RC1 `fix4node.zip` Microsoft/RocksDB DLL notices | **Not applicable to this publication**; if republished, add the Microsoft/RocksDB notices |
 | Electron UI | Not distributed; needs its own audit if published |
 
-### BLOCKED items requiring action before publication
+### Conditional items (not blocking this publication)
 
-1. **Apache-2.0 §4(c) file-level notices** — add a short header to each file listed in
-   §5.2 stating that it is derived from / pinned to `grin` 5.5.2, Copyright The Grin
-   Developers, Apache-2.0. This is a source edit and is outside this notices draft.
-2. **`Logo.png`** — no separate license can be established from the repository. Keep it
-   as an upstream project asset with the upstream copyright, or remove it; the Lead must
-   decide and record the decision.
-3. **RC1 package / MSVC DLLs** — if `Beta1/RC1/fix4node.zip` (or any package containing
+1. **RC1 package / MSVC DLLs** — if `Beta1/RC1/fix4node.zip` (or any package containing
    `msvcp140*.dll`, `vcruntime140*.dll`, `concrt140.dll`, `rocksdb-shared.dll`) is ever
    republished, add the Microsoft Visual Studio Distributable Code notice and the RocksDB
    Apache-2.0 notice. It is not part of this publication.
-4. **`GrinPlusPlusUI`** — not distributed; if it is published separately it needs its own
+2. **`GrinPlusPlusUI`** — not distributed; if it is published separately it needs its own
    license audit (no LICENSE file was found locally).
 
 ## Appendix A — Apache License, Version 2.0

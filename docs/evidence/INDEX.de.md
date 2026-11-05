@@ -22,6 +22,7 @@ Kandidat: `node-beta.1-candidate`, `GrinNode.exe` `4039086C…`, `Tests.exe`
 | `nrd-kill-child.stdout.log`, `nrd-kill-recovery.stdout.log` | Ausgabe des getöteten Prozesses und der Recovery (241 Assertions, Exit 0) |
 | `combined-live-floonet-2026-11-05.md` | Bereinigter Auszug des Live-Floonet-Laufs auf dem kombinierten Build `16C24DB4…` |
 | `candidate-live-floonet-2026-11-05.md` | PASS (begrenzt) des Live-Laufs auf dem Kandidaten `4039086C…` |
+| `pibd-segment-counts-2026-11-05.md` | Primäre `pibd_download_completed`-Zeilen: Kandidat `4999/4999`, kombinierter Build `4998/4998` |
 | `candidate-live-node-log-excerpt-2026-11-05.log` | Bereinigter Log-Auszug des Kandidaten (Pfade/IPs entfernt) |
 | `candidate-source-manifest-final.sha256` | Finales Quellmanifest |
 
@@ -33,8 +34,9 @@ Kandidat: `node-beta.1-candidate`, `GrinNode.exe` `4039086C…`, `Tests.exe`
 | E-02 | Gezielte Index-/Scheduler-/BlockPipe-Tests | **PASS** |
 | E-04 | NRD-Kill/Recovery | **PASS** (erzwungener Kill, kein Stromausfall) |
 | E-06 | Lokaler Release-Build des Kandidaten | **PASS (lokal)** |
-| E-07 | Floonet-Live-PASS auf `16C24DB4…` | **PASS (binary-gebunden)** |
-| E-08 | Floonet-Live-Lauf auf dem Kandidaten `4039086C…` | **PASS (begrenzt)**: PIBD ab 3.321.360, 2.948.812/2.948.812 Proofs (1 Worker), `FULLY_SYNCED` 3.324.513, Neustart mit aktuellem Index, `bans=0` |
+| E-07 | Floonet-Live-PASS auf `16C24DB4…` | **PASS (binary-gebunden)**; `4998/4998` bei Horizont 3.320.640 |
+| E-08 | Floonet-Live-Lauf auf dem Kandidaten `4039086C…` | **PASS (begrenzt)**: PIBD ab 3.321.360, `4999/4999` Segmente, 2.948.812/2.948.812 Proofs (1 Worker), `FULLY_SYNCED` 3.324.513, Neustart mit aktuellem Index, `bans=0` |
+| E-08b | Abgleich der Segmentzähler | **PASS**: Die Ein-Segment-Differenz folgt aus der anderen Horizonthöhe; Zähler werden nicht zwischen Builds übertragen |
 | E-09 | Mainnet | **NOT VERIFIED** |
 | E-11/E-12 | KernelIndex Orphan/Faults/Install | **PASS** (lokale Tests) |
 | E-14 | Echter RocksDB-Fehler / Stromausfall | **NOT VERIFIED** |

@@ -33,7 +33,8 @@ changes a result value.
 | `files/build-final.log` | `work/merged-final-20261105/build-final.log` | 5 407 B | `64644CDD401DABEB3C39EF986684A5DAB321C98E83719D027B473A16D8320178` |
 | `files/configure.log` | `work/merged-final-20261105/configure.log` | 4 737 B | `243CAB979AF339309260C5BA599B761BEE28DC1D1151FBF96A8476D81D7A3038` |
 | `files/combined-live-floonet-2026-11-05.md` | `work/combined-kernel-auto-20261105/FINAL_REPORT.md` | 6 391 B | `3734E46E73E204F96996FBAA456DDA4D9FB69BE291D056C62CDCE3EC494AE08B` |
-| `files/candidate-live-floonet-2026-11-05.md` | candidate live-run evidence summary (generated from the run logs) | 3 758 B | `7DF875EE763C8B1483C45DD8CF1D5F4642A420AAC6295C838ABABBF3285AF2CD` |
+| `files/candidate-live-floonet-2026-11-05.md` | candidate live-run evidence summary (generated from the run logs) | 3 873 B | `8775388AFE336F54758F034CD195274F34BAB19D04600C56EE13302477C20607` |
+| `files/pibd-segment-counts-2026-11-05.md` | `pibd_download_completed` excerpts from the two local `sync-stages.log` files | 1 395 B | `8BE15CC4300B729E0E2C11126A543FA0B51DF20ECD5D0EF8D022C55EC729EDF0` |
 | `files/candidate-live-node-log-excerpt-2026-11-05.log` | excerpt of `work/merged-final-20261105/runs/live-merged/data/LOGS/Node.log` | 5 556 B (excerpt); original 85 813 B | original log: `A1145D0FF79ACE243E49B423D1983BF66FD75DAB59A7EBC6F8C261BFE0FB5F99`; excerpt: `84DFEA615FF3AEBA2B90EF6456F98B62FE9B15A45FC1EFF6B3109D954BEB6826` |
 | `files/candidate-source-manifest-final.sha256` | `evidence-index/candidate-source-manifest-final.sha256` | 165 660 B | `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |
 
@@ -47,10 +48,14 @@ changes a result value.
 | `work/header-checkpoint-20261105/FINAL_STATUS_FASTINIT.md` | 8 895 B | `B251B33CCD1A689E80723307C8FFABEDFECCE8745EA01FCE95C7EC0AEF8A29B8` |
 | `work/merged-final-20261105/merged-fastinit-current.patch` | 714 136 B | `7771DD7A6C3A256747D9626B7A52BF859A04E5CB576DD0A3FD63758CD8DB65BA` |
 | `work/merged-final-20261105/runs/live-merged/data/LOGS/Node.log` | 85 813 B | `A1145D0FF79ACE243E49B423D1983BF66FD75DAB59A7EBC6F8C261BFE0FB5F99` |
+| `work/merged-final-20261105/source/bin/Release/Release/logs/sync-stages.log` | 5 704 B | `3C371B387F97E051A912AE22000A114F5C56E212B35E2D40D934FC4617FF5310` |
+| `work/combined-kernel-auto-20261105/source/bin/Release/Release/logs/sync-stages.log` | 9 212 B | `6D4BC808ECBED3E166406E26218B1A90CFAABA8562608F7678332A90DCCF355B` |
 
 Redactions for the candidate live excerpt: absolute workspace paths and peer IPv4
-addresses only. No result value was changed. A sanitization summary also exists
-in [`SANITIZATION_TABLE.md`](SANITIZATION_TABLE.md).
+addresses only. The PIBD segment-count file reproduces only the single
+`pibd_download_completed` line from each `sync-stages.log`; absolute paths were
+removed and no value was changed. A sanitization summary also exists in
+[`SANITIZATION_TABLE.md`](SANITIZATION_TABLE.md).
 
 Additional local-only evidence (profiles, run logs, API check artifacts,
 build logs) is listed in [`INDEX.md`](INDEX.md) and remains with the maintainers.

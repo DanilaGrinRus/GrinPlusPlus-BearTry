@@ -129,6 +129,15 @@ your own artifacts.
 
 ## 5. Tests
 
+`Tests.exe` is **not shipped in the user-facing release package**; it is
+provided separately under `verification/` for reproducibility only. It binds a
+hard-coded wallet-owner port **3421**: run only one instance, with port 3421
+free, and from the repository/build root as the working directory. Run it with
+an isolated `HOMEDRIVE`/`HOMEPATH`/`TEMP`; a run against a real user profile
+caused a `0xC0000409` abort on the preparation machine. Do not claim general
+safe execution. The known-good full-suite result is the release workstream's
+clean-copy run (`373` cases / `4982` assertions).
+
 Always run tests in an isolated home directory. The test binaries write profiles
 under `%HOME%\.GrinPP`; pointing them at a real profile can modify it.
 
@@ -242,6 +251,7 @@ Common errors:
 | Clean-clone build and test run | **PASS** (clean clone built Release x64 and passed the full suite 373/4982; binaries not bit-identical to the candidate) |
 | CI workflow prepared | **YES** (`.github/workflows/ci.yml`) |
 | CI executed on GitHub Actions | **NO** — hosted CI is not evidence for this snapshot |
+| `Tests.exe` packaging | **Verification-only**, not in the user-facing release package (separate `verification/`; isolated home/TEMP, free port 3421, repo/build root as cwd) |
 | Windows 10 x64 build/run | **NOT VERIFIED** (source-supported) |
 | Linux/macOS build | **NOT VERIFIED** |
 | Windows executable imports only OS DLLs on the tested machine | **PASS** (release inspection); network-share execution NOT VERIFIED |

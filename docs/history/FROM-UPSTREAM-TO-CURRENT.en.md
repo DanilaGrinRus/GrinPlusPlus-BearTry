@@ -139,12 +139,15 @@ production.
   `src/P2P/Pipeline/TxHashSetPipe.*`.
 - **Tests and results.** Synthetic archive install + index + restart: 25
   assertions PASS. On the earlier combined build, a live Floonet run downloaded
-  `4998/4998` segments, validated the state and reached `fully_synced`. On the
-  candidate itself, a fresh isolated Floonet run started PIBD at `3 321 360`,
-  verified `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker,
-  validated the TxHashSet, built KernelIndex generation 2 (`3 357 330` kernels),
-  caught up, restarted at 00:53 with `kernel_index_check result=current` and no
-  rebuild, and reached `FULLY_SYNCED` at `3 324 513` before a graceful stop.
+  `4998/4998` segments at horizon `3 320 640`, validated the state and reached
+  `fully_synced`. On the candidate itself, a fresh isolated Floonet run started
+  PIBD at `3 321 360`, downloaded `4999/4999` segments, verified
+  `2 948 812/2 948 812` range proofs in `1 215 538 ms` with 1 worker, validated
+  the TxHashSet, built KernelIndex generation 2 (`3 357 330` kernels), caught up,
+  restarted at 00:53 with `kernel_index_check result=current` and no rebuild, and
+  reached `FULLY_SYNCED` at `3 324 513` before a graceful stop. The one-segment
+  difference between `4998/4998` and `4999/4999` follows from the different
+  horizon heights and is not a defect; counts are not transferred between builds.
   The hidden `FullSweepPpCkpt` test can pass with an empty fixture warning, so it
   is not evidence of a populated sweep.
 - **Compatibility / performance / data impact.** PIBD state is written in the
@@ -175,8 +178,10 @@ production.
 - **Changed components.** `src/P2P/PIBD/PibdScheduler.h`, `PibdSync.h`,
   `src/P2P/Sync/StateSyncer.*`, `src/P2P/MessageProcessor.cpp`.
 - **Tests and results.** `PibdScheduler*`: 68 assertions / 9 cases PASS.
-  Normal live multi-peer download was observed (9 peers, `4998/4998`). Live
-  adversarial behavior and false-ban at the P2P layer are **NOT VERIFIED**.
+  Normal live multi-peer download was observed on the combined build (9 peers,
+  `4998/4998`) and on the candidate (10 peers, `4999/4999` at a different
+  horizon). Live adversarial behavior and false-ban at the P2P layer are **NOT
+  VERIFIED**.
 - **Compatibility / performance / data impact.** No format change; improved
   resilience. Live multi-peer throughput is not benchmarked against one peer.
 - **Remaining limits.** Live N-peer vs 1-peer matrix, per-peer throughput and

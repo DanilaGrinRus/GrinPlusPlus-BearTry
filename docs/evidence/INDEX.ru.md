@@ -22,6 +22,7 @@ CRT. Кандидат: `node-beta.1-candidate`, `GrinNode.exe`
 | `nrd-kill-child.stdout.log`, `nrd-kill-recovery.stdout.log` | Вывод убитого процесса и recovery (241 проверка, exit 0) |
 | `combined-live-floonet-2026-11-05.md` | Очищенная выжимка live-прогона Floonet на объединённой сборке `16C24DB4…` |
 | `candidate-live-floonet-2026-11-05.md` | PASS (в границах) живого прогона кандидата `4039086C…` |
+| `pibd-segment-counts-2026-11-05.md` | Первичные строки `pibd_download_completed`: кандидат `4999/4999`, объединённая сборка `4998/4998` |
 | `candidate-live-node-log-excerpt-2026-11-05.log` | Очищенная выжимка журнала кандидата (пути и IP удалены) |
 | `candidate-source-manifest-final.sha256` | Финальный манифест исходников |
 
@@ -33,8 +34,9 @@ CRT. Кандидат: `node-beta.1-candidate`, `GrinNode.exe`
 | E-02 | Целевые index/scheduler/block-pipe тесты | **PASS** |
 | E-04 | Kill/recovery NRD | **PASS** (принудительный kill, не потеря питания) |
 | E-06 | Локальная Release-сборка кандидата | **PASS (локально)** |
-| E-07 | Живой Floonet PASS на `16C24DB4…` | **PASS (в границах бинарника)** |
-| E-08 | Живой Floonet на кандидате `4039086C…` | **PASS (в границах)**: PIBD с 3 321 360, 2 948 812/2 948 812 proofs (1 поток), `FULLY_SYNCED` 3 324 513, перезапуск с текущим индексом, `bans=0` |
+| E-07 | Живой Floonet PASS на `16C24DB4…` | **PASS (в границах бинарника)**; `4998/4998` на горизонте 3 320 640 |
+| E-08 | Живой Floonet на кандидате `4039086C…` | **PASS (в границах)**: PIBD с 3 321 360, `4999/4999` сегментов, 2 948 812/2 948 812 proofs (1 поток), `FULLY_SYNCED` 3 324 513, перезапуск с текущим индексом, `bans=0` |
+| E-08b | Сверка счётчиков сегментов | **PASS**: разница в один сегмент объясняется разной высотой горизонта; счётчики не переносятся между сборками |
 | E-09 | Mainnet | **NOT VERIFIED** |
 | E-11/E-12 | KernelIndex orphan/faults/install | **PASS** (локальные тесты) |
 | E-14 | Реальный RocksDB failure / power loss | **NOT VERIFIED** |

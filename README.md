@@ -12,7 +12,8 @@ the wallet and UI are **not** part of the Node Beta acceptance.
 | Base commit | `a0958a391c30cf630e3e08534fbc6fe9fb194326` (2024-10-22) |
 | Project license | MIT (see [LICENSE](LICENSE), upstream copyright preserved) |
 | Development stage | **Node Beta 1 candidate** — not a stable release, not Mainnet-ready |
-| Git tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
+| Build/source tag | `node-beta.1-candidate` — annotated object `fc5174ec…`, tagged commit `ccc4f356…` |
+| Release tag | `node-beta.1` — points at the final documentation commit; the tag object is recorded with the release |
 
 ## Status at a glance
 
@@ -21,7 +22,7 @@ Read [docs/STATUS.md](docs/STATUS.md) for the full evidence-based status and
 
 | Area | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Candidate builds, passes the full test suite and completed a live Floonet sync to `FULLY_SYNCED` with a current index on restart (**PASS, scoped**; see [docs/STATUS.md](docs/STATUS.md)). |
+| Node (Windows 11 x64, MSVC 14.44) | Candidate builds, passes the full test suite and completed a live Floonet sync (`PIBD 4999/4999` segments, then validation, index rebuild and catch-up) to `FULLY_SYNCED` with a current index on restart (**PASS, scoped**; see [docs/STATUS.md](docs/STATUS.md)). |
 | Clean-copy rebuild | **PASS** — clean clone builds and passes the same suite; not bit-identical to the candidate (build metadata) |
 | Mainnet | **NOT TESTED** |
 | Node HTTP/RPC API | **PARTIAL** — registered methods work locally, full Rust parity is not claimed |
@@ -46,10 +47,16 @@ Final candidate source tree and binaries for this documentation snapshot:
 | `Tests.exe` | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |
 | Candidate source manifest (1528 files) | `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |
 
-The candidate commit/tag is published in the repository history
-(`node-beta.1-candidate`). Rebuilding the same source does not reproduce a
-bit-identical executable automatically; build results can differ by toolchain,
-SDK and paths. Run `sha256sum` on your own artifacts and record them.
+The source/build tag is `node-beta.1-candidate`; the release tag is
+`node-beta.1`. Rebuilding the same source does not reproduce a bit-identical
+executable automatically; build results can differ by toolchain, SDK and paths.
+Run `sha256sum` on your own artifacts and record them.
+
+`Tests.exe` is **not part of the user-facing release package**. It is provided
+separately under `verification/` for reproducibility only, because a test run
+against a real user profile caused a `0xC0000409` abort on the preparation
+machine. If you run it, use an isolated `HOMEDRIVE`/`HOMEPATH`/`TEMP`; do not
+assume it is safe against a live user profile.
 
 ## Verified platform
 
@@ -112,9 +119,13 @@ the English text is authoritative.
 ## Testing
 
 The candidate full suite passes (`373` test cases, `4982` assertions, exit 0).
-Some checks need external fixtures or explicit tags and are **skipped**, not
-passed; see [docs/BUILD.md](docs/BUILD.md) and [docs/STATUS.md](docs/STATUS.md)
-for the exact list.
+`Tests.exe` is verification-only and is **not** shipped in the user-facing
+release package. Run it with an isolated `HOMEDRIVE`/`HOMEPATH`/`TEMP`; a run
+against a real user profile caused a `0xC0000409` abort on the preparation
+machine, so it must not be treated as safe against a live profile. Some checks
+need external fixtures or explicit tags and are **skipped**, not passed; see
+[docs/BUILD.md](docs/BUILD.md) and [docs/STATUS.md](docs/STATUS.md) for the
+exact list.
 
 ## Safety
 
@@ -124,10 +135,20 @@ profile data. See [SECURITY.md](SECURITY.md).
 
 ## License and notices
 
-MIT — see [LICENSE](LICENSE). Upstream copyright is preserved. Bundled
-dependencies and their notices are inventoried in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), with full license texts in
-[LICENSES/](LICENSES/README.md).
+The fork is MIT — see [LICENSE](LICENSE); upstream copyright is preserved.
+Thirty files derived from the Rust `grin` 5.5.2 node carry comment-only
+Apache-2.0 attribution headers; the canonical list is
+[LICENSES/GRIN-DERIVED-FILES.md](LICENSES/GRIN-DERIVED-FILES.md), with the full
+Apache-2.0 text in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) and the
+component notice in [NOTICE](NOTICE). The Apache-2.0 §4(c) file-level
+attribution requirement is **met**. Bundled dependencies and their notices are
+inventoried in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), with full
+license texts in [LICENSES/](LICENSES/README.md).
+
+`Logo.png` is **PARTIAL**: it is the upstream project asset from initial commit
+`7a4a6619` (2018-12-17, David Burkett), SHA-256 `52658BE6…`, with no separate
+upstream license. It is retained as an upstream MIT project asset with the
+upstream copyright; no third-party license text is asserted for it.
 
 ---
 

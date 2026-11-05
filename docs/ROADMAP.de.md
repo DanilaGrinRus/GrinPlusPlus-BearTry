@@ -24,7 +24,7 @@ Ziel: abgeschlossener Floonet-Live-Lauf, an das Kandidaten-Binary gebunden.
 
 | Punkt | Status | Exit-Kriterium |
 |---|---|---|
-| Floonet-Live-Sync des Kandidaten | **PASS (begrenzt)** | Frisches isoliertes Profil: Header → PIBD → Prüfung → Aufholen → `fully_synced`; Evidenz an `4039086C…` gebunden |
+| Floonet-Live-Sync des Kandidaten | **PASS (begrenzt)** | Frisches isoliertes Profil: Header → PIBD `4999/4999` (Horizont 3.321.360; 4998/4998 des kombinierten Builds ist ein anderer Horizont) → Prüfung → Aufholen → `fully_synced`; Evidenz an `4039086C…` gebunden |
 | Neustart nach vollständigem Sync | **PASS (begrenzt)** | Neustart 00:53:13→00:53:21 behielt Generation 2, `kernel_index_check result=current`, kein Rebuild; Fortsetzung bis `FULLY_SYNCED` bei 3.324.513 |
 | Neustart während PIBD-Download | **NOT VERIFIED** | Stufe dokumentiert; Zustand erhalten oder sicher neu gestartet |
 | Neustart während Prüfung/Aktivierung | **NOT VERIFIED** | Marker-Recovery geprüft; kein Teilzustand live |

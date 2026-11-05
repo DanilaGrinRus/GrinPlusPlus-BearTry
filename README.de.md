@@ -13,7 +13,8 @@ Wallet und UI gehören **nicht** zur Node-Beta-Abnahme.
 | Basis-Commit | `a0958a391c30cf630e3e08534fbc6fe9fb194326` (22.10.2024) |
 | Projektlizenz | MIT (siehe [LICENSE](LICENSE), Upstream-Copyright bleibt erhalten) |
 | Entwicklungsstand | **Node-Beta-1-Kandidat** — kein stabiles Release, keine Mainnet-Bereitschaft |
-| Git-Tag | `node-beta.1-candidate` — annotiertes Objekt `fc5174ec…`, getaggter Commit `ccc4f356…` |
+| Build-/Quell-Tag | `node-beta.1-candidate` — annotiertes Objekt `fc5174ec…`, getaggter Commit `ccc4f356…` |
+| Release-Tag | `node-beta.1` — zeigt auf den finalen Dokumentations-Commit; das Tag-Objekt wird mit dem Release erfasst |
 
 ## Status auf einen Blick
 
@@ -23,7 +24,7 @@ Der vollständige, evidenzbasierte Status steht in
 
 | Bereich | Status |
 |---|---|
-| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat baut, besteht die vollständige Testsuite und schloss einen Live-Floonet-Sync bis `FULLY_SYNCED` mit aktuellem Index nach dem Neustart ab (**PASS, begrenzt**; siehe [docs/STATUS.de.md](docs/STATUS.de.md)). |
+| Node (Windows 11 x64, MSVC 14.44) | Der Kandidat baut, besteht die vollständige Testsuite und schloss einen Live-Floonet-Sync (`PIBD 4999/4999` Segmente, dann Prüfung, Index-Rebuild und Aufholen) bis `FULLY_SYNCED` mit aktuellem Index nach dem Neustart ab (**PASS, begrenzt**; siehe [docs/STATUS.de.md](docs/STATUS.de.md)). |
 | Sauberer Neu-Build | **PASS** — sauberer Klon baut und besteht dieselbe Suite; nicht bitgleich zum Kandidaten (Build-Metadaten) |
 | Mainnet | **NICHT GETESTET** |
 | Node-HTTP/RPC-API | **TEILWEISE** — registrierte Methoden funktionieren lokal, vollständige Rust-Parität wird nicht behauptet |
@@ -49,11 +50,17 @@ Finaler Quellbaum und Binärdateien für diesen Dokumentationsstand:
 | `Tests.exe` | `A9594508FBDF5B48AA123A862CBB68B20882AD98BB8AA437A9E9A9C60D4FAC8C` |
 | Quellmanifest des Kandidaten (1528 Dateien) | `964B2DD8201018136EDFA3B87BFB98924F2A0FCAA508E5117DE2630380BA9627` |
 
-Commit/Tag des Kandidaten sind in der Repository-Historie veröffentlicht
-(`node-beta.1-candidate`). Ein Neubau derselben Quellen erzeugt nicht
-automatisch eine bitgleiche EXE; Toolchain, SDK und Pfade können das Ergebnis
-verändern. Ermitteln Sie `sha256sum` Ihrer eigenen Artefakte und dokumentieren
-Sie diese.
+Das Build-/Quell-Tag ist `node-beta.1-candidate`, das Release-Tag ist
+`node-beta.1`. Ein Neubau derselben Quellen erzeugt nicht automatisch eine
+bitgleiche EXE; Toolchain, SDK und Pfade können das Ergebnis verändern. Ermitteln
+Sie `sha256sum` Ihrer eigenen Artefakte und dokumentieren Sie diese.
+
+`Tests.exe` ist **nicht Teil des nutzerseitigen Release-Pakets**. Es wird separat
+unter `verification/` nur zur Reproduzierbarkeit bereitgestellt, weil ein Lauf
+gegen ein echtes Nutzerprofil auf der Vorbereitungsmaschine mit `0xC0000409`
+abbrach. Falls Sie es ausführen, nutzen Sie isolierte
+`HOMEDRIVE`/`HOMEPATH`/`TEMP`; betrachten Sie es nicht als sicher gegenüber einem
+Live-Profil.
 
 ## Verifizierte Plattform
 
@@ -120,9 +127,14 @@ voneinander ab, gilt der englische Text.
 ## Tests
 
 Die vollständige Suite des Kandidaten besteht (`373` Testfälle, `4982`
-Assertions, Exit 0). Einige Prüfungen benötigen externe Fixtures oder explizite
-Tags und werden **übersprungen**, nicht bestanden; die genaue Liste steht in
-[docs/BUILD.de.md](docs/BUILD.de.md) und [docs/STATUS.de.md](docs/STATUS.de.md).
+Assertions, Exit 0). `Tests.exe` ist nur für die Verifikation bestimmt und
+**nicht** im nutzerseitigen Release-Paket enthalten. Führen Sie es mit isolierten
+`HOMEDRIVE`/`HOMEPATH`/`TEMP` aus: Ein Lauf gegen ein echtes Nutzerprofil brach
+auf der Vorbereitungsmaschine mit `0xC0000409` ab, daher ist es nicht als sicher
+gegenüber einem Live-Profil zu behandeln. Einige Prüfungen benötigen externe
+Fixtures oder explizite Tags und werden **übersprungen**, nicht bestanden; die
+genaue Liste steht in [docs/BUILD.de.md](docs/BUILD.de.md) und
+[docs/STATUS.de.md](docs/STATUS.de.md).
 
 ## Sicherheit
 
@@ -133,9 +145,21 @@ API-Secrets (`.api_secret`) oder persönlichen Profildaten. Siehe
 
 ## Lizenz und Hinweise
 
-MIT — siehe [LICENSE](LICENSE). Das Upstream-Copyright bleibt erhalten.
-Gebündelte Abhängigkeiten und ihre Hinweise sind in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) aufgeführt; vollständige Lizenztexte stehen in [LICENSES/](LICENSES/README.md).
+Der Fork ist MIT — siehe [LICENSE](LICENSE); das Upstream-Copyright bleibt
+erhalten. Dreißig aus der Rust-Node `grin` 5.5.2 abgeleitete Dateien tragen
+kommentarweise Apache-2.0-Attributionsheader; die kanonische Liste ist
+[LICENSES/GRIN-DERIVED-FILES.md](LICENSES/GRIN-DERIVED-FILES.md), der vollständige
+Apache-2.0-Text steht in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt), der
+Komponentenhinweis in [NOTICE](NOTICE). Die Datei-Attribution nach Apache-2.0
+§4(c) ist **erfüllt**. Gebündelte Abhängigkeiten und ihre Hinweise sind in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) aufgeführt; vollständige
+Lizenztexte stehen in [LICENSES/](LICENSES/README.md).
+
+`Logo.png` ist **PARTIAL**: Es ist das Upstream-Projektasset aus dem
+ursprünglichen Commit `7a4a6619` (17.12.2018, David Burkett), SHA-256
+`52658BE6…`, ohne separate Upstream-Lizenz. Es bleibt als MIT-Projektasset des
+Upstream mit Upstream-Copyright erhalten; für es wird kein fremder Lizenztext
+behauptet.
 
 ---
 

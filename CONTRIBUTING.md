@@ -70,6 +70,17 @@ under the same MIT terms. Preserve upstream copyright and the dependency notices
 in `THIRD_PARTY_NOTICES.md`; if you add or update a dependency, update that file
 and the pinned revision list in `docs/BUILD.md`.
 
+Thirty files derive from the Rust `grin` 5.5.2 node (Apache-2.0, Copyright The
+Grin Developers) and carry comment-only attribution headers; the canonical list
+is `LICENSES/GRIN-DERIVED-FILES.md`. If you copy or adapt more Grin code, add the
+same header and update that list and `NOTICE`; the Apache-2.0 §4(c) obligation is
+already met for the listed files and must stay met. `Logo.png` is a PARTIAL
+upstream asset (no separate upstream licence); do not re-license it or claim a
+third-party licence for it without evidence.
+
+`Tests.exe` is verification-only and is not part of the user-facing release
+package; see [docs/BUILD.md](docs/BUILD.md) for the required isolation.
+
 ## Pull request checklist
 
 - [ ] Builds Release x64 with `/W4 /WX` (Windows 11 x64, MSVC 14.44) or clearly
