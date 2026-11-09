@@ -10,8 +10,10 @@
 #include <PMMR/TxHashSetManager.h>
 #include <P2P/SyncStatus.h>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <thread>
 
 class BlockChain : public IBlockChain
 {
@@ -79,6 +81,7 @@ public:
 	bool HasOrphan(const Hash& blockHash) const final;
 
 private:
+	bool EnsureKernelIndexLocked();
 	class StateWriteGuard
 	{
 	public:
@@ -86,6 +89,7 @@ private:
 		~StateWriteGuard();
 
 	private:
+	bool EnsureKernelIndexLocked();
 		BlockChain& m_chain;
 		std::unique_lock<std::mutex> m_lock;
 	};
@@ -99,6 +103,7 @@ private:
 		}
 
 	private:
+	bool EnsureKernelIndexLocked();
 		std::unique_lock<std::mutex> m_lock;
 	};
 
@@ -107,9 +112,20 @@ private:
 		std::shared_ptr<Locked<ChainState>> pChainState
 	);
 
+	void StartHeaderCheckpointUpdater();
+	void StopHeaderCheckpointUpdater();
+	void NotifyHeaderCheckpointChanged();
+
 	std::shared_ptr<ITransactionPool> m_pTransactionPool;
 	std::shared_ptr<Locked<ChainState>> m_pChainState;
+
+	std::thread m_headerCheckpointThread;
+	std::mutex m_headerCheckpointMutex;
+	std::condition_variable m_headerCheckpointCv;
+	bool m_headerCheckpointStop = false;
+	bool m_headerCheckpointDirty = false;
 
 	mutable std::atomic<uint64_t> m_stateSequence{ 0 };
 	mutable std::mutex m_stateWriteMutex;
 };
+

@@ -3,12 +3,27 @@
 #include <Net/Servers/Server.h>
 #include <Net/Servers/RPC/RPCMethod.h>
 #include <Net/Clients/RPC/RPC.h>
+#include <Net/Util/HTTPUtil.h>
 #include <Core/Exceptions/APIException.h>
 #include <unordered_map>
 #include <cassert>
 
 #define RPC_LOG_INFO_F(logFile, message, ...) LoggerAPI::LogInfo(logFile, __func__, __LINE__, StringUtil::Format(message, __VA_ARGS__))
 #define RPC_LOG_ERROR_F(logFile, message, ...) LoggerAPI::LogError(logFile, __func__, __LINE__, StringUtil::Format(message, __VA_ARGS__))
+
+namespace RPC
+{
+	//
+	// Error message for a request body that could not be parsed as JSON.
+	//
+	// This message reaches the wallet log and the RPC error reply, so it must
+	// never include the body: request bodies contain session tokens and armored
+	// slatepacks. Only the size is reported.
+	//
+	// Defined in src/Net/Util/HTTPUtil.cpp (the only producer of this error).
+	//
+	std::string FormatInvalidJsonBodyError(const std::string& requestBody);
+}
 
 class RPCServer
 {
@@ -55,6 +70,15 @@ private:
 		RPCServer* pInstance = static_cast<RPCServer*>(pCbContext);
 		assert(pInstance != nullptr);
 
+		// Reject an oversized declared body before any handler/parser can
+		// allocate it. This is an HTTP-level error, not a JSON-RPC reply.
+		if (!HTTPUtil::IsRequestBodySizeAllowed(HTTPUtil::GetRequestBodyLength(pConnection)))
+		{
+			return HTTPUtil::BuildRequestEntityTooLargeResponse(
+				pConnection,
+				"Request body too large");
+		}
+
 		Json::Value responseJSON = Handle(pConnection, *pInstance).ToJSON();
 
 		return HTTPUtil::BuildSuccessResponseJSON(pConnection, responseJSON);
@@ -83,7 +107,7 @@ private:
 						);
 					}
 
-					if (!iter->second->ContainsSecrets())
+					if (instance.m_logFile != LoggerAPI::LogFile::WALLET && !iter->second->ContainsSecrets())
 					{
 						RPC_LOG_INFO_F(instance.m_logFile, "REQUEST: {}", request.ToString());
 					}
@@ -98,7 +122,7 @@ private:
 					
 					auto response = iter->second->Handle(request);
 
-					if (!iter->second->ContainsSecrets())
+					if (instance.m_logFile != LoggerAPI::LogFile::WALLET && !iter->second->ContainsSecrets())
 					{
 						RPC_LOG_INFO_F(instance.m_logFile, "REPLY: {}", response.ToString());
 					}
@@ -108,7 +132,7 @@ private:
 							instance.m_logFile,
 							"Method: {}, Error: {}",
 							method,
-							response.GetError().value().ToString()
+							response.GetError().value().GetCode()
 						);
 					}
 
@@ -148,6 +172,18 @@ private:
 				id,
 				e.GetErrorCode(),
 				e.GetMsg()
+			);
+		}
+		catch (const Json::Exception& e)
+		{
+			// JsonCpp throws Json::LogicError from asString()/asBool() when the
+			// parameter type is wrong (e.g. a string where a boolean is
+			// required). That is an invalid parameter, not an invalid request.
+			RPC_LOG_ERROR_F(instance.m_logFile, "JSON parameter error: {}", e.what());
+			return RPC::Response::BuildError(
+				id,
+				RPC::ErrorCode::INVALID_PARAMS,
+				e.what()
 			);
 		}
 		catch (const std::exception& e)

@@ -13,6 +13,7 @@
 #include "Handlers/GetStatusOwnerHandler.h"
 #include "Handlers/GetPeersOwnerHandler.h"
 #include "Handlers/GetConnectedPeersOwnerHandler.h"
+#include "Handlers/PeerControlOwnerHandler.h"
 #include "Handlers/GetPmmrIndicesHandler.h"
 #include "Handlers/GetUnspentOutputsHandler.h"
 #include "Handlers/GetOutputsHandler.h"
@@ -51,6 +52,8 @@ NodeServer::UPtr NodeServer::Create(
     pOwnerServer->AddMethod("get_status", std::make_shared<GetStatusOwnerHandler>(pBlockChain, pP2PServer));
     pOwnerServer->AddMethod("get_peers", std::make_shared<GetPeersOwnerHandler>(pP2PServer));
     pOwnerServer->AddMethod("get_connected_peers", std::make_shared<GetConnectedPeersOwnerHandler>(pP2PServer));
+    pOwnerServer->AddMethod("ban_peer", std::make_shared<PeerControlOwnerHandler>(pP2PServer, true));
+    pOwnerServer->AddMethod("unban_peer", std::make_shared<PeerControlOwnerHandler>(pP2PServer, false));
 
     return std::make_unique<NodeServer>(pForeignServer, pOwnerServer);
 }

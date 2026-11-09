@@ -12,10 +12,18 @@ class INodeClient;
 class FinalizeSlateBuilder
 {
 public:
+	struct FinalizeResult
+	{
+		Slate slate;
+		Transaction transaction;
+		uint32_t walletTxId;
+		bool alreadyFinalized;
+	};
+
 	FinalizeSlateBuilder(const std::shared_ptr<Wallet>& pWallet, const std::shared_ptr<const INodeClient>& pNode)
 		: m_pWallet(pWallet), m_pNode(pNode) { }
 
-	std::pair<Slate, Transaction> Finalize(
+	FinalizeResult Finalize(
 		const Slate& rcvSlate
 	) const;
 

@@ -77,7 +77,7 @@ public:
 
     std::vector<uint8_t> Decrypt(const CBigInteger<12>& nonce, const std::vector<uint8_t>& encrypted)
     {
-        assert(encrypted.size() > TAG_SIZE);
+        if (encrypted.size() < TAG_SIZE) throw CryptoException("Truncated authentication tag");
 
         const size_t encrypted_len = encrypted.size() - TAG_SIZE;
         std::vector<uint8_t> ciphertext(encrypted.cbegin(), encrypted.cbegin() + encrypted_len);

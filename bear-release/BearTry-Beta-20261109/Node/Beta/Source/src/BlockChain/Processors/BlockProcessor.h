@@ -38,6 +38,11 @@ public:
 
 	EBlockChainStatus ProcessBlock(const FullBlock& block);
 
+	// True when the incremental kernel index could not be advanced for this
+	// block (or a reorg could not be rewound). The caller must run the verified
+	// Ensure() fallback after the block transaction is committed.
+	bool KernelIndexNeedsRebuild() const noexcept { return m_kernelIndexNeedsRebuild; }
+
 	// Apply one block. If the only reason for failure is a locally incomplete
 	// NRD index, rebuild it once from the supplied parent header and retry the
 	// apply before classifying the block.
@@ -55,4 +60,5 @@ private:
 	BlockProcessingInfo DetermineBlockStatus(const FullBlock& block, Writer<ChainState> pLockedState);
 
 	std::shared_ptr<Locked<ChainState>> m_pChainState;
+	bool m_kernelIndexNeedsRebuild = false;
 };

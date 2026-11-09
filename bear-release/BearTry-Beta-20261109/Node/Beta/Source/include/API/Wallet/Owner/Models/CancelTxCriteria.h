@@ -34,7 +34,7 @@ public:
                 );
             }
 
-            const uint32_t tx_id = (uint32_t)JsonUtil::ConvertToUInt64(txIdJson);
+            const uint32_t tx_id = JsonUtil::CheckedUInt<uint32_t>(txIdJson);
 
             return CancelTxCriteria(token, tx_id);
         }

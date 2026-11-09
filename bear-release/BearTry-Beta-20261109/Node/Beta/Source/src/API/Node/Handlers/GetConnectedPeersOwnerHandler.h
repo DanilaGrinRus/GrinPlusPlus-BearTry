@@ -21,8 +21,12 @@ public:
 		Json::Value entries(Json::arrayValue);
 		for (const ConnectedPeer& connectedPeer : m_pP2PServer->GetConnectedPeers()) {
 			Json::Value peerJSON = connectedPeer.ToJSON();
-			// grin exposes the negotiated protocol version as "version".
-			peerJSON["version"] = peerJSON["protocol_version"];
+			// PeerInfoDisplay is the Rust 5.5.2 connected-peer shape: it must
+			// not inherit the stored-peer fields (ban state, timestamps).
+			peerJSON.removeMember("ban_reason");
+			peerJSON.removeMember("flags");
+			peerJSON.removeMember("last_banned");
+			peerJSON.removeMember("last_connected");
 			entries.append(peerJSON);
 		}
 

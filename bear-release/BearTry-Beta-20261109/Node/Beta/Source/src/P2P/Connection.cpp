@@ -5,6 +5,7 @@
 #include <P2P/AdvertisedTip.h>
 #include "Messages/GetPeerAddressesMessage.h"
 #include "Seed/HandShake.h"
+#include "Sync/PeerRatePolicy.h"
 
 #include <Net/SocketException.h>
 #include <Common/Util/ThreadUtil.h>
@@ -79,8 +80,9 @@ void Connection::SendAsync(const IMessage& message)
 
 bool Connection::ExceedsRateLimit() const
 {
-    return m_pSocket->GetRateCounter().GetSentInLastMinute() > 500
-        || m_pSocket->GetRateCounter().GetReceivedInLastMinute() > 500;
+    // Our own outbound requests are under local control and are not evidence
+    // that the remote peer is abusive (Grin 5.5.2 checks incoming only).
+    return PeerRatePolicy::IsAbusive(m_pSocket->GetRateCounter().GetReceivedInLastMinute());
 }
 
 bool Connection::AllowPibdRequest()
@@ -127,15 +129,23 @@ void Connection::Thread_Connect(std::shared_ptr<Connection> pConnection)
             LOG_DEBUG_F("Capabilities sent to {}", pConnection->m_connectedPeer);
         }
 
-        pConnection->m_received.resize(11);
-        asio::async_read(
-            *pConnection->GetSocket()->GetAsioSocket(),
-            asio::buffer(pConnection->m_received, 11),
-            std::bind(&Connection::HandleReceivedHeader, pConnection, std::placeholders::_1, std::placeholders::_2)
-        );
+        // Initiate the asynchronous read on the long-lived I/O executor, not
+        // on this detached handshake thread. Windows may cancel overlapped I/O
+        // when its initiating thread exits.
+        pConnection->ResumeReceives();
     }
     catch (const std::exception& e) {
-        LOG_ERROR_F("Failed to connect to {}: {}", pConnection->m_connectedPeer, e);
+        LOG_ERROR_F("Connection {} {} failed: {}", pConnection->GetDirection() == EDirection::OUTBOUND ? "outbound" : "inbound", pConnection->GetSocket()->GetSocketAddress().Format(), e);
+    }
+
+    pConnection->NotifyHandshakeComplete();
+}
+
+void Connection::NotifyHandshakeComplete()
+{
+    std::function<void()> callback = std::move(m_handshakeCallback);
+    if (callback) {
+        callback();
     }
 }
 
@@ -147,14 +157,24 @@ void Connection::ConnectOutbound()
         std::bind(&Connection::HandleConnected, shared_from_this(), std::placeholders::_1)
     );
 
-    auto timeout = std::chrono::system_clock::now() + std::chrono::seconds(1);
-    while (!m_pSocket->IsConnectFailed() && !m_pSocket->IsOpen() && system_clock::now() < timeout && Global::IsRunning()) {
+    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!m_pSocket->IsConnectFailed() && !m_pSocket->IsOpen() && std::chrono::steady_clock::now() < timeout && Global::IsRunning()) {
         ThreadUtil::SleepFor(std::chrono::milliseconds(5));
     }
 
-    if (m_pSocket->IsConnectFailed() || !m_pSocket->IsOpen()) {
-        pAsioSocket->cancel();
-        throw std::runtime_error("No response");
+    // Capture the result before cancelling: operation_aborted can arrive on
+    // the I/O thread immediately after cancel() and must not mask a timeout.
+    const bool failed = m_pSocket->IsConnectFailed();
+    const bool connected = m_pSocket->IsOpen();
+    const int connectError = m_connectError.load();
+    if (failed || !connected) {
+        asio::error_code ignored;
+        pAsioSocket->cancel(ignored);
+        if (!Global::IsRunning()) throw std::runtime_error("TCP connection cancelled during shutdown");
+        if (failed) {
+            throw std::runtime_error("TCP connect failed; error code=" + std::to_string(connectError));
+        }
+        throw std::runtime_error("TCP connect timed out after 5 seconds");
     }
 }
 
@@ -164,6 +184,8 @@ void Connection::HandleConnected(const asio::error_code& ec)
         if (!ec) {
             m_pSocket->SetOpen(true);
         } else {
+            m_connectError.store(ec.value());
+            LOG_DEBUG_F("TCP connect callback {}: {} (code={})", m_pSocket->GetSocketAddress().Format(), ec.message(), ec.value());
             m_pSocket->SetConnectFailed(true);
         }
     }
@@ -316,20 +338,23 @@ bool Connection::ReceiveSync(std::vector<uint8_t>& bytes, const size_t num_bytes
 
 void Connection::ResumeReceives()
 {
-    std::unique_lock<std::mutex> lock(m_mutex);
-    if (!m_pSocket->IsOpen() || m_terminate) {
-        return;
-    }
+    const auto pConnection = shared_from_this();
+    asio::post(m_pSocket->GetAsioSocket()->get_executor(), [pConnection]() {
+        std::unique_lock<std::mutex> lock(pConnection->m_mutex);
+        if (!pConnection->m_pSocket->IsOpen() || pConnection->m_terminate) {
+            return;
+        }
 
-    m_receivingDisabled = false;
-	 m_lastReceived = system_clock::now();
-    m_received.clear();
-    m_received.resize(11);
-    asio::async_read(
-        *m_pSocket->GetAsioSocket(),
-        asio::buffer(m_received, m_received.size()),
-        std::bind(&Connection::HandleReceivedHeader, shared_from_this(),
-            std::placeholders::_1, std::placeholders::_2));
+        pConnection->m_receivingDisabled = false;
+        pConnection->m_lastReceived = system_clock::now();
+        pConnection->m_received.clear();
+        pConnection->m_received.resize(11);
+        asio::async_read(
+            *pConnection->m_pSocket->GetAsioSocket(),
+            asio::buffer(pConnection->m_received, pConnection->m_received.size()),
+            std::bind(&Connection::HandleReceivedHeader, pConnection,
+                std::placeholders::_1, std::placeholders::_2));
+    });
 }
 
 void Connection::BanPeer(const EBanReason reason)

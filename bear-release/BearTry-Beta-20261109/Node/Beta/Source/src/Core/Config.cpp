@@ -65,33 +65,20 @@ Config::Ptr Config::Load(const fs::path& configPath, const Environment environme
 {
 	std::shared_ptr<Config> pConfig = nullptr;
 	
-	// Read config file
-	try {
+	if (fs::exists(configPath)) {
 		std::vector<unsigned char> data;
 		if (!FileUtil::ReadFile(configPath, data)) {
-			LOG_ERROR_F("Failed to open config file at: {}", configPath);
 			throw FILE_EXCEPTION_F("Failed to open config file at: {}", configPath);
 		}
-		pConfig = Config::Load(JsonUtil::Parse(data), environment);
-	}
-	catch (...) { }
-	
-	if (pConfig == nullptr || pConfig->GetJSON().empty()) {
+		auto json = JsonUtil::Parse(data);
+		if (!json.isObject()) throw FILE_EXCEPTION_F("Invalid config file: {}", configPath);
+		pConfig = Config::Load(json, environment);
+	} else {
 		pConfig = Config::Default(environment);
 	}
-
 	FileUtil::CreateDirectories(pConfig->GetDataDirectory());
-
-	// Update config file
-	Json::Value& json = pConfig->GetJSON();
-	std::ofstream file(configPath, std::ios::out | std::ios::binary | std::ios::ate);
-	if (!file.is_open()) {
-		LOG_ERROR_F("Failed to save config file at: {}", configPath);
-		throw FILE_EXCEPTION_F("Failed to save config file at: {}", configPath);
-	}
-
-	file << json;
-	file.close();
+	const auto contents = pConfig->GetJSON().toStyledString();
+	FileUtil::SafeWriteToFile(configPath, {contents.begin(), contents.end()});
 
 	return pConfig;
 }

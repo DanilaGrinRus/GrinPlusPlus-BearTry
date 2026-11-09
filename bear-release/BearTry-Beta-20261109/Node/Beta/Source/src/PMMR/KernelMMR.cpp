@@ -168,6 +168,13 @@ bool KernelMMR::Rewind(const uint64_t num_kernels)
 		? 0
 		: m_entries[num_kernels - 1].Offset + m_entries[num_kernels - 1].Size;
 
+	const size_t retained = m_committedEntries - m_rewoundEntries.size();
+	if (num_kernels < retained) {
+		m_rewoundEntries.reserve(m_committedEntries - num_kernels);
+		for (size_t i = retained; i > num_kernels; --i) {
+			m_rewoundEntries.push_back(m_entries[i - 1]);
+		}
+	}
 	m_pHashFile->Rewind(LeafIndex::At(num_kernels).GetPosition());
 	if (!m_pDataFile->Rewind(endOffset))
 	{
@@ -188,13 +195,17 @@ void KernelMMR::Commit()
 	}
 
 	m_committedEntries = m_entries.size();
+	m_rewoundEntries.clear();
 }
 
 void KernelMMR::Rollback() noexcept
 {
 	m_pHashFile->Rollback();
 	m_pDataFile->Discard();
-	m_entries.resize(m_committedEntries);
+	// Rewind keeps the original vector capacity, so restoration cannot allocate.
+	m_entries.resize(m_committedEntries - m_rewoundEntries.size());
+	m_entries.insert(m_entries.end(), m_rewoundEntries.rbegin(), m_rewoundEntries.rend());
+	m_rewoundEntries.clear();
 }
 
 void KernelMMR::ApplyKernel(const TransactionKernel& kernel)

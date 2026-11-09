@@ -78,8 +78,8 @@ bool Bulletproofs::VerifyBulletproofs(const std::vector<std::pair<Commitment, Ra
 		std::vector<secp256k1_generator> valueGenerators(
 			commitments.size(), secp256k1_generator_const_h);
 
-		std::vector<secp256k1_pedersen_commitment*> commitmentPointers =
-			Pedersen::ConvertCommitments(*m_pContext, commitments);
+		auto values = Pedersen::ConvertCommitments(*m_pContext, commitments);
+		auto commitmentPointers = Pedersen::Pointers(values);
 		if (commitmentPointers.empty()) {
 			LOG_ERROR("Failed to convert rangeproof commitments");
 			return false;
@@ -88,8 +88,7 @@ bool Bulletproofs::VerifyBulletproofs(const std::vector<std::pair<Commitment, Ra
 		secp256k1_scratch_space* pScratchSpace =
 			secp256k1_scratch_space_create(m_pContext, SCRATCH_SPACE_SIZE);
 		if (pScratchSpace == nullptr) {
-			Pedersen::CleanupCommitments(commitmentPointers);
-			LOG_ERROR("Failed to allocate rangeproof scratch space");
+				LOG_ERROR("Failed to allocate rangeproof scratch space");
 			return false;
 		}
 
@@ -108,7 +107,6 @@ bool Bulletproofs::VerifyBulletproofs(const std::vector<std::pair<Commitment, Ra
 			NULL,
 			NULL);
 		secp256k1_scratch_space_destroy(pScratchSpace);
-		Pedersen::CleanupCommitments(commitmentPointers);
 
 		if (result != 1) {
 			LOG_ERROR_F("Failed to validate {} rangeproofs (length {})", commitments.size(), proofLength);
@@ -176,7 +174,8 @@ std::unique_ptr<RewoundProof> Bulletproofs::RewindProof(const Commitment& commit
 {
 	std::shared_lock<std::shared_mutex> readLock(m_mutex);
 
-	std::vector<secp256k1_pedersen_commitment*> commitmentPointers = Pedersen::ConvertCommitments(*m_pContext, std::vector<Commitment>({ commitment }));
+	auto values = Pedersen::ConvertCommitments(*m_pContext, { commitment });
+	auto commitmentPointers = Pedersen::Pointers(values);
 
 	if (!commitmentPointers.empty())
 	{
@@ -198,7 +197,6 @@ std::unique_ptr<RewoundProof> Bulletproofs::RewindProof(const Commitment& commit
 			0,
 			message.data()
 		);
-		Pedersen::CleanupCommitments(commitmentPointers);
 
 		if (result == 1)
 		{

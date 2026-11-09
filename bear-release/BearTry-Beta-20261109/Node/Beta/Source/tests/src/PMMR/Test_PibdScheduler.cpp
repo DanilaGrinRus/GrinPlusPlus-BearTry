@@ -277,3 +277,90 @@ TEST_CASE("PibdScheduler::FallbackWhenNoProgress")
 	REQUIRE(scheduler.IsFailed());
 	REQUIRE(scheduler.GetFailure().find("progress") != std::string::npos);
 }
+
+TEST_CASE("PibdScheduler::MultiPeerAssignmentsRespectGlobalAndPerPeerLimits")
+{
+	const PibdFixture fixture;
+	const Clock::time_point start;
+	PibdScheduler::Config config = TightConfig();
+	config.MaxInFlight = 4;
+	config.Timeout = std::chrono::seconds(20);
+	PibdScheduler scheduler(fixture.Horizon, start, config);
+
+	const std::vector<std::string> peers = { "peer-a", "peer-b" };
+	const auto first = scheduler.TakeRequestsForPeers(start, peers, 1);
+	REQUIRE(first.size() == 1);
+	REQUIRE(scheduler.GetPeerInFlight(first[0].Peer) == 1);
+	REQUIRE(scheduler.TakeRequestsForPeers(start, peers, 1).empty());
+
+	// A failed send releases only its own assignment; it can be retried.
+	REQUIRE(scheduler.ReleaseAssignment(first[0]));
+	REQUIRE(scheduler.GetPeerInFlight(first[0].Peer) == 0);
+	const auto retry = scheduler.TakeRequestsForPeers(start, peers, 1);
+	REQUIRE(retry.size() == 1);
+	REQUIRE(retry[0].Peer == first[0].Peer);
+}
+
+TEST_CASE("PibdScheduler::MultiPeerWrongPeerAndLateResponses")
+{
+	const PibdFixture fixture;
+	const Clock::time_point start;
+	PibdScheduler::Config config = TightConfig();
+	config.MaxInFlight = 1;
+	config.Timeout = std::chrono::seconds(20);
+	PibdScheduler scheduler(fixture.Horizon, start, config);
+
+	const auto assigned = scheduler.TakeRequestsForPeers(start, { "peer-a", "peer-b" }, 1);
+	REQUIRE(assigned.size() == 1);
+
+	// A response from a peer that does not own the assignment is rejected and
+	// does not consume/lose the segment.
+	REQUIRE_FALSE(scheduler.OnResponse(
+		SegmentResponseMessage::CreateOutputBitmap(
+			fixture.Horizon.BlockHash, fixture.BitmapResponse(), fixture.Outputs.GetRoot()),
+		start + std::chrono::seconds(1), "wrong-peer"));
+	REQUIRE(scheduler.GetWrongPeerResponses() == 1);
+	REQUIRE(scheduler.GetInFlightCount() == 1);
+	REQUIRE(scheduler.GetReceivedSegments() == 0);
+
+	// The assigned peer's response is accepted.
+	REQUIRE(scheduler.OnResponse(
+		SegmentResponseMessage::CreateOutputBitmap(
+			fixture.Horizon.BlockHash, fixture.BitmapResponse(), fixture.Outputs.GetRoot()),
+		start + std::chrono::seconds(2), assigned[0].Peer));
+	REQUIRE(scheduler.GetInFlightCount() == 0);
+	REQUIRE(scheduler.GetReceivedSegments() == 1);
+
+	// A duplicate is stale, not a failure and not a second segment.
+	REQUIRE_FALSE(scheduler.OnResponse(
+		SegmentResponseMessage::CreateOutputBitmap(
+			fixture.Horizon.BlockHash, fixture.BitmapResponse(), fixture.Outputs.GetRoot()),
+		start + std::chrono::seconds(3), assigned[0].Peer));
+
+	// No pending assignment: a validated late response is accepted (progress).
+	REQUIRE(scheduler.OnResponse(
+		SegmentResponseMessage::CreateOutputs(
+			fixture.Horizon.BlockHash, fixture.OutputResponse(), fixture.BitmapMmr.GetRoot()),
+		start + std::chrono::seconds(4), "peer-a"));
+	REQUIRE(scheduler.GetLateResponses() == 1);
+}
+
+TEST_CASE("PibdScheduler::MultiPeerDisconnectReleasesAndReassigns")
+{
+	const PibdFixture fixture;
+	const Clock::time_point start;
+	PibdScheduler::Config config = TightConfig();
+	config.MaxInFlight = 1;
+	config.Timeout = std::chrono::seconds(20);
+	PibdScheduler scheduler(fixture.Horizon, start, config);
+
+	const auto assigned = scheduler.TakeRequestsForPeers(start, { "peer-a" }, 1);
+	REQUIRE(assigned.size() == 1);
+	REQUIRE(scheduler.ReleasePeer("peer-a") == 1);
+	REQUIRE(scheduler.GetPeerInFlight("peer-a") == 0);
+
+	const auto reassigned = scheduler.TakeRequestsForPeers(start, { "peer-b" }, 1);
+	REQUIRE(reassigned.size() == 1);
+	REQUIRE(reassigned[0].Peer == "peer-b");
+}
+

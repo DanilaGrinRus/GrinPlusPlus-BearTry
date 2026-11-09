@@ -4,6 +4,7 @@
 #include <Core/Models/SpentOutput.h>
 #include <Core/Traits/Batchable.h>
 #include <Database/KernelIndexState.h>
+#include <filesystem.h>
 #include <unordered_map>
 #include <memory>
 
@@ -33,6 +34,12 @@ public:
 	/// </summary>
 	/// <param name="version">The new version.</param>
 	virtual void SetVersion(const uint8_t version) = 0;
+
+	/// <summary>
+	/// Creates a consistent point-in-time checkpoint of the open chain database
+	/// at checkpointPath (which must not exist). Returns false on failure.
+	/// </summary>
+	virtual bool CreateCheckpoint(const fs::path& checkpointPath) const = 0;
 
 	/// <summary>
 	/// Updates FullBlock entries to the latest serialization format.
@@ -78,6 +85,21 @@ public:
 	virtual void RemoveKernelPosition(uint64_t generation, const Commitment& kernelExcess, const OutputLocation& location) = 0;
 	virtual void ClearKernelPositions(uint64_t generation) = 0;
 	virtual void ClearAllKernelPositions() = 0;
+	// Removes every primary/secondary index entry at or above firstLeafIndex and
+	// returns {removedCount, XOR of the removed entry hashes}. Used by a verified
+	// reorg rewind; the default refuses (0 removed) so an alternate implementation
+	// cannot silently keep a stale index -- callers fall back to a full rebuild.
+	virtual std::pair<uint64_t, Hash> RemoveKernelPositionsFrom(uint64_t generation, uint64_t firstLeafIndex)
+	{
+		(void)generation;
+		(void)firstLeafIndex;
+		return { 0, Hash() };
+	}
 	virtual uint64_t GetKernelPositionCount(uint64_t generation) const = 0;
 	virtual Hash GetKernelPositionChecksum(uint64_t generation) const = 0;
+	// Default preserves compatibility with alternate database implementations.
+	virtual std::pair<uint64_t, Hash> GetKernelPositionDigest(uint64_t generation) const
+	{
+		return { GetKernelPositionCount(generation), GetKernelPositionChecksum(generation) };
+	}
 };

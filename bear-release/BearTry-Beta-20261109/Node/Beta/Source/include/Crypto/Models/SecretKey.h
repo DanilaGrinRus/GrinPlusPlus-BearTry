@@ -13,7 +13,10 @@ public:
 	secret_key_t(CBigInteger<NUM_BYTES>&& seed)
 		: m_seed(std::move(seed)) { }
 	secret_key_t(SecureVector&& seed)
-		: m_seed(seed.data()) { }
+		{
+		if (seed.size() != NUM_BYTES) throw std::invalid_argument("Invalid secret key length");
+		std::copy(seed.begin(), seed.end(), m_seed.data());
+	}
 
 	~secret_key_t()
 	{

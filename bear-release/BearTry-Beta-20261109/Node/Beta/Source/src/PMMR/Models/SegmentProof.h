@@ -55,7 +55,9 @@ public:
 		}
 
 		std::vector<Hash> hashes;
-		hashes.reserve((size_t)numHashes);
+		// Same preallocation cap as grin (SEGMENT_READ_PREALLOC_ITEMS): the
+		// declared count is attacker-controlled until the payload is read.
+		hashes.reserve((size_t)(numHashes < 1024 ? numHashes : 1024));
 		for (uint64_t i = 0; i < numHashes; ++i) {
 			hashes.push_back(byteBuffer.ReadBigInteger<32>());
 		}

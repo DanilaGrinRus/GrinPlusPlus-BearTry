@@ -2,6 +2,7 @@
 
 #include <Core/Util/JsonUtil.h>
 #include <Wallet/WalletManager.h>
+#include <Wallet/Enums/OutputStatus.h>
 #include <Net/Servers/RPC/RPCMethod.h>
 #include <API/Wallet/Owner/Models/Errors.h>
 
@@ -30,6 +31,12 @@ public:
 
 		Json::Value outputs_json = Json::arrayValue;
 		for (const WalletOutputDTO& output : outputs) {
+			// Reverted is an internal refresher state; UI v1.2.8 does not know
+			// it and must not offer such an output as a spendable coin.
+			if (output.GetStatus() == EOutputStatus::REVERTED) {
+				continue;
+			}
+
 			outputs_json.append(output.ToJSON());
 		}
 

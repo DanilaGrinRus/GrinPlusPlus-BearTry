@@ -12,6 +12,9 @@
 #include <P2P/AdvertisedTip.h>
 
 #include <memory>
+#include <chrono>
+#include <thread>
+#include <algorithm>
 
 static const uint64_t SELF_NONCE = CSPRNG::GenerateRandom(0, UINT64_MAX);
 
@@ -50,7 +53,7 @@ void HandShake::PerformOutboundHandshake(const Socket::Ptr& pSocket, ConnectedPe
     TransmitHandMessage(pSocket);
 
     // Get Shake Message
-    auto pReceived = RetrieveMessage(pSocket, *connectedPeer.GetPeer());
+    auto pReceived = RetrieveMessage(pSocket, *connectedPeer.GetPeer(), MessageTypes::Shake);
     if (pReceived == nullptr) {
         throw PROTOCOL_EXCEPTION("Shake message not received");
     }
@@ -80,7 +83,7 @@ void HandShake::PerformOutboundHandshake(const Socket::Ptr& pSocket, ConnectedPe
 void HandShake::PerformInboundHandshake(const Socket::Ptr& pSocket, ConnectedPeer& connectedPeer) const
 {
     // Get Hand Message
-    auto pReceived = RetrieveMessage(pSocket, *connectedPeer.GetPeer());
+    auto pReceived = RetrieveMessage(pSocket, *connectedPeer.GetPeer(), MessageTypes::Hand);
     if (pReceived == nullptr) {
         throw PROTOCOL_EXCEPTION("Hand message not received.");
     }
@@ -153,21 +156,45 @@ void HandShake::TransmitShakeMessage(const Socket::Ptr& pSocket, const uint32_t 
     }
 }
 
-std::unique_ptr<RawMessage> HandShake::RetrieveMessage(const Socket::Ptr& pSocket, const Peer& peer) const
+std::unique_ptr<RawMessage> HandShake::RetrieveMessage(
+    const Socket::Ptr& pSocket, const Peer& peer, MessageTypes::EMessageType expectedType) const
 {
-    std::vector<uint8_t> headerBuffer = pSocket->ReceiveSync(11, true);
-    if (headerBuffer.size() != 11) {
-        return nullptr;
-    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    const auto readUntilDeadline = [&](const size_t length, const bool incrementCount) {
+        std::vector<uint8_t> data(length);
+        size_t offset = 0;
+        const auto& socket = pSocket->GetAsioSocket();
+        while (offset < length && std::chrono::steady_clock::now() < deadline && Global::IsRunning()) {
+            asio::error_code ec;
+            const size_t available = socket->available(ec);
+            if (ec) return std::vector<uint8_t>{};
+            if (available == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            const size_t amount = (std::min)(available, length - offset);
+            const size_t received = socket->read_some(asio::buffer(data.data() + offset, amount), ec);
+            if (ec || received == 0) return std::vector<uint8_t>{};
+            offset += received;
+        }
+        if (offset != length) return std::vector<uint8_t>{};
+        if (incrementCount) pSocket->GetRateCounter().AddMessageReceived();
+        return data;
+    };
 
+    std::vector<uint8_t> headerBuffer = readUntilDeadline(11, true);
+    if (headerBuffer.size() != 11) return nullptr;
     MessageHeader messageHeader = ByteBuffer(std::move(headerBuffer)).Read<MessageHeader>();
-    LOG_TRACE_F("Received '{}' message from {}", messageHeader, peer);
-
-    std::vector<uint8_t> payload = pSocket->ReceiveSync(messageHeader.GetMessageLength(), false);
+    // Preserve the protocol's existing 4x forward-compatibility allowance,
+    // but do not read an unrelated type or an oversized handshake body.
+    if (messageHeader.GetMessageType() != expectedType ||
+        messageHeader.GetMessageLength() > 4 * MessageTypes::GetMaximumSize(expectedType)) {
+        throw PROTOCOL_EXCEPTION("Invalid handshake message type or length");
+    }
+    std::vector<uint8_t> payload = readUntilDeadline(messageHeader.GetMessageLength(), false);
     if (payload.size() != messageHeader.GetMessageLength()) {
         throw PROTOCOL_EXCEPTION("Expected payload not received");
     }
-
     peer.UpdateLastContactTime();
     return std::make_unique<RawMessage>(std::move(messageHeader), std::move(payload));
 }

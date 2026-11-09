@@ -10,6 +10,7 @@
 #include <Common/Util/HexUtil.h>
 #include <Common/Util/StringUtil.h>
 #include "../../PMMR/TxHashSetImpl.h"
+#include <PMMR/KernelIndex.h>
 #include <algorithm>
 #include <stdexcept>
 
@@ -39,6 +40,7 @@ BlockProcessor::BlockProcessor(const std::shared_ptr<Locked<ChainState>>& pChain
 
 EBlockChainStatus BlockProcessor::ProcessBlock(const FullBlock& block)
 {	
+	m_kernelIndexNeedsRebuild = false;
 	const uint64_t candidateHeight = m_pChainState->Read()->GetHeight(EChainType::CANDIDATE);
 	const uint64_t horizonHeight = Consensus::GetHorizonHeight(candidateHeight);
 
@@ -301,6 +303,24 @@ void BlockProcessor::HandleReorg(Writer<ChainState> pBatch, const std::vector<Fu
 
 	pTxHashSet->Rewind(pBlockDB, *pCommonHeader);
 
+	// Rewind the kernel index to the same verified ancestor before the fork
+	// blocks are re-applied. The pre-reorg confirmed tip is the expected state
+	// tip; if it does not match, leave the index untouched and let the caller
+	// run the full verified rebuild after this batch commits.
+	{
+		auto pConfirmedChainBefore = pBatch->GetChainStore()->GetConfirmedChain();
+		const BlockHeaderPtr pOldTipHeader = pBlockDB->GetBlockHeader(pConfirmedChainBefore->GetTipHash());
+		auto getHeaderByHeight = [&pBlockDB, &pConfirmedChainBefore](const uint64_t height) -> BlockHeaderPtr {
+			const auto pIndex = pConfirmedChainBefore->GetByHeight(height);
+			return pIndex == nullptr ? nullptr : pBlockDB->GetBlockHeader(pIndex->GetHash());
+		};
+		if (pOldTipHeader == nullptr ||
+			!KernelIndex::RewindToAncestor(pBlockDB, pCommonHeader, pOldTipHeader, getHeaderByHeight)) {
+			LOG_WARNING("Kernel index could not be rewound with the reorg; a verified rebuild is required after commit.");
+			m_kernelIndexNeedsRebuild = true;
+		}
+	}
+
 	for (const FullBlock::CPtr& pBlock : reorgBlocks)
 	{
 		ValidateAndAddBlock(*pBlock, pBatch);
@@ -384,4 +404,14 @@ void BlockProcessor::ValidateAndAddBlock(const FullBlock& block, Writer<ChainSta
 	pBlockDB->AddBlock(block);
 	pOrphanPool->RemoveOrphan(block.GetHeight(), block.GetHash());
 	pTxPool->ReconcileBlock(pBlockDB, pTxHashSet, block);
+
+	// Incremental index maintenance: entries and the new state share the block's
+	// BlockDB transaction, so a crash cannot publish a block with a partial index.
+	if (!KernelIndex::AppendBlock(pBlockDB, pTxHashSet, pPreviousHeader, block.GetHeader())) {
+		LOG_WARNING_F(
+			"Kernel index could not be extended for block {} height {}; a verified rebuild is required after commit.",
+			block.GetHash(),
+			block.GetHeight());
+		m_kernelIndexNeedsRebuild = true;
+	}
 }

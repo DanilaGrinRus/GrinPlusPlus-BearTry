@@ -10,7 +10,6 @@
 #include <unistd.h>
 #endif
 
-static const size_t MAX_PATH_LEN = 260;
 
 bool FileUtil::ReadFile(const fs::path& filePath, std::vector<uint8_t>& data)
 {
@@ -29,7 +28,9 @@ bool FileUtil::ReadFile(const fs::path& filePath, std::vector<uint8_t>& data)
 	data.resize((size_t)size);
 
 	file.seekg(0, std::ios::beg);
-	file.read((char*)&data[0], size);
+	if (size && !file.read(reinterpret_cast<char*>(data.data()), size)) {
+		throw FILE_EXCEPTION_F("Failed to read {}", filePath);
+	}
 	file.close();
 
 	return true;
@@ -38,13 +39,6 @@ bool FileUtil::ReadFile(const fs::path& filePath, std::vector<uint8_t>& data)
 void FileUtil::RenameFile(const fs::path& source, const fs::path& destination)
 {
 	std::error_code ec;
-	fs::remove(destination, ec);
-	if (ec)
-	{
-		LOG_ERROR_F("Failed to remove {}. Error: {}", destination, ec.message());
-		throw FILE_EXCEPTION_F("Failed to remove {}. Error: {}", destination, ec.message());
-	}
-
 	fs::rename(source, destination, ec);
 	if (ec)
 	{
@@ -63,7 +57,8 @@ void FileUtil::SafeWriteToFile(const fs::path& filePath, const std::vector<uint8
 		throw FILE_EXCEPTION_F("Failed to open {}", tmpFilePath);
 	}
 
-	file.write((const char*)&data[0], data.size());
+	file.exceptions(std::ios::badbit | std::ios::failbit);
+	if (!data.empty()) file.write(reinterpret_cast<const char*>(data.data()), data.size());
 	file.close();
 
 	RenameFile(tmpFilePath, filePath);
@@ -140,17 +135,18 @@ bool FileUtil::Exists(const fs::path& path) noexcept
 fs::path FileUtil::GetHomeDirectory()
 {
 #ifdef _WIN32
-	wchar_t homeDriveBuf[MAX_PATH_LEN];
-	size_t homeDriveLen = MAX_PATH_LEN;
-	_wgetenv_s(&homeDriveLen, homeDriveBuf, sizeof(homeDriveBuf) - 1, L"HOMEDRIVE");
-	std::wstring homeDrive(homeDriveBuf, (std::max)(1ULL, homeDriveLen) - 1);
-
-	wchar_t homePathBuf[MAX_PATH_LEN];
-	size_t homePathLen = MAX_PATH_LEN;
-	_wgetenv_s(&homePathLen, homePathBuf, sizeof(homePathBuf) - 1, L"HOMEPATH");
-	std::wstring homePath(homePathBuf, (std::max)(1ULL, homePathLen) - 1);
-
-	return fs::path(homeDrive) / homePath;
+	auto readEnv = [](const wchar_t* name) {
+		size_t required = 0;
+		if (_wgetenv_s(&required, nullptr, 0, name) != 0 || required == 0) {
+			throw FILE_EXCEPTION("Missing home directory environment variable");
+		}
+		std::vector<wchar_t> buffer(required);
+		if (_wgetenv_s(&required, buffer.data(), buffer.size(), name) != 0 || required == 0) {
+			throw FILE_EXCEPTION("Failed to read home directory environment variable");
+		}
+		return std::wstring(buffer.data(), required - 1);
+	};
+	return fs::path(readEnv(L"HOMEDRIVE")) / readEnv(L"HOMEPATH");
 #else
 	char* pHomePath = getenv("HOME");
 	if (pHomePath != nullptr)

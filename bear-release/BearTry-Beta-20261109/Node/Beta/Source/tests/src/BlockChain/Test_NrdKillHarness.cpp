@@ -126,6 +126,11 @@ TEST_CASE("RebuildKillRecovery", "[.]")
 			REQUIRE(!error);
 			const fs::path relative = fs::relative(entry.path(), backupDir, error);
 			REQUIRE(!error);
+			// The recovery process has already opened its own log files. They are
+			// not blockchain state and cannot be overwritten on Windows.
+			if (relative.begin() != relative.end() && *relative.begin() == fs::path("LOGS")) {
+				continue;
+			}
 			const fs::path destination = dataDir / relative;
 			if (entry.is_directory()) {
 				fs::create_directories(destination, error);
@@ -134,6 +139,7 @@ TEST_CASE("RebuildKillRecovery", "[.]")
 				REQUIRE(!error);
 				fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, error);
 			}
+			INFO("restore entry=" << entry.path().string() << " destination=" << destination.string() << " error=" << error.message());
 			REQUIRE(!error);
 		}
 	}

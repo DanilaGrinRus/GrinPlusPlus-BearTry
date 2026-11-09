@@ -7,7 +7,7 @@
 
 SecureString Mnemonic::CreateMnemonic(const uint8_t* entropy, const size_t entropy_len)
 {
-	if (entropy_len % 4 != 0)
+	if (entropy_len < 16 || entropy_len > 32 || entropy_len % 4 != 0)
 	{
 		throw KEYCHAIN_EXCEPTION("Entropy was of incorrect length.");
 	}
@@ -104,7 +104,7 @@ SecureVector Mnemonic::ToEntropy(const SecureString& walletWords)
 		}
 	}
 
-	const uint32_t actualChecksum = (Hasher::SHA256((const std::vector<uint8_t>&)entropy)[0] >> (8 - checksumBits)) & mask;
+	const uint32_t actualChecksum = (Hasher::SHA256(entropy.data(), entropy.size())[0] >> (8 - checksumBits)) & mask;
 	if (actualChecksum != expectedChecksum)
 	{
 		throw KEYCHAIN_EXCEPTION("Invalid checksum.");

@@ -12,6 +12,7 @@
 #include <PMMR/TxHashSetManager.h>
 #include <Net/Clients/RPC/RPC.h>
 #include <Net/Servers/RPC/RPCMethod.h>
+#include <API/Wallet/Owner/Models/Errors.h>
 #include <json/json.h>
 #include <optional>
 #include <string>
@@ -37,6 +38,14 @@ public:
 		m_pDatabase(pDatabase) { }
 	~GetOutputsHandler() = default;
 
+	// params[0] is either null or an array of commitment strings. Any other
+	// JSON type is an invalid parameter and must not be ignored silently.
+	static bool HasValidCommitmentsParam(const Json::Value& params)
+	{
+		return params.isArray() &&
+			(params.empty() || params[0].isNull() || params[0].isArray());
+	}
+
 	RPC::Response Handle(const RPC::Request& request) const final
 	{
 		if (!request.GetParams().has_value()) {
@@ -44,8 +53,10 @@ public:
 		}
 
 		const Json::Value& params = request.GetParams().value();
-		if (!params.isArray()) {
-			return request.BuildError("INVALID_PARAMS", "Expected an array of parameters");
+		if (!HasValidCommitmentsParam(params)) {
+			return request.BuildError(
+				"INVALID_PARAMS",
+				"Expected an array of commitment hex strings or null at params[0]");
 		}
 
 		bool includeProof = false;

@@ -3,6 +3,7 @@
 #include <GrinVersion.h>
 #include <P2P/AdvertisedTip.h>
 #include <P2P/Capabilities.h>
+#include "../../../src/P2P/Messages/MessageHeader.h"
 #include <P2P/Common.h>
 #include <P2P/Messages/MessageTypes.h>
 #include <memory>
@@ -159,4 +160,18 @@ TEST_CASE("P2P::AdvertisedTipReadsOneSnapshot")
 	std::shared_ptr<StubTipHeader> none;
 	const auto withheld = P2P::ReadAdvertisedTip([&]() { return none; });
 	REQUIRE_FALSE(withheld.has_value());
+}
+
+TEST_CASE("Wrong network magic reports both received and expected bytes")
+{
+    ByteBuffer buffer(std::vector<uint8_t>{ 0x47, 0x45, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    bool rejectedWithDetails = false;
+    try {
+        (void)MessageHeader::Deserialize(buffer);
+    } catch (const std::exception& e) {
+        const std::string message(e.what());
+        rejectedWithDetails = message.find("received=4745") != std::string::npos &&
+            message.find("expected=") != std::string::npos;
+    }
+    REQUIRE(rejectedWithDetails);
 }

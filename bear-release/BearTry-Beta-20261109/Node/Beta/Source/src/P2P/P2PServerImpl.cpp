@@ -179,15 +179,7 @@ void P2PServer::UnbanPeer(const IPAddress& address)
 
 bool P2PServer::UnbanAllPeers()
 {
-	std::vector<PeerPtr> peers = m_pPeerManager->Write()->GetAllPeers();
-	for (PeerPtr peer : peers)
-	{
-		if (peer->IsBanned())
-		{
-			peer->Unban();
-		}
-	}
-
+	m_pPeerManager->Write()->UnbanAllPeers();
 	return true;
 }
 

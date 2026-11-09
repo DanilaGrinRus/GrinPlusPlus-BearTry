@@ -26,8 +26,8 @@ public:
 
 	Commitment ToCommitment(const PublicKey& publicKey) const;
 
-	static std::vector<secp256k1_pedersen_commitment*> ConvertCommitments(const secp256k1_context& context, const std::vector<Commitment>& commitments);
-	static void CleanupCommitments(std::vector<secp256k1_pedersen_commitment*>& commitments);
+	static std::vector<secp256k1_pedersen_commitment> ConvertCommitments(const secp256k1_context& context, const std::vector<Commitment>& commitments);
+	static std::vector<secp256k1_pedersen_commitment*> Pointers(std::vector<secp256k1_pedersen_commitment>& commitments);
 
 private:
 	mutable std::shared_mutex m_mutex;

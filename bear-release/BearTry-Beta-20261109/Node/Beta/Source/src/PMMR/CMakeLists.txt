@@ -10,6 +10,7 @@ file(GLOB SOURCE_CODE
     "TxHashSetImpl.cpp"
     "TxHashSetManager.cpp"
     "TxHashSetValidator.cpp"
+    "RangeProofBatchVerifier.cpp"
 	"UBMT.cpp"
     "Common/Index.cpp"
     "Common/LeafSet.cpp"

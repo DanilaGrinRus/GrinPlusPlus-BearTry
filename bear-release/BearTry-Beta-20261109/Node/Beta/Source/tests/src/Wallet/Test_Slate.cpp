@@ -32,3 +32,27 @@ TEST_CASE("Slate - Binary", "[.]")
 
     REQUIRE(!slate.proofOpt.has_value());
 }
+// Binary V4 carries feature arguments only for height-locked kernels.
+TEST_CASE("Slate V4 feature arguments round trip")
+{
+    for (const EKernelFeatures feature : { EKernelFeatures::DEFAULT_KERNEL, EKernelFeatures::COINBASE_KERNEL, EKernelFeatures::HEIGHT_LOCKED }) {
+        Slate original;
+        original.kernelFeatures = feature;
+        if (feature == EKernelFeatures::HEIGHT_LOCKED) {
+            SlateFeatureArgs args;
+            args.lockHeightOpt = 123456;
+            original.featureArgsOpt = args;
+        }
+        Serializer serializer;
+        original.Serialize(serializer);
+        ByteBuffer buffer(serializer.GetBytes());
+        const Slate restored = Slate::Deserialize(buffer);
+        REQUIRE(restored.kernelFeatures == feature);
+        REQUIRE(restored.featureArgsOpt == original.featureArgsOpt);
+        REQUIRE(buffer.GetRemainingSize() == 0);
+        const Json::Value json = restored.ToJSON();
+        REQUIRE(json.isMember("feat_args") == original.featureArgsOpt.has_value());
+        const Slate fromJson = Slate::FromJSON(json);
+        REQUIRE(fromJson.featureArgsOpt == original.featureArgsOpt);
+    }
+}

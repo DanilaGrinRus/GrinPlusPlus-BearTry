@@ -7,11 +7,14 @@
 #include <Consensus.h>
 #include <Core/Exceptions/WalletException.h>
 #include <Core/Util/FeeUtil.h>
+#include <Wallet/Exceptions/InsufficientFundsException.h>
 #include <Common/Util/FunctionalUtil.h>
 #include <Common/Logger.h>
 #include <Net/Tor/TorAddressParser.h>
 #include <Crypto/ED25519.h>
 #include <Wallet/Models/Slatepack/Armor.h>
+
+#include <limits>
 
 SendSlateBuilder::SendSlateBuilder(INodeClientConstPtr pNodeClient)
 	: m_pNodeClient(pNodeClient)
@@ -32,8 +35,16 @@ Slate SendSlateBuilder::BuildSendSlate(
 	const std::vector<SlatepackAddress>& recipients) const
 {
 	const uint8_t numChangeOutputs = sendEntireBalance ? 0 : maxChangeOutputs;
-	const uint8_t totalNumOutputs = 1 + numChangeOutputs;
+	const uint16_t totalNumOutputs = (uint16_t)(1 + numChangeOutputs);
 	const uint64_t numKernels = 1;
+
+	if (!sendEntireBalance && maxChangeOutputs == 0)
+	{
+		// "0 change outputs" means "leftover becomes the fee". Only allow that
+		// when the caller is deliberately spending the entire balance; an
+		// explicit amount with no change output silently overpays the fee.
+		throw WALLET_EXCEPTION("change_outputs must be at least 1 when amount is specified.");
+	}
 
 	// Select inputs using desired selection strategy.
 	auto pWallet = wallet.Write();
@@ -66,10 +77,28 @@ Slate SendSlateBuilder::BuildSendSlate(
 		(int64_t)totalNumOutputs,
 		(int64_t)numKernels
 	);
-	uint64_t amountToSend = sendEntireBalance ? (inputTotal - fee) : amount;
+	uint64_t amountToSend = amount;
+	if (sendEntireBalance)
+	{
+		if (inputTotal < fee)
+		{
+			WALLET_ERROR("Not enough funds to cover the fee when sending the entire balance.");
+			throw InsufficientFundsException();
+		}
+
+		amountToSend = inputTotal - fee;
+	}
+
 	if (numChangeOutputs == 0)
 	{
-		assert((inputTotal - amountToSend) >= fee); // TODO: Exception
+		if (inputTotal < amountToSend)
+		{
+			WALLET_ERROR("Not enough funds to spend amount + fee.");
+			throw InsufficientFundsException();
+		}
+
+		// No change: the remainder (which is the fee for send-entire-balance)
+		// stays in the kernel fee.
 		fee = inputTotal - amountToSend;
 	}
 
@@ -78,7 +107,7 @@ Slate SendSlateBuilder::BuildSendSlate(
 		masterSeed,
 		amountToSend,
 		fee,
-		sendEntireBalance ? 0 : numChangeOutputs,
+		numChangeOutputs,
 		inputs,
 		addressOpt,
 		slateVersion,
@@ -111,7 +140,20 @@ Slate SendSlateBuilder::Build(
 			[](const uint64_t sum, const OutputDataEntity& input) { return sum + input.GetAmount(); }
 		);
 
-		const uint64_t changeAmount = inputTotal - (amountToSend + fee);
+		if (amountToSend > (std::numeric_limits<uint64_t>::max)() - fee)
+		{
+			WALLET_ERROR("amount + fee overflows; refusing to build the slate.");
+			throw InsufficientFundsException();
+		}
+
+		const uint64_t required = amountToSend + fee;
+		if (inputTotal < required)
+		{
+			WALLET_ERROR("Selected inputs do not cover amount + fee; refusing to build the slate.");
+			throw InsufficientFundsException();
+		}
+
+		const uint64_t changeAmount = inputTotal - required;
 		changeOutputs = OutputBuilder::CreateOutputs(
 			pWallet,
 			pBatch.GetShared(),

@@ -58,7 +58,7 @@ bool AppendOnlyFile::Rewind(const uint64_t nextPosition)
 	}
 	else
 	{
-		m_buffer.erase(m_buffer.begin() + nextPosition - m_bufferIndex, m_buffer.end());
+		m_buffer.erase(m_buffer.begin() + (nextPosition - m_bufferIndex), m_buffer.end());
 	}
 
 	return true;

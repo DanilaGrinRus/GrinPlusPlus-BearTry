@@ -33,7 +33,7 @@ Socket::~Socket()
 {
     CloseSocket();
 
-    std::lock(m_socketMutex, m_writeQueueMutex);
+    std::scoped_lock guard(m_socketMutex, m_writeQueueMutex);
     m_pSocket.reset();
     m_pContext.reset();
 }

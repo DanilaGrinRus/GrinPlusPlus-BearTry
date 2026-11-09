@@ -52,7 +52,7 @@ private:
 	{
 		PeerPtr PEER;
 		uint64_t BLOCK_HEIGHT = 0;
-		std::chrono::time_point<std::chrono::system_clock> TIMEOUT;
+		BlockSyncPolicy::Clock::time_point TIMEOUT;
 		bool RETRIED = false;
 		bool TIMEOUT_COUNTED = false;
 		uint32_t ATTEMPTS = 0;

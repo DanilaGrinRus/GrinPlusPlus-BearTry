@@ -10,4 +10,13 @@ list_append_parent(
     "Test_Slatepack.cpp"
     "Test_TransactionBuilder.cpp"
     "Test_Config.cpp"
+    "Test_SqliteDB.cpp"
+    "Test_WalletDBMigration.cpp"
+    "Test_Lockable.cpp"
+    "Test_SeedEncrypter.cpp"
+    "Test_WalletCreation.cpp"
+    "Test_OutputStatus.cpp"
+    "Test_OutputRestorer.cpp"
+    "Test_WalletRefresherReorg.cpp"
+    "Test_NodeClientRpc.cpp"
 )

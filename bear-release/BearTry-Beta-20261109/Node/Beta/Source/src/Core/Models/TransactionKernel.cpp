@@ -135,6 +135,9 @@ Json::Value TransactionKernel::ToJSON() const
 TransactionKernel TransactionKernel::FromJSON(const Json::Value& transactionKernelJSON)
 {
 	Json::Value features_json = JsonUtil::GetRequiredField(transactionKernelJSON, "features");
+	if (!features_json.isObject() || features_json.size() != 1) {
+		throw DESERIALIZATION_EXCEPTION("Expected one kernel feature");
+	}
 	std::string feature_str = features_json.getMemberNames().front();
 	EKernelFeatures features = KernelFeatures::FromString(feature_str);
 

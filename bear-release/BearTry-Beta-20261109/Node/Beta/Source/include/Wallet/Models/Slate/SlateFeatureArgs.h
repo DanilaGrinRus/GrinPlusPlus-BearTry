@@ -18,7 +18,9 @@ struct SlateFeatureArgs
         return json;
     }
 
-    SlateFeatureArgs FromJSON(const Json::Value& json)
+    bool operator==(const SlateFeatureArgs& rhs) const noexcept { return lockHeightOpt == rhs.lockHeightOpt; }
+
+    static SlateFeatureArgs FromJSON(const Json::Value& json)
     {
         SlateFeatureArgs args;
         args.lockHeightOpt = JsonUtil::GetUInt64Opt(json, "lock_hgt");

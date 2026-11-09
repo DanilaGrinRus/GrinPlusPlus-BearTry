@@ -67,6 +67,7 @@ void Syncer::Thread_Sync(Syncer& syncer)
     bool headers_synced = false;
     bool blocks_synced = false;
     auto pStatus = syncer.m_pSyncStatus;
+    pStatus->EnableStageLogging();
 
     while (!syncer.m_terminate && Global::IsRunning()) {
         try {
@@ -119,6 +120,7 @@ void Syncer::Thread_Sync(Syncer& syncer)
         }
     }
 
+    pStatus->EndStageLogging();
     LOG_DEBUG("END");
 }
 

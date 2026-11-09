@@ -15,6 +15,10 @@
 
 static int Shutdown_Handler(struct mg_connection* conn, void*)
 {
+	if (HTTPUtil::GetHTTPMethod(conn) != HTTP::EHTTPMethod::POST)
+	{
+		return HTTPUtil::BuildNotFoundResponse(conn, "Not Found");
+	}
 	if (!ApiAccess::Check(conn, ApiAccess::Level::ADMIN, Global::GetConfig().GetRestAPIPort()))
 	{
 		return HTTPUtil::BuildUnauthorizedResponse(conn, "Unauthorized");
@@ -24,12 +28,16 @@ static int Shutdown_Handler(struct mg_connection* conn, void*)
 	return HTTPUtil::BuildSuccessResponse(conn, "");
 }
 
-NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_ptr<NodeContext> pNodeContext)
+ServerPtr NodeRestServer::StartInitializing(const Config& config, const std::shared_ptr<NodeStartupHealth>& pHealth)
+{
+	ServerPtr pServer = Server::Create(EServerType::LOCAL, std::make_optional<uint16_t>(config.GetRestAPIPort()));
+	pServer->AddListener("/v1/health", NodeStartupHealth::Handle, pHealth.get());
+	return pServer;
+}
+
+NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_ptr<NodeContext> pNodeContext, const ServerPtr& pServer, const std::shared_ptr<NodeStartupHealth>& pHealth)
 {
 	ApiAccess::Initialize(config.GetDataDirectory());
-
-	const uint16_t port = config.GetRestAPIPort();
-	ServerPtr pServer = Server::Create(EServerType::LOCAL, std::make_optional<uint16_t>(port));
 	NodeServer::UPtr pV2Server = NodeServer::Create(
 		pServer,
 		pNodeContext->m_pBlockChain,
@@ -59,5 +67,7 @@ NodeRestServer::UPtr NodeRestServer::Create(const Config& config, std::shared_pt
 	pServer->AddListener("/v1/shutdown", Shutdown_Handler, pNodeContext.get());
 	pServer->AddListener("/v1/", ServerAPI::V1_Handler, pNodeContext.get());
 
-	return std::make_unique<NodeRestServer>(pNodeContext, std::move(pV2Server));
+	auto pNodeRestServer = std::make_unique<NodeRestServer>(pNodeContext, pHealth, std::move(pV2Server));
+	pHealth->ready.store(true);
+	return pNodeRestServer;
 }

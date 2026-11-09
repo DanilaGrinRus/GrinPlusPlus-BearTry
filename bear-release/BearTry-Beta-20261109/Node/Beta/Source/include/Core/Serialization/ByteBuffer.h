@@ -162,7 +162,7 @@ public:
         std::vector<uint8_t> temp(m_bytes.cbegin() + m_index, m_bytes.cbegin() + m_index + stringLength);
         m_index += stringLength;
 
-        return std::string((char*)&temp[0], stringLength);
+        return std::string(temp.begin(), temp.end());
     }
 
     std::string ReadString(const size_t size)
@@ -172,7 +172,7 @@ public:
         std::vector<uint8_t> temp(m_bytes.cbegin() + m_index, m_bytes.cbegin() + m_index + size);
         m_index += size;
 
-        return std::string((char*)&temp[0], size);
+        return std::string(temp.begin(), temp.end());
     }
 
     template<size_t NUM_BYTES>
@@ -215,7 +215,7 @@ public:
         return m_bytes.size() - m_index;
     }
 
-    std::vector<uint8_t> ReadRemainingBytes() noexcept
+    std::vector<uint8_t> ReadRemainingBytes()
     {
         size_t prev_index = m_index;
         m_index += GetRemainingSize();

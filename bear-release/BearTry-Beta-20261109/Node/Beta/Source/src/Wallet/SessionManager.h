@@ -55,6 +55,7 @@ public:
 	Locked<WalletImpl> GetWalletImpl(const SessionToken& token) const;
 
 private:
+	const LoggedInSession& RequireSession(const SessionToken& token) const;
 	std::unordered_map<uint64_t, std::shared_ptr<LoggedInSession>> m_sessionsById;
 	// TODO: Keep multimap of sessions per username
 

@@ -16,11 +16,11 @@ std::shared_ptr<PruneList> PruneList::Load(const fs::path& filePath)
     std::vector<unsigned char> data;
     if (FileUtil::ReadFile(filePath, data)) {
         Roaring prunedRoots = Roaring::readSafe((const char*)data.data(), data.size());
-        PruneList* pPruneList = new PruneList(filePath, std::move(prunedRoots));
+        auto pPruneList = std::shared_ptr<PruneList>(new PruneList(filePath, std::move(prunedRoots)));
         pPruneList->BuildPrunedCache();
         pPruneList->BuildShiftCaches();
 
-        return std::shared_ptr<PruneList>(pPruneList);
+        return pPruneList;
     } else {
         return std::shared_ptr<PruneList>(new PruneList(filePath, Roaring()));
     }

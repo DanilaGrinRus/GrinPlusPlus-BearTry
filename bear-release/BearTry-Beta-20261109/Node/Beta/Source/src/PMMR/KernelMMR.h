@@ -59,5 +59,7 @@ private:
 	mutable std::shared_ptr<AppendOnlyFile> m_pDataFile;
 	bool m_fixedV1;
 	std::vector<KernelEntry> m_entries;
+	// Original committed entries removed by rewind, in reverse order.
+	std::vector<KernelEntry> m_rewoundEntries;
 	size_t m_committedEntries = 0;
 };

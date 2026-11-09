@@ -4,21 +4,67 @@
 #include "SlateUtil.h"
 
 #include <Core/Exceptions/WalletException.h>
+#include <Core/Exceptions/APIException.h>
+#include <API/Wallet/Owner/Models/Errors.h>
 #include <Wallet/Models/Slatepack/Armor.h>
 #include <Common/Logger.h>
+
+void ReceiveSlateBuilder::ValidateIncomingSlate(const Slate& slate, const uint64_t chainHeight)
+{
+	// Only a standard send slate (S1) can be received. Receiving an already
+	// received/finalized slate would create a second output and a second wallet
+	// transaction for the same slate id.
+	if (slate.stage != ESlateStage::STANDARD_SENT)
+	{
+		WALLET_ERROR_F(
+			"Refusing to receive slate {} in stage {}.",
+			uuids::to_string(slate.GetId()),
+			slate.stage.ToString()
+		);
+		throw API_EXCEPTION(
+			RPC::Errors::SLATE_STATE_INVALID.GetCode(),
+			"Slate is not in a receivable state (expected Standard1)"
+		);
+	}
+
+	// Zero-amount slates are not valid payments (matches Rust receive_tx).
+	if (slate.amount == 0)
+	{
+		WALLET_ERROR_F("Refusing to receive zero-amount slate {}.", uuids::to_string(slate.GetId()));
+		throw API_EXCEPTION(
+			RPC::Errors::SLATE_AMOUNT_INVALID.GetCode(),
+			"Slate amount must be greater than 0"
+		);
+	}
+
+	// ttl == 0 means "no TTL". Otherwise the cutoff height is exclusive:
+	// at/after the cutoff the slate must no longer be processed.
+	if (slate.ttl != 0 && chainHeight >= slate.ttl)
+	{
+		WALLET_ERROR_F(
+			"Refusing to receive expired slate {} (ttl={}, height={}).",
+			uuids::to_string(slate.GetId()),
+			slate.ttl,
+			chainHeight
+		);
+		throw API_EXCEPTION(
+			RPC::Errors::SLATE_TTL_EXPIRED.GetCode(),
+			"Slate TTL has expired"
+		);
+	}
+}
 
 Slate ReceiveSlateBuilder::AddReceiverData(
 	Locked<WalletImpl> wallet,
 	const SecureVector& masterSeed,
 	const Slate& send_slate,
 	const std::optional<SlatepackAddress>& addressOpt,
-	const std::vector<SlatepackAddress>& recipients) const
+	const std::vector<SlatepackAddress>& recipients,
+	const uint64_t chainHeight) const
 {
-	WALLET_INFO_F(
-		"Receiving {} from {}",
-		send_slate.GetAmount(),
-		addressOpt.has_value() ? addressOpt.value().ToString() : "UNKNOWN"
-	);
+	WALLET_INFO_F("Receiving slate {}", uuids::to_string(send_slate.GetId()));
+
+	ValidateIncomingSlate(send_slate, chainHeight);
 
 	auto pWallet = wallet.Write();
 	Slate receiveSlate = send_slate;
@@ -48,12 +94,7 @@ Slate ReceiveSlateBuilder::AddReceiverData(
 
 	// Adjust transaction offset
 	receiveSlate.offset = Crypto::AddBlindingFactors({ receiveSlate.offset, receiver_offset }, {});
-	WALLET_INFO_F(
-		"Adjusting original transaction offset {} by {} to get total {}",
-		send_slate.offset,
-		receiver_offset,
-		receiveSlate.offset
-	);
+	WALLET_DEBUG_F("Adjusted transaction offset for slate {}.", uuids::to_string(receiveSlate.GetId()));
 
 	// Add receiver ParticipantData
 	SlateSignature signature = BuildSignature(receiveSlate, signing_keys);
@@ -61,7 +102,7 @@ Slate ReceiveSlateBuilder::AddReceiverData(
 	// Add output to Transaction
 	receiveSlate.AddOutput(outputData.GetFeatures(), outputData.GetCommitment(), outputData.GetRangeProof());
 
-	WALLET_INFO("Updating Payment Proof...");
+	WALLET_DEBUG("Updating Payment Proof...");
 
 	UpdatePaymentProof(
 		pWallet.GetShared(),
@@ -152,7 +193,7 @@ void ReceiveSlateBuilder::UpdatePaymentProof(
 		int address_index = pWallet->FindAddressIndex(masterSeed, proof.GetReceiverAddress(), currentIndex);
 
 		Commitment kernel_commitment = Crypto::ToCommitment(receiveSlate.CalculateTotalExcess());
-		WALLET_INFO_F("Calculated commitment: {}", kernel_commitment);
+		WALLET_DEBUG_F("Calculated payment-proof commitment for slate {}.", uuids::to_string(receiveSlate.GetId()));
 
 		// Message: (amount | kernel commitment | sender address)
 		Serializer messageSerializer;
@@ -168,7 +209,7 @@ void ReceiveSlateBuilder::UpdatePaymentProof(
 			messageSerializer.GetBytes()
 		);
 		proof.AddSignature(std::move(signature));
-		WALLET_INFO_F("Added Signature ({})", kernel_commitment);
+		WALLET_DEBUG_F("Added payment-proof receiver signature for slate {}.", uuids::to_string(receiveSlate.GetId()));
 	}
 }
 

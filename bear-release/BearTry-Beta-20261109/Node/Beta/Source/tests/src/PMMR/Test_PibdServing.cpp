@@ -221,7 +221,7 @@ TEST_CASE("PibdSegmentService::RangeProofSegmentWireRoundTrip")
 
 TEST_CASE("PibdSegmentService::RangeProofSegmentLiveState")
 {
-	const fs::path stateDir = "C:/DHW/.tmp/interop/pp-archsrv/.GrinPP/FLOONET/NODE/TXHASHSET";
+	const fs::path stateDir = "fixtures/pibd/live-state";
 	if (!fs::exists(stateDir)) {
 		return;
 	}

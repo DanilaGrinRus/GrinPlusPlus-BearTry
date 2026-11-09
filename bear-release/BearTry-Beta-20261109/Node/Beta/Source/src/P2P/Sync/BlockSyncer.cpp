@@ -78,7 +78,7 @@ bool BlockSyncer::IsBlockSyncDue(const SyncStatus& syncStatus)
 			return true;
 		}
 
-		if (requestedBlock->second.TIMEOUT < std::chrono::system_clock::now()) {
+		if (requestedBlock->second.TIMEOUT < BlockSyncPolicy::Clock::now()) {
 			if (m_pPipeline->GetBlockPipe()->IsProcessingBlock(needed.second)) {
 				continue;
 			}
@@ -87,7 +87,8 @@ bool BlockSyncer::IsBlockSyncDue(const SyncStatus& syncStatus)
 			if (!requestedBlock->second.TIMEOUT_COUNTED) {
 				requestedBlock->second.TIMEOUT_COUNTED = true;
 				syncStatus.IncrementBlockTimeouts();
-				LOG_WARNING_F("Block {} request timed out.", needed.first);
+				m_slowPeers.MarkSlow(key, BlockSyncPolicy::Clock::now());
+				LOG_WARNING_F("Block {} request to {} exceeded its deadline.", needed.first, key);
 			}
 			return true;
 		}
@@ -112,7 +113,6 @@ bool BlockSyncer::RequestBlocks(const SyncStatus& syncStatus)
 		return false;
 	}
 
-	const auto systemNow = std::chrono::system_clock::now();
 	const auto steadyNow = BlockSyncPolicy::Clock::now();
 
 	std::vector<BlockSyncPolicy::PeerCandidate> candidates;
@@ -159,9 +159,9 @@ bool BlockSyncer::RequestBlocks(const SyncStatus& syncStatus)
 		const auto requested = m_requestedBlocks.find(height);
 		if (requested != m_requestedBlocks.end()) {
 			const std::string oldKey = PeerKey(requested->second.PEER);
-			const bool timedOut = requested->second.TIMEOUT < systemNow ||
-				m_slowPeers.IsSlow(oldKey, steadyNow);
-			if (!timedOut) {
+			const bool deadlineExpired = requested->second.TIMEOUT < steadyNow;
+			const bool coolingDown = m_slowPeers.IsSlow(oldKey, steadyNow);
+			if (!deadlineExpired && !coolingDown) {
 				continue;
 			}
 
@@ -169,48 +169,57 @@ bool BlockSyncer::RequestBlocks(const SyncStatus& syncStatus)
 				continue;
 			}
 
-			if (!requested->second.TIMEOUT_COUNTED) {
+			if (deadlineExpired && !requested->second.TIMEOUT_COUNTED) {
 				requested->second.TIMEOUT_COUNTED = true;
 				syncStatus.IncrementBlockTimeouts();
-				LOG_WARNING_F(
-					"Block {} request timed out (attempt {}), reassigning without ban.",
-					height,
-					requested->second.ATTEMPTS + 1);
+				m_slowPeers.MarkSlow(oldKey, steadyNow);
+				LOG_WARNING_F("Block {} request to {} exceeded its deadline (attempt {}).",
+					height, oldKey, requested->second.ATTEMPTS + 1);
 			}
-			m_slowPeers.MarkSlow(oldKey, steadyNow);
 
 			bool reassigned = false;
+			std::optional<size_t> original;
+			for (size_t i = 0; i < connections.size(); ++i) {
+				const std::string key = connections[i]->GetIPAddress().Format();
+				candidates[i].Slow = m_slowPeers.IsSlow(key, steadyNow);
+				if (key == oldKey) original = i;
+			}
 			for (size_t attempt = 0; attempt < connections.size(); attempt++) {
 				const size_t start = (rotation + attempt + 1) % connections.size();
-				const auto index = BlockSyncPolicy::SelectPeer(candidates, height, start);
+				const auto index = BlockSyncPolicy::SelectRetryPeer(candidates, height, start, original, deadlineExpired);
 				if (!index.has_value()) {
 					break;
 				}
 
 				const ConnectionPtr& pConnection = connections[*index];
-				if (pConnection->GetIPAddress().Format() == oldKey) {
-					continue;
-				}
 
 				const GetBlockMessage getBlockMessage(hash);
 				if (pConnectionManager->SendMessageToPeer(getBlockMessage, pConnection->GetPeer())) {
 					RequestedBlock updated = requested->second;
 					updated.PEER = pConnection->GetPeer();
-					updated.TIMEOUT = systemNow +
+					updated.TIMEOUT = steadyNow +
 						BlockSyncPolicy::RetryBackoff(
 							m_progressSinceLastRequest,
 							requested->second.ATTEMPTS + 1);
 					updated.RETRIED = true;
 					updated.TIMEOUT_COUNTED = false;
 					updated.ATTEMPTS = requested->second.ATTEMPTS + 1;
+					const uint32_t attemptNumber = updated.ATTEMPTS + 1;
 					m_requestedBlocks[height] = std::move(updated);
-					syncStatus.IncrementBlockReassignments();
+					syncStatus.IncrementBlockRetries();
+					if (pConnection->GetIPAddress().Format() != oldKey) {
+						syncStatus.IncrementBlockReassignments();
+						if (!deadlineExpired) syncStatus.IncrementBlockCooldownReassignments();
+					}
+					LOG_DEBUG_F("Block {} retry: {} -> {}, reason {}, attempt {}.", height, oldKey,
+						pConnection->GetIPAddress().Format(), deadlineExpired ? "deadline" : "cooldown", attemptNumber);
 					rotation = (*index + 1) % connections.size();
 					reassigned = true;
 					break;
 				}
 
 				m_slowPeers.MarkSlow(pConnection->GetIPAddress().Format(), steadyNow);
+				candidates[*index].Slow = true;
 			}
 
 			if (!reassigned) {
@@ -249,7 +258,7 @@ bool BlockSyncer::RequestBlocks(const SyncStatus& syncStatus)
 		RequestedBlock blockRequested;
 		blockRequested.PEER = pConnection->GetPeer();
 		blockRequested.BLOCK_HEIGHT = block.first;
-		blockRequested.TIMEOUT = systemNow +
+		blockRequested.TIMEOUT = steadyNow +
 			BlockSyncPolicy::RetryDelay(m_progressSinceLastRequest);
 		blockRequested.RETRIED = false;
 		blockRequested.TIMEOUT_COUNTED = false;
@@ -257,6 +266,8 @@ bool BlockSyncer::RequestBlocks(const SyncStatus& syncStatus)
 
 		m_requestedBlocks[block.first] = std::move(blockRequested);
 		syncStatus.IncrementBlockRequests();
+		LOG_DEBUG_F("Block {} requested from {}, deadline in {}s.", block.first,
+			pConnection->GetIPAddress().Format(), BlockSyncPolicy::RetryDelay(m_progressSinceLastRequest).count());
 		assigned++;
 		rotation = (*index + 1) % connections.size();
 	}

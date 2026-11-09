@@ -5,9 +5,14 @@ list_append_parent(
     "Test_ReorgChain.cpp"
     "Test_ChainConsistency.cpp"
     "Test_DbCheckpoint.cpp"
+    "Test_HeaderCheckpoint.cpp"
     "Test_DbRecovery.cpp"
     "Test_KernelIndex.cpp"
+    "Test_KernelIndexCrash.cpp"
+    "Test_KernelIndexFaultInjection.cpp"
+    "Test_KernelIndexPibd.cpp"
     "Test_KernelFeatures.cpp"
     "Test_NrdBodylessRestart.cpp"
     "Test_NrdKillHarness.cpp"
 )
+

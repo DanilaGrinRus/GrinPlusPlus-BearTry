@@ -2,6 +2,8 @@ list_append_parent(
     test_sources
     ${CMAKE_CURRENT_LIST_DIR}
     "Test_MMRUtil.cpp"
+    "Test_RangeProofBatchVerifier.cpp"
+    "Test_RangeProofWorkerPolicy.cpp"
     "Test_Pihd.cpp"
     "Test_BitmapAssembly.cpp"
     "Test_PibdDownload.cpp"
@@ -19,6 +21,7 @@ list_append_parent(
     "Test_PibdSync.cpp"
     "Test_Segment.cpp"
     "Test_SegmentGenerator.cpp"
+    "Test_PibdWireAudit.cpp"
     "Test_PruneList.cpp"
     "Test_PruneList_GetLeafShift.cpp"
     "Test_PruneList_GetShift.cpp"
@@ -40,3 +43,4 @@ list_append_parent(
     "Test_TxHashSetManagerOpen.cpp"
     "LeafSet/Test_LeafSet.cpp"
 )
+

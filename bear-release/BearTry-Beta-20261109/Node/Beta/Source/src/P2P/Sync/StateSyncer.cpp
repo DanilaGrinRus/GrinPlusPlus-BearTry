@@ -314,7 +314,8 @@ StateSyncer::EPibdResult StateSyncer::TryPibd(SyncStatus& syncStatus)
 
 	if (status == PibdSync::EStatus::Idle) {
 		if (m_pibdPeer == nullptr) {
-			m_pibdPeer = FindPibdPeer(true);
+			m_pibdPeers = FindPibdPeers(true);
+			m_pibdPeer = m_pibdPeers.empty() ? nullptr : m_pibdPeers.front();
 		}
 
 		if (m_pibdPeer == nullptr) {
@@ -356,11 +357,14 @@ StateSyncer::EPibdResult StateSyncer::TryPibd(SyncStatus& syncStatus)
 			// null and dereferencing it here crashes (regression caught live).
 			m_pibdHorizonHash = horizon.BlockHash;
 			m_pibdPeersTried.clear();
+			m_pibdPeers.clear();
+			m_pibdPeerCursor = 0;
 			m_pibdPeer = nullptr;
 		}
 
 		if (m_pibdPeer == nullptr) {
-			m_pibdPeer = FindPibdPeer(true);
+			m_pibdPeers = FindPibdPeers(true);
+			m_pibdPeer = m_pibdPeers.empty() ? nullptr : m_pibdPeers.front();
 		}
 
 		if (m_pibdPeer == nullptr) {
@@ -374,10 +378,13 @@ StateSyncer::EPibdResult StateSyncer::TryPibd(SyncStatus& syncStatus)
 
 		m_pibdPeersTried.insert(m_pibdPeer->GetIPAddress().Format());
 		LOG_INFO_F(
-			"Starting PIBD state sync at height {} (header hash {}), peer {}.",
+			"Starting PIBD state sync at height {} (header hash {}), {} capable peer(s), primary {}.",
 			horizon.Height,
 			horizon.BlockHash,
+			m_pibdPeers.size(),
 			m_pibdPeer);
+		LoggerAPI::LogSyncEvent("event=pibd_started height=" + std::to_string(horizon.Height) +
+			" peers=" + std::to_string(m_pibdPeers.size()));
 		syncStatus.UpdateStatus(ESyncStatus::SYNCING_TXHASHSET);
 		syncStatus.SetPibdPeer(m_pibdPeer->GetIPAddress().Format());
 		syncStatus.SetPibdStarted(std::time(nullptr));
@@ -406,21 +413,41 @@ StateSyncer::EPibdResult StateSyncer::TryPibd(SyncStatus& syncStatus)
 		}
 	}
 
+	// Publish the final segment count after the completion transition.
+	const PibdSync::Progress finalProgress = m_pPibdSync->GetProgress();
+	syncStatus.SetPibdProgress(finalProgress.Received, finalProgress.Required);
+	LoggerAPI::LogSyncEvent("event=pibd_download_completed received_segments=" + std::to_string(finalProgress.Received) +
+		" required_segments=" + std::to_string(finalProgress.Required));
+
 	// Completed: release the open txhashset files, write staging, activate
 	// atomically and then install and validate the new state.
 	m_pBlockChain->CloseTxHashSet();
-	if (!m_pPibdSync->TryComplete()) {
-		m_pBlockChain->OpenTxHashSet();
-		LOG_WARNING_F(
-			"PIBD write/activation failed: {}. Falling back to txhashset.zip",
-			m_pPibdSync->GetError());
-		m_pPibdSync->Reset();
-		DisablePibd();
-		return EPibdResult::NotAttempted;
+	{
+		ScopedSyncPhase activationPhase("pibd_write_activation");
+		if (!m_pPibdSync->TryComplete()) {
+			m_pBlockChain->OpenTxHashSet();
+			LOG_WARNING_F(
+				"PIBD write/activation failed: {}. Falling back to txhashset.zip",
+				m_pPibdSync->GetError());
+			m_pPibdSync->Reset();
+			DisablePibd();
+			return EPibdResult::NotAttempted;
+		}
+		activationPhase.Success();
 	}
 
-	const EBlockChainStatus chainStatus =
-		m_pBlockChain->ProcessExistingTxHashSet(m_pibdHorizonHash, syncStatus);
+	// Keep the PIBD validation stage visible to status clients, as in the ZIP path.
+	// Restore the prior sync state if validation throws so the sync loop can retry.
+	syncStatus.UpdateProcessingStatus(0);
+	syncStatus.UpdateStatus(ESyncStatus::PROCESSING_TXHASHSET);
+	EBlockChainStatus chainStatus;
+	try {
+		chainStatus = m_pBlockChain->ProcessExistingTxHashSet(m_pibdHorizonHash, syncStatus);
+	} catch (...) {
+		syncStatus.UpdateStatus(ESyncStatus::SYNCING_TXHASHSET);
+		throw;
+	}
+	syncStatus.UpdateStatus(ESyncStatus::SYNCING_TXHASHSET);
 	m_pPibdSync->Reset();
 
 	if (chainStatus == EBlockChainStatus::SUCCESS) {
@@ -436,6 +463,8 @@ StateSyncer::EPibdResult StateSyncer::TryPibd(SyncStatus& syncStatus)
 		syncStatus.SetPibdProgress(0, 0);
 		syncStatus.SetPibdStarted(0);
 		m_pibdPeer = nullptr;
+		m_pibdPeers.clear();
+		m_pibdPeerCursor = 0;
 		m_pibdPeersTried.clear();
 		m_pibdRound = 0;
 		m_pibdRetryAt = std::chrono::system_clock::time_point::min();
@@ -755,18 +784,68 @@ void StateSyncer::SendPibdRequests(const std::chrono::steady_clock::time_point n
 		return;
 	}
 
-	const PeerPtr pPeer = m_pibdPeer;
-	if (pPeer == nullptr) {
+	std::vector<PeerPtr> peers;
+	std::vector<std::string> tokens;
+	for (const PeerPtr& pPeer : m_pibdPeers) {
+		if (pPeer != nullptr && pConnectionManager->IsConnected(pPeer->GetIPAddress())) {
+			peers.push_back(pPeer);
+			tokens.push_back(pPeer->GetIPAddress().Format());
+		}
+	}
+	if (peers.empty() && m_pibdPeer != nullptr &&
+		pConnectionManager->IsConnected(m_pibdPeer->GetIPAddress())) {
+		peers.push_back(m_pibdPeer);
+		tokens.push_back(m_pibdPeer->GetIPAddress().Format());
+	}
+	if (peers.empty()) {
+		peers = FindPibdPeers(false);
+		for (const PeerPtr& pPeer : peers) {
+			tokens.push_back(pPeer->GetIPAddress().Format());
+		}
+	}
+	if (peers.empty()) {
 		return;
 	}
 
-	const std::vector<IMessagePtr> requests = m_pPibdSync->TakeRequests(now);
+	// A peer that disappeared must release its assignments so those segments can
+	// be reassigned instead of waiting for the full timeout.
+	for (const PeerPtr& pOld : m_pibdPeers) {
+		if (pOld == nullptr) {
+			continue;
+		}
+		const std::string oldToken = pOld->GetIPAddress().Format();
+		if (std::find(tokens.begin(), tokens.end(), oldToken) == tokens.end()) {
+			const size_t released = m_pPibdSync->ReleasePeer(oldToken);
+			LOG_DEBUG_F("PIBD: released {} assignment(s) from disconnected peer {}", released, oldToken);
+		}
+	}
+	m_pibdPeers = peers;
+	m_pibdPeer = peers.front();
+
+	constexpr size_t PER_PEER_IN_FLIGHT = 4;
+	const std::vector<PibdScheduler::AssignedRequest> requests =
+		m_pPibdSync->TakeRequestsForPeers(now, tokens, PER_PEER_IN_FLIGHT);
 	if (!requests.empty()) {
-		LOG_DEBUG_F("Sending {} PIBD request(s) to {}", requests.size(), pPeer);
+		LOG_DEBUG_F("Sending {} PIBD request(s) across {} capable peer(s)",
+			requests.size(), peers.size());
 	}
 
-	for (const IMessagePtr& pMessage : requests) {
-		pConnectionManager->SendMessageToPeer(*pMessage, pPeer);
+	for (const PibdScheduler::AssignedRequest& assigned : requests) {
+		PeerPtr pTarget = nullptr;
+		for (const PeerPtr& pPeer : peers) {
+			if (pPeer->GetIPAddress().Format() == assigned.Peer) {
+				pTarget = pPeer;
+				break;
+			}
+		}
+		if (pTarget == nullptr ||
+			!pConnectionManager->SendMessageToPeer(*assigned.Message, pTarget)) {
+			// Send failure: the request is not in flight on any peer. Release it so
+			// the next TakeRequestsForPeers can reassign it immediately.
+			m_pPibdSync->ReleaseAssignment(assigned);
+			LOG_DEBUG_F("PIBD: send to {} failed; released {}", assigned.Peer,
+				assigned.Request.Identifier.GetIdx());
+		}
 	}
 }
 
@@ -777,13 +856,19 @@ PeerPtr StateSyncer::FindPibdPeer() const
 
 PeerPtr StateSyncer::FindPibdPeer(const bool excludeTried) const
 {
+	const std::vector<PeerPtr> peers = FindPibdPeers(excludeTried);
+	return peers.empty() ? nullptr : peers.front();
+}
+
+std::vector<PeerPtr> StateSyncer::FindPibdPeers(const bool excludeTried) const
+{
 	ConnectionManagerPtr pConnectionManager = m_pConnectionManager.lock();
 	if (pConnectionManager == nullptr) {
-		return nullptr;
+		return {};
 	}
 
-	PeerPtr pBestPeer = nullptr;
-	uint64_t bestHeight = 0;
+	struct Candidate { PeerPtr Peer; uint64_t Height; };
+	std::vector<Candidate> candidates;
 	for (ConnectedPeer connectedPeer : pConnectionManager->GetConnectedPeers()) {
 		PeerPtr pPeer = connectedPeer.GetPeer();
 		if (pPeer == nullptr) {
@@ -799,13 +884,18 @@ PeerPtr StateSyncer::FindPibdPeer(const bool excludeTried) const
 			continue;
 		}
 
-		if (pBestPeer == nullptr || connectedPeer.GetHeight() > bestHeight) {
-			pBestPeer = pPeer;
-			bestHeight = connectedPeer.GetHeight();
-		}
+		candidates.push_back({ pPeer, connectedPeer.GetHeight() });
 	}
 
-	return pBestPeer;
+	std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+		return a.Height > b.Height;
+	});
+	std::vector<PeerPtr> peers;
+	peers.reserve(candidates.size());
+	for (const Candidate& candidate : candidates) {
+		peers.push_back(candidate.Peer);
+	}
+	return peers;
 }
 
 bool StateSyncer::RotatePibdPeer()
@@ -842,3 +932,6 @@ StateSyncer::EPibdResult StateSyncer::RetryOrDisablePibd()
 	DisablePibd();
 	return EPibdResult::NotAttempted;
 }
+
+
+

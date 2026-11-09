@@ -11,6 +11,13 @@
 
 bool PoWValidator::IsPoWValid(const BlockHeader& header, const BlockHeader& previousHeader) const
 {
+    // Reject unsupported edge-bit sizes before dispatching to a Cuckoo variant;
+    // the primary sizes are 31..63 and the secondary algorithm is exactly 29.
+    if (!IsSupportedEdgeBits(header.GetEdgeBits())) {
+        LOG_WARNING_F("Unsupported PoW edge bits {} for block {}", header.GetEdgeBits(), header);
+        return false;
+    }
+
     // Validate Total Difficulty
     if (header.GetTotalDifficulty() <= previousHeader.GetTotalDifficulty()) {
         LOG_WARNING_F("Target difficulty too low for block {}", header);
@@ -34,13 +41,6 @@ bool PoWValidator::IsPoWValid(const BlockHeader& header, const BlockHeader& prev
     // Check the secondary PoW scaling factor if applicable.
     if (header.GetScalingDifficulty() != nextHeaderInfo.GetSecondaryScaling()) {
         LOG_WARNING_F("Scaling difficulty invalid for block {}", header);
-        return false;
-    }
-
-    // Reject unsupported edge-bit sizes before dispatching to a Cuckoo variant;
-    // the primary sizes are 31..63 and the secondary algorithm is exactly 29.
-    if (!IsSupportedEdgeBits(header.GetEdgeBits())) {
-        LOG_WARNING_F("Unsupported PoW edge bits {} for block {}", header.GetEdgeBits(), header);
         return false;
     }
 

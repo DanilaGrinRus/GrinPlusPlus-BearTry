@@ -1,5 +1,8 @@
 #pragma once
 
+#include <Net/PeerAPIPath.h>
+#include <Net/IPAddress.h>
+
 #include <P2P/P2PServer.h>
 #include <Net/Clients/RPC/RPC.h>
 #include <Net/Servers/RPC/RPCMethod.h>
@@ -25,7 +28,13 @@ public:
 		std::string addressFilter;
 		if (request.GetParams().has_value()) {
 			const Json::Value& params = request.GetParams().value();
-			if (params.isArray() && !params.empty() && !params[0].isNull()) {
+			if (!params.isArray()) {
+				return request.BuildError("INVALID_PARAMS", "Expected an address string or null.");
+			}
+			if (!params.empty() && !params[0].isNull()) {
+				if (!params[0].isString()) {
+					return request.BuildError("INVALID_PARAMS", "Expected an address string or null.");
+				}
 				addressFilter = params[0].asString();
 			}
 		}
@@ -54,11 +63,15 @@ public:
 	bool ContainsSecrets() const noexcept final { return false; }
 
 private:
-	// Accepts "1.2.3.4" and "1.2.3.4:port"; compares only the host part.
+	// Compare parsed addresses, so IPv6 forms and optional ports are handled
+	// consistently with the REST peer endpoint.
 	static bool MatchesAddress(const std::string& requested, const std::string& actual)
 	{
-		const std::string requestedHost = requested.substr(0, requested.find(':'));
-		return requestedHost == actual;
+		try {
+			return IPAddress::Parse(PeerAPIPath::Address(requested)) == IPAddress::Parse(actual);
+		} catch (const std::exception&) {
+			return false;
+		}
 	}
 
 	IP2PServerPtr m_pP2PServer;

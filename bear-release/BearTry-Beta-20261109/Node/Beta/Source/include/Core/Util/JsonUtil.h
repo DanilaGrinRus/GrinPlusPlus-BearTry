@@ -1,5 +1,9 @@
 #pragma once
 
+#include <charconv>
+#include <cctype>
+#include <limits>
+
 #include <Common/Util/HexUtil.h>
 #include <Crypto/Models/BlindingFactor.h>
 #include <Crypto/Models/Commitment.h>
@@ -356,12 +360,28 @@ public:
 		}
 		else if (uint64JSON.isString())
 		{
-			return std::stoull(uint64JSON.asString());
+			const auto str = uint64JSON.asString();
+			uint64_t number = 0;
+			auto parsed = std::from_chars(str.data(), str.data() + str.size(), number);
+			if (parsed.ec != std::errc{} || parsed.ptr != str.data() + str.size()) {
+				throw DESERIALIZATION_EXCEPTION("Invalid unsigned decimal integer");
+			}
+			return number;
 		}
 		else
 		{
 			throw DESERIALIZATION_EXCEPTION("Value is not a uint64");
 		}
+	}
+
+	template<typename UInt>
+	static UInt CheckedUInt(const Json::Value& value)
+	{
+		const auto number = ConvertToUInt64(value);
+		if (number > (std::numeric_limits<UInt>::max)()) {
+			throw DESERIALIZATION_EXCEPTION("Unsigned integer out of range");
+		}
+		return static_cast<UInt>(number);
 	}
 
 	static uint64_t GetRequiredUInt64(const Json::Value& parentJSON, const std::string& key)
@@ -395,14 +415,14 @@ public:
 		}
 		else
 		{
-			return std::make_optional((uint32_t)ConvertToUInt64(json.value()));
+			return std::make_optional(CheckedUInt<uint32_t>(json.value()));
 		}
 	}
 
 	static uint32_t GetRequiredUInt32(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint32_t)ConvertToUInt64(value);
+		return CheckedUInt<uint32_t>(value);
 	}
 
 	//
@@ -411,7 +431,7 @@ public:
 	static uint16_t GetRequiredUInt16(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint16_t)ConvertToUInt64(value);
+		return CheckedUInt<uint16_t>(value);
 	}
 
 	//
@@ -420,7 +440,7 @@ public:
 	static uint8_t GetRequiredUInt8(const Json::Value& parentJSON, const std::string& key)
 	{
 		const Json::Value value = JsonUtil::GetRequiredField(parentJSON, key);
-		return (uint8_t)ConvertToUInt64(value);
+		return CheckedUInt<uint8_t>(value);
 	}
 
 	static std::optional<uint8_t> GetUInt8Opt(const Json::Value& parentJSON, const std::string& key)
@@ -432,7 +452,7 @@ public:
 		}
 		else
 		{
-			return (uint8_t)ConvertToUInt64(json.value());
+			return CheckedUInt<uint8_t>(json.value());
 		}
 	}
 
@@ -505,8 +525,126 @@ public:
 	}
 
 	// Parse
+	static bool HasSingleJsonValue(const std::string& input)
+	{
+		const std::size_t size = input.size();
+		std::size_t index = 0;
+		auto skipWhitespace = [&]() {
+			while (index < size && std::isspace(static_cast<unsigned char>(input[index])))
+			{
+				++index;
+			}
+		};
+
+		skipWhitespace();
+		if (index >= size)
+		{
+			return false;
+		}
+
+		const char first = input[index];
+		if (first == '{' || first == '[')
+		{
+			const char close = (first == '{') ? '}' : ']';
+			int depth = 0;
+			bool inString = false;
+			bool escaped = false;
+			for (; index < size; ++index)
+			{
+				const char c = input[index];
+				if (inString)
+				{
+					if (escaped)
+					{
+						escaped = false;
+					}
+					else if (c == '\\')
+					{
+						escaped = true;
+					}
+					else if (c == '"')
+					{
+						inString = false;
+					}
+					continue;
+				}
+
+				if (c == '"')
+				{
+					inString = true;
+				}
+				else if (c == first)
+				{
+					++depth;
+				}
+				else if (c == close)
+				{
+					--depth;
+					if (depth == 0)
+					{
+						++index;
+						break;
+					}
+				}
+			}
+
+			if (depth != 0 || inString)
+			{
+				return false;
+			}
+		}
+		else if (first == '"')
+		{
+			bool escaped = false;
+			bool closed = false;
+			++index;
+			for (; index < size; ++index)
+			{
+				const char c = input[index];
+				if (escaped)
+				{
+					escaped = false;
+				}
+				else if (c == '\\')
+				{
+					escaped = true;
+				}
+				else if (c == '"')
+				{
+					closed = true;
+					++index;
+					break;
+				}
+			}
+			if (!closed)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			const std::size_t start = index;
+			while (index < size && !std::isspace(static_cast<unsigned char>(input[index])))
+			{
+				++index;
+			}
+			if (index == start)
+			{
+				return false;
+			}
+		}
+
+		skipWhitespace();
+		return index == size;
+	}
+
 	static bool Parse(const std::string& input, Json::Value& outputJSON)
 	{
+		if (!HasSingleJsonValue(input))
+		{
+			return false;
+		}
+
 		std::string errors;
 		std::istringstream inputStream(input);
 		return Json::parseFromStream(Json::CharReaderBuilder(), inputStream, &outputJSON, &errors);

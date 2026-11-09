@@ -8,6 +8,7 @@
 
 #include <P2P/SyncStatus.h>
 #include <BlockChain/BlockChain.h>
+#include <Common/Logger.h>
 #include <memory>
 
 // Forward Declarations
@@ -36,6 +37,14 @@ public:
 	void ProcessBlock(Connection& connection, const FullBlock& block)
 	{
 		m_pBlockPipe->AddBlockToProcess(connection.GetPeer(), block);
+	}
+
+	void ProcessSerializedBlock(Connection& connection, ByteBuffer blockBody)
+	{
+		if (!m_pBlockPipe->AddBlockToProcess(connection.GetPeer(), std::move(blockBody))) {
+			LOG_WARNING_F("Could not defer serialized block from {}; no ban.",
+				connection.GetPeer()->GetIPAddress().Format());
+		}
 	}
 
 	void ProcessTransaction(Connection& connection, const TransactionPtr& pTransaction, const EPoolType poolType)

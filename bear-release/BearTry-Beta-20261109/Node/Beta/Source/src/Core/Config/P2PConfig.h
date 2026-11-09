@@ -3,9 +3,13 @@
 #include "ConfigProps.h"
 
 #include <cstdint>
+#include <string>
+#include <unordered_set>
+#include <vector>
 #include <json/json.h>
 #include <Common/Logger.h>
 #include <Core/Enums/Environment.h>
+#include <Net/IPAddress.h>
 
 #include <Core/Exceptions/FileException.h>
 #include <Core/Global.h>
@@ -63,6 +67,7 @@ public:
 		}
 
 		if (!json.isMember(ConfigProps::P2P::P2P)) {
+			m_peerPort = m_port;
 			return;
 		}
 
@@ -76,13 +81,26 @@ public:
 			m_minConnections = p2pJSON.get(ConfigProps::P2P::MIN_PEERS, 10).asInt();
 		}
 
+		auto parsePort = [](const Json::Value& value, const uint16_t fallback) -> uint16_t {
+			if (!value.isInt() && !value.isUInt()) {
+				LOG_WARNING("Ignoring non-integer P2P port; keeping default.");
+				return fallback;
+			}
+			const Json::Int64 port = value.asInt64();
+			if (port < 1 || port > 65535) {
+				LOG_WARNING("Ignoring out-of-range P2P port; keeping default.");
+				return fallback;
+			}
+			return static_cast<uint16_t>(port);
+		};
+
 		if (p2pJSON.isMember(ConfigProps::P2P::P2P_PORT)) {
-			m_port = (uint16_t)p2pJSON.get(ConfigProps::P2P::P2P_PORT, (int)m_port).asInt();
+			m_port = parsePort(p2pJSON[ConfigProps::P2P::P2P_PORT], m_port);
 		}
 
 		m_peerPort = m_port;
 		if (p2pJSON.isMember(ConfigProps::P2P::P2P_PEER_PORT)) {
-			m_peerPort = (uint16_t)p2pJSON.get(ConfigProps::P2P::P2P_PEER_PORT, (int)m_port).asInt();
+			m_peerPort = parsePort(p2pJSON[ConfigProps::P2P::P2P_PEER_PORT], m_port);
 		}
 
 		if (p2pJSON.isMember(ConfigProps::P2P::PIBD_ENABLED)) {

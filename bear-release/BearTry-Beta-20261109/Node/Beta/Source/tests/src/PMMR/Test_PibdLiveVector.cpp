@@ -33,7 +33,7 @@ namespace
 // the capture is absent (CI, fresh checkouts).
 TEST_CASE("PibdLiveVector::BitmapSegmentReconstructs")
 {
-	const fs::path payloadPath = "C:/DHW/.tmp/interop/bitmap_payload_0.bin";
+	const fs::path payloadPath = "fixtures/pibd/bitmap_payload_0.bin";
 	if (!FileUtil::Exists(payloadPath)) {
 		WARN("Captured live bitmap segment is not present; skipping");
 		return;

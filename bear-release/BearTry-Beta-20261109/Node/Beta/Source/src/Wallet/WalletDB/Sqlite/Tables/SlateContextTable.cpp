@@ -17,9 +17,10 @@ void SlateContextTable::UpdateSchema(SqliteDB& database, const int previousVersi
 {
 	if (previousVersion < 2)
 	{
-		std::string drop_table_cmd = "DROP TABLE slate_contexts;";
-		database.Execute(drop_table_cmd);
-
+		// Legacy <2 had an incompatible/absent slate_contexts table. Contexts are
+		// transient negotiation state, not coins; recreating the table is
+		// intentional, but the drop must be idempotent for v0 databases.
+		database.Execute("DROP TABLE IF EXISTS slate_contexts;");
 		CreateTable(database);
 	}
 }

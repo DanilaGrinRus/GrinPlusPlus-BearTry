@@ -26,6 +26,16 @@ namespace SegmentDetail
 	// Same bound as grin: MAX_SEGMENT_READ_ITEMS.
 	static constexpr uint64_t MAX_SEGMENT_READ_ITEMS = 1000000;
 
+	// Same preallocation cap as grin (SEGMENT_READ_PREALLOC_ITEMS): a declared
+	// count is attacker-controlled, so only a bounded prefix may be reserved
+	// before the payload proves it actually contains that many items.
+	static constexpr uint64_t PREALLOC_ITEMS = 1024;
+
+	inline size_t PreallocSize(const uint64_t count) noexcept
+	{
+		return (size_t)(count < PREALLOC_ITEMS ? count : PREALLOC_ITEMS);
+	}
+
 	inline void CheckItemCount(const uint64_t count)
 	{
 		if (count > MAX_SEGMENT_READ_ITEMS) {
@@ -43,7 +53,7 @@ namespace SegmentDetail
 		}
 
 		std::vector<uint64_t> positions;
-		positions.reserve((size_t)count);
+		positions.reserve(SegmentDetail::PreallocSize(count));
 		uint64_t lastPos = 0;
 		for (uint64_t i = 0; i < count; ++i) {
 			const uint64_t pos = byteBuffer.ReadU64();
@@ -416,7 +426,7 @@ public:
 		}
 
 		std::vector<Hash> hashes;
-		hashes.reserve((size_t)numHashes);
+		hashes.reserve(SegmentDetail::PreallocSize(numHashes));
 		for (uint64_t i = 0; i < numHashes; ++i) {
 			hashes.push_back(byteBuffer.ReadBigInteger<32>());
 		}
@@ -431,7 +441,7 @@ public:
 		std::vector<uint64_t> leafPositions = SegmentDetail::ReadPositions(byteBuffer, numLeaves);
 
 		std::vector<T> leafData;
-		leafData.reserve((size_t)numLeaves);
+		leafData.reserve(SegmentDetail::PreallocSize(numLeaves));
 		for (uint64_t i = 0; i < numLeaves; ++i) {
 			leafData.push_back(T::Deserialize(byteBuffer));
 		}

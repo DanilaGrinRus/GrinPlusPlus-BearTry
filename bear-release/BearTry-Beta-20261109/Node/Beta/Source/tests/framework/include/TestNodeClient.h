@@ -60,6 +60,51 @@ public:
 		return m_pBlockChain->GetOutputsByHeight(startHeight, maxHeight);
 	}
 
+	std::unique_ptr<OutputRange> GetOutputsByPosition(const uint64_t startPosition, const uint64_t maxNumOutputs) const final
+	{
+		auto pTxHashSet = m_pTxHashSetManager.Read()->GetTxHashSet();
+		if (pTxHashSet == nullptr) {
+			throw NodeUnavailableException("Local node TxHashSet is not available.");
+		}
+
+		const BlockHeaderPtr pFlushed = pTxHashSet->GetFlushedBlockHeader();
+		if (pFlushed == nullptr) {
+			throw NodeUnavailableException("Local node TxHashSet has no flushed header.");
+		}
+
+		const uint64_t outputMMRSize = pFlushed->GetOutputMMRSize();
+		const uint64_t startPosition0 = startPosition == 0 ? 0 : startPosition - 1;
+
+		if (maxNumOutputs == 0 || startPosition0 >= outputMMRSize) {
+			return std::make_unique<OutputRange>(outputMMRSize, startPosition0, std::vector<OutputDTO>{});
+		}
+
+		Index index = Index::At(startPosition0);
+		uint64_t guard = 0;
+		while (!index.IsLeaf() && guard < 64) {
+			index = index.GetNext();
+			++guard;
+		}
+
+		if (index.GetPosition() >= outputMMRSize) {
+			return std::make_unique<OutputRange>(outputMMRSize, outputMMRSize, std::vector<OutputDTO>{});
+		}
+
+		auto pBlockDB = m_pDatabase->GetBlockDB()->Read();
+		OutputRange leafRange = pTxHashSet->GetOutputsByLeafIndex(
+			pBlockDB.GetShared(),
+			index.GetLeafIndex(),
+			maxNumOutputs
+		);
+
+		std::vector<OutputDTO> outputs = leafRange.GetOutputs();
+		const uint64_t lastPosition = outputs.size() < maxNumOutputs
+			? outputMMRSize
+			: outputs.back().GetMMRPosition() + 1;
+
+		return std::make_unique<OutputRange>(outputMMRSize, lastPosition, std::move(outputs));
+	}
+
 	std::unique_ptr<OutputRange> GetOutputsByLeafIndex(const uint64_t startIndex, const uint64_t maxNumOutputs) const final
 	{
 		auto pTxHashSet = m_pTxHashSetManager.Read()->GetTxHashSet();
@@ -71,6 +116,8 @@ public:
 		auto pBlockDB = m_pDatabase->GetBlockDB()->Read();
 		return std::make_unique<OutputRange>(pTxHashSet->GetOutputsByLeafIndex(pBlockDB.GetShared(), startIndex, maxNumOutputs));
 	}
+
+	bool IsPoolAcceptanceAuthoritative() const final { return true; }
 
 	bool PostTransaction(TransactionPtr pTransaction, const EPoolType poolType) final
 	{

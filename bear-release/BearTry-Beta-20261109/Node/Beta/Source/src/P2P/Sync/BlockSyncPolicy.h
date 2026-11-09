@@ -18,7 +18,7 @@
 //     made no progress for a long time;
 //   * requests are limited by the candidate tip, the network height and the
 //     per-connection height;
-//   * retry delay is 6 s, or 1 s when data is flowing;
+//   * each block has at least 6 s to arrive, including during progress;
 //   * a "slow" peer is only cooling down briefly, never a ban reason.
 class BlockSyncPolicy
 {
@@ -30,7 +30,6 @@ public:
 	static constexpr uint32_t REQUEST_WINDOW = 15;
 
 	static constexpr std::chrono::seconds RETRY_DELAY{ 6 };
-	static constexpr std::chrono::seconds RETRY_DELAY_AFTER_PROGRESS{ 1 };
 	static constexpr std::chrono::seconds SLOW_PEER_COOLDOWN{ 60 };
 	static constexpr std::chrono::seconds FRAUD_STALE{ 120 };
 
@@ -74,9 +73,11 @@ public:
 		return (std::min)(requestCeiling, peerHeight);
 	}
 
-	static std::chrono::seconds RetryDelay(const bool progressSinceLastAttempt) noexcept
+	static std::chrono::seconds RetryDelay(const bool /*progressSinceLastAttempt*/) noexcept
 	{
-		return progressSinceLastAttempt ? RETRY_DELAY_AFTER_PROGRESS : RETRY_DELAY;
+		// A batch can contain multiple responses per peer. A one-second deadline
+		// per block penalizes later responses while the batch is still flowing.
+		return RETRY_DELAY;
 	}
 
 	// Exponential backoff for repeated retries of the same block, capped at 60 s.
@@ -111,6 +112,24 @@ public:
 			return index;
 		}
 
+		return std::nullopt;
+	}
+
+	// Prefer a different eligible peer; retry the original only after its
+	// deadline and cooldown have elapsed. No retry is sent to a cooled peer.
+	static std::optional<size_t> SelectRetryPeer(
+		const std::vector<PeerCandidate>& peers, const uint64_t height,
+		const size_t rotationStart, const std::optional<size_t> original,
+		const bool deadlineExpired) noexcept
+	{
+		if (peers.empty() || height == 0) return std::nullopt;
+		for (size_t step = 0; step < peers.size(); ++step) {
+			const size_t index = (rotationStart + step) % peers.size();
+			if ((!original.has_value() || index != *original) &&
+				!peers[index].Slow && peers[index].Height >= height) return index;
+		}
+		if (deadlineExpired && original.has_value() && *original < peers.size() &&
+			!peers[*original].Slow && peers[*original].Height >= height) return original;
 		return std::nullopt;
 	}
 

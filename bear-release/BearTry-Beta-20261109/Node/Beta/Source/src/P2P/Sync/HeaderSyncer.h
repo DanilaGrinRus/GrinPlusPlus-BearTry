@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BlockSyncPolicy.h"
+#include "PeerRatePolicy.h"
 #include "PihdClient.h"
 #include "../ConnectionManager.h"
 
@@ -41,6 +42,7 @@ private:
 	uint64_t m_lastHeight;
 	PeerPtr m_pPeer;
 	bool m_retried;
+	PeerRatePolicy::Clock::time_point m_nextHeaderRequest{};
 	BlockSyncPolicy::Clock::time_point m_lastProgress;
 	uint64_t m_lastProgressHeight;
 };

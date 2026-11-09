@@ -74,6 +74,9 @@ private:
 	void TryRecoverArchive();
 	PeerPtr FindPibdPeer() const;
 	PeerPtr FindPibdPeer(const bool excludeTried) const;
+	// All eligible PIBD peers, best height first. The first element is still the
+	// primary peer used for status/fallback; requests are distributed across all.
+	std::vector<PeerPtr> FindPibdPeers(const bool excludeTried) const;
 	// Chooses an untried PIBD-capable peer after a failure. Returns false when
 	// every capable peer has already been tried for this horizon.
 	bool RotatePibdPeer();
@@ -91,8 +94,11 @@ private:
 	std::chrono::system_clock::time_point m_pibdDisabledUntil = std::chrono::system_clock::time_point::min();
 	Hash m_pibdHorizonHash;
 	PeerPtr m_pibdPeer;
+	std::vector<PeerPtr> m_pibdPeers;
+	size_t m_pibdPeerCursor = 0;
 	std::unordered_set<std::string> m_pibdPeersTried;
 	uint32_t m_pibdRound = 0;
 	std::chrono::system_clock::time_point m_pibdRetryAt = std::chrono::system_clock::time_point::min();
 	bool m_archiveRecoveryChecked = false;
 };
+

@@ -62,6 +62,23 @@ public:
 	size_t GetReceivedSegments() const noexcept { return m_session.GetDownload().GetReceivedCount(); }
 	size_t GetRequiredSegments() const noexcept { return m_session.GetDownload().GetRequiredCount(); }
 
+	struct AssignedRequest
+	{
+		IMessagePtr Message;
+		PibdDownload::SegmentRequest Request;
+		std::string Peer;
+	};
+
+	// Multi-peer path: assign each request to the least-loaded eligible peer,
+	// bounded by the global MaxInFlight and perPeerLimit. An empty peer list
+	// returns no requests (single-peer callers keep using TakeRequests()).
+	// Defined inline below, after the single-peer path.
+
+	// Release a request whose send failed, or all requests assigned to a peer
+	// that disconnected. The segment becomes eligible for reassignment.
+	size_t GetWrongPeerResponses() const noexcept { return m_wrongPeerResponses; }
+	size_t GetLateResponses() const noexcept { return m_lateResponses; }
+
 	// Expire timed-out requests and return the messages to send now.
 	std::vector<IMessagePtr> TakeRequests(const Clock::time_point now)
 	{
@@ -130,7 +147,7 @@ public:
 			const auto backoff = (std::min)(
 				m_config.Timeout * (int64_t)attempts,
 				std::chrono::seconds(60));
-			m_inFlight.push_back(Pending{ candidate, now + backoff });
+			m_inFlight.push_back(Pending{ candidate, now + backoff, std::string() });
 			messages.push_back(m_session.CreateRequest(candidate));
 			++m_requestsSent;
 		}
@@ -138,9 +155,135 @@ public:
 		return messages;
 	}
 
+	std::vector<AssignedRequest> TakeRequestsForPeers(
+		const Clock::time_point now,
+		const std::vector<std::string>& peers,
+		const size_t perPeerLimit)
+	{
+		if (peers.empty() || m_failed || IsComplete()) {
+			return {};
+		}
+
+		Expire(now);
+		if (m_failed) {
+			return {};
+		}
+		if (now - m_lastProgress >= m_config.FallbackAfter) {
+			Fail("no PIBD progress for " +
+				std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
+					now - m_lastProgress).count()) + "s");
+			return {};
+		}
+		if (now - m_rateWindowStart >= m_config.RateWindow) {
+			if (m_windowAccepted < m_config.MinSegmentsPerWindow) {
+				Fail("PIBD download rate too low");
+				return {};
+			}
+			m_rateWindowStart = now;
+			m_windowAccepted = 0;
+		}
+
+		const size_t capacity = (m_config.MaxInFlight > m_inFlight.size())
+			? m_config.MaxInFlight - m_inFlight.size()
+			: 0;
+		if (capacity == 0) {
+			return {};
+		}
+
+		const size_t peerLimit = std::max<size_t>(1, perPeerLimit);
+		const std::vector<PibdDownload::SegmentRequest> candidates =
+			m_session.GetDownload().NextRequests(capacity + m_inFlight.size());
+		std::vector<AssignedRequest> assigned;
+		for (const PibdDownload::SegmentRequest& candidate : candidates) {
+			if (assigned.size() >= capacity) {
+				break;
+			}
+			if (IsInFlight(candidate)) {
+				continue;
+			}
+
+			size_t bestPeer = peers.size();
+			size_t bestLoad = peerLimit;
+			for (size_t i = 0; i < peers.size(); ++i) {
+				const size_t load = GetPeerInFlight(peers[i]);
+				if (load < bestLoad) {
+					bestLoad = load;
+					bestPeer = i;
+				}
+			}
+			if (bestPeer == peers.size()) {
+				continue;
+			}
+
+			uint32_t attempts = m_attempts[Key(candidate)] + 1;
+			if (attempts > m_config.MaxAttempts) {
+				attempts = 1;
+			}
+			m_attempts[Key(candidate)] = attempts;
+			const auto backoff = (std::min)(
+				m_config.Timeout * (int64_t)attempts,
+				std::chrono::seconds(60));
+			const std::string& peer = peers[bestPeer];
+			m_inFlight.push_back(Pending{ candidate, now + backoff, peer });
+			assigned.push_back(AssignedRequest{
+				m_session.CreateRequest(candidate), candidate, peer });
+			++m_requestsSent;
+		}
+
+		return assigned;
+	}
+
+	bool ReleaseAssignment(const AssignedRequest& assigned)
+	{
+		for (auto iter = m_inFlight.begin(); iter != m_inFlight.end(); ++iter) {
+			if (iter->Request == assigned.Request && iter->Peer == assigned.Peer) {
+				m_inFlight.erase(iter);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	size_t ReleasePeer(const std::string& peer)
+	{
+		size_t removed = 0;
+		for (auto iter = m_inFlight.begin(); iter != m_inFlight.end();) {
+			if (iter->Peer == peer) {
+				iter = m_inFlight.erase(iter);
+				++removed;
+			} else {
+				++iter;
+			}
+		}
+		return removed;
+	}
+
+	size_t GetPeerInFlight(const std::string& peer) const
+	{
+		size_t count = 0;
+		for (const Pending& pending : m_inFlight) {
+			if (pending.Peer == peer) {
+				++count;
+			}
+		}
+		return count;
+	}
+
 	// Feed a segment response. Returns false when the response is stale/duplicate
 	// or for another horizon; throws SegmentException for an invalid payload.
 	bool OnResponse(const SegmentResponseMessage& message, const Clock::time_point now)
+	{
+		return OnResponse(message, now, std::string());
+	}
+
+	// peer is the sender identity. Empty means "legacy/single peer"; otherwise a
+	// response for an in-flight request assigned to a different peer is rejected
+	// without touching the segment. A validated late response (no pending
+	// assignment) is accepted to avoid losing progress and is counted as late.
+	bool OnResponse(
+		const SegmentResponseMessage& message,
+		const Clock::time_point now,
+		const std::string& peer)
 	{
 		const std::optional<PibdDownload::SegmentRequest> request =
 			PibdSession::ResponseRequest(message);
@@ -148,8 +291,25 @@ public:
 			throw SegmentException(ESegmentError::Mismatch, "Message is not a segment response");
 		}
 
+		bool pending = false;
+		for (const Pending& entry : m_inFlight) {
+			if (entry.Request == request.value()) {
+				pending = true;
+				if (!peer.empty() && !entry.Peer.empty() && entry.Peer != peer) {
+					++m_wrongPeerResponses;
+					LOG_WARNING_F("PIBD response for {} came from {} but was assigned to {}; rejecting",
+						Describe(request.value()), peer, entry.Peer);
+					return false;
+				}
+				break;
+			}
+		}
+
 		const bool applied = m_session.AcceptResponse(message);
 		if (applied) {
+			if (!pending) {
+				++m_lateResponses;
+			}
 			RemoveInFlight(request.value());
 			m_lastProgress = now;
 			++m_windowAccepted;
@@ -183,6 +343,7 @@ private:
 	{
 		PibdDownload::SegmentRequest Request;
 		Clock::time_point Deadline;
+		std::string Peer;
 	};
 
 	static KeyValue Key(const PibdDownload::SegmentRequest& request)
@@ -253,6 +414,9 @@ private:
 	Clock::time_point m_rateWindowStart;
 	size_t m_windowAccepted = 0;
 	size_t m_requestsSent = 0;
+	size_t m_wrongPeerResponses = 0;
+	size_t m_lateResponses = 0;
 	bool m_failed = false;
 	std::string m_failure;
 };
+

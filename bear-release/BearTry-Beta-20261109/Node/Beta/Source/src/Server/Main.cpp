@@ -12,20 +12,53 @@
 #include <Common/Logger.h>
 #include <Common/Util/ThreadUtil.h>
 #include <Common/Util/FileUtil.h>
+#include <Common/Util/ScopedTiming.h>
 
+#include <Crypto/SodiumRuntime.h>
 #include <stdio.h> 
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <stdexcept>
+#include <vector>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 using namespace std::chrono;
 
 ConfigPtr Initialize(const std::optional<fs::path>& config_path, const Environment environment);
 void Run(const ConfigPtr& pConfig, const Options& options);
 
+static fs::path ExecutableDirectory()
+{
+#ifdef _WIN32
+	std::vector<wchar_t> buffer(32768);
+	const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+	if (length == 0 || static_cast<size_t>(length) >= buffer.size()) throw std::runtime_error("Cannot resolve executable path");
+	return fs::path(std::wstring(buffer.data(), length)).parent_path();
+#else
+	std::vector<char> buffer(4096);
+	const ssize_t length = readlink("/proc/self/exe", buffer.data(), buffer.size());
+	if (length <= 0 || static_cast<size_t>(length) >= buffer.size()) throw std::runtime_error("Cannot resolve executable path");
+	return fs::path(std::string(buffer.data(), static_cast<size_t>(length))).parent_path();
+#endif
+}
+
 int main(int argc, char* argv[])
 {
+    if (!SodiumRuntime::Initialize()) {
+        std::cerr << "Unable to initialize libsodium." << std::endl;
+        return 1;
+    }
+
 	LoggerAPI::SetThreadName("MAIN");
 
 	Options opt = ParseOptions(argc, argv);
@@ -87,6 +120,29 @@ ConfigPtr Initialize(const std::optional<fs::path>& config_path, const Environme
 		throw;
 	}
 
+	// Profile-first: errors/sync-stage logs belong next to Node.log in the
+	// profile LOGS directory. The executable directory is only an emergency
+	// fallback when the profile directory cannot be created/written.
+	// The old full node-diagnostics.log copy is no longer created.
+	const fs::path profileLogPath = pConfig->GetLogDirectory();
+	try {
+		LoggerAPI::InitializeNodeDiagnostics(profileLogPath, pConfig->GetLogLevel());
+		LOG_INFO_F("Node error/sync logs: {}", profileLogPath.u8string());
+	} catch (const std::exception& e) {
+		std::cerr << "Cannot create profile error/sync logs: " << e.what() << std::endl;
+		LOG_WARNING_F("Cannot create profile error/sync logs: {}; using executable fallback", e.what());
+		try {
+			const fs::path fallback = ExecutableDirectory() / "logs";
+			LoggerAPI::InitializeNodeDiagnostics(fallback, pConfig->GetLogLevel());
+			LOG_WARNING_F("Node error/sync logs use executable fallback: {}", fallback.u8string());
+		} catch (const std::exception& fallbackError) {
+			std::cerr << "Cannot create fallback error/sync logs: " << fallbackError.what() << std::endl;
+			LOG_ERROR_F("Cannot create fallback error/sync logs: {}", fallbackError.what());
+		}
+	}
+	const auto runMillis = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	LoggerAPI::LogSyncEvent("event=run_start network=" + Env::ToString(environment) + " run_id=" + std::to_string(runMillis));
+
 	return pConfig;
 }
 
@@ -96,31 +152,39 @@ void Run(const ConfigPtr& pConfig, const Options& options)
 
 	Context::Ptr pContext = nullptr;
 
-	try
 	{
-		pContext = Context::Create(options.environment, pConfig);
-		Global::Init(pContext);
-	}
-	catch (std::exception& e)
-	{
-		IO::Err("Failed to initialize global context", e);
-		throw;
+		ScopedTiming timing("run_context_init");
+		try
+		{
+			pContext = Context::Create(options.environment, pConfig);
+			Global::Init(pContext);
+		}
+		catch (std::exception& e)
+		{
+			IO::Err("Failed to initialize global context", e);
+			throw;
+		}
+		timing.Success();
 	}
 
 	std::unique_ptr<Node> pNode = nullptr;
 	INodeClientPtr pNodeClient = nullptr;
 
-	if (options.shared_node.has_value())
 	{
-		pNodeClient = RPCNodeClient::Create(
-			options.shared_node.value().first,
-			options.shared_node.value().second
-		);
-	}
-	else
-	{
-		pNode = Node::Create(pContext);
-		pNodeClient = pNode->GetNodeClient();
+		ScopedTiming timing("run_node_create");
+		if (options.shared_node.has_value())
+		{
+			pNodeClient = RPCNodeClient::Create(
+				options.shared_node.value().first,
+				options.shared_node.value().second
+			);
+		}
+		else
+		{
+			pNode = Node::Create(pContext);
+			pNodeClient = pNode->GetNodeClient();
+		}
+		timing.Success();
 	}
 	IO::Out("RPC Node Client started.");
 
@@ -158,4 +222,5 @@ void Run(const ConfigPtr& pConfig, const Options& options)
 	pNodeClient.reset();
 	pNode.reset();
 	pContext.reset();
+	LoggerAPI::LogSyncEvent("event=run_end reason=shutdown");
 }

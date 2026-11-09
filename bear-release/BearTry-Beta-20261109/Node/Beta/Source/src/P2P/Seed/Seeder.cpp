@@ -16,6 +16,10 @@
 #include <Common/Logger.h>
 #include <functional>
 #include <algorithm>
+#include <cstdlib>
+#ifdef _MSC_VER
+#pragma warning(disable: 4996) // test-only getenv for DNS isolation
+#endif
 
 Seeder::~Seeder()
 {
@@ -180,16 +184,26 @@ void Seeder::Accept(const asio::error_code& ec)
             LOG_TRACE_F("peer is not allowed: {}",  pSocket->GetIPAddress());
         } else {
             PeerPtr pPeer = m_peerManager.Write()->GetPeer(pSocket->GetIPAddress());
-            if (!pPeer->IsBanned()) {
-                auto pConnection = std::make_shared<Connection>(
-                    pSocket,
-                    m_nextId++,
-                    m_connectionManager,
-                    ConnectedPeer(pPeer, EDirection::INBOUND, pSocket->GetPort()),
-                    m_pSyncStatus,
-                    m_pMessageProcessor
-                );
-                pConnection->Connect();
+            const std::string peerIp = pSocket->GetIPAddress().Format();
+            if (!pPeer->IsBanned() && m_inboundAdmission->TryAcquire(peerIp)) {
+                try {
+                    auto pConnection = std::make_shared<Connection>(
+                        pSocket,
+                        m_nextId++,
+                        m_connectionManager,
+                        ConnectedPeer(pPeer, EDirection::INBOUND, pSocket->GetPort()),
+                        m_pSyncStatus,
+                        m_pMessageProcessor
+                    );
+                    const std::shared_ptr<P2P::InboundAdmission> admission = m_inboundAdmission;
+                    pConnection->SetHandshakeCallback(
+                        [admission, peerIp]() { admission->Release(peerIp); });
+                    pConnection->Connect();
+                }
+                catch (const std::exception& e) {
+                    m_inboundAdmission->Release(peerIp);
+                    LOG_ERROR_F("Failed to start inbound handshake from {}: {}", peerIp, e.what());
+                }
             }
         }
     } else {
@@ -253,6 +267,16 @@ bool Seeder::SeedNewConnection()
         pConnection->Connect();
         return true;
     } else {
+        const char* disableDns = std::getenv("GRINPP_DISABLE_DNS_SEED");
+        if (disableDns != nullptr && std::string(disableDns) == "1") {
+            static bool logged = false;
+            if (!logged) {
+                LOG_INFO("DNS seed discovery disabled by GRINPP_DISABLE_DNS_SEED=1 (isolated test mode)");
+                logged = true;
+            }
+            return false;
+        }
+
         const auto now = std::chrono::system_clock::now();
         if (m_lastDnsAttempt + std::chrono::minutes(5) <= now) {
             m_lastDnsAttempt = now;

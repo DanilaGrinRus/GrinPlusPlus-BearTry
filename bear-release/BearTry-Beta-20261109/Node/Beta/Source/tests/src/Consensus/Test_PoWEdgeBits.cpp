@@ -22,3 +22,9 @@ TEST_CASE("PoWValidator::SupportedEdgeBits")
 	REQUIRE(!PoWValidator::IsSupportedEdgeBits(64));
 	REQUIRE(!PoWValidator::IsSupportedEdgeBits(255));
 }
+
+TEST_CASE("PoW cycle serialization rejects oversized proof before hashing")
+{
+    REQUIRE_THROWS(ProofOfWork(29, std::vector<uint64_t>(43, 1)));
+    REQUIRE_THROWS(ProofOfWork(64, std::vector<uint64_t>(42, 1)));
+}

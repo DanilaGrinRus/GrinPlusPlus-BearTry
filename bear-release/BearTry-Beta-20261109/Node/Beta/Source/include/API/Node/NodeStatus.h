@@ -44,9 +44,13 @@ namespace NodeStatus
 	// no canned or test-only values.
 	inline Json::Value Build(
 		const IBlockChain::Ptr& pBlockChain,
-		const IP2PServerPtr& pP2PServer)
+		const IP2PServerPtr& pP2PServer,
+		const BlockHeaderPtr& pSuppliedTip = BlockHeaderPtr())
 	{
-		const BlockHeaderPtr pTip = pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
+		// A REST caller that already read the tip must use the same immutable
+		// header for both legacy chain fields and the nested Rust representation.
+		const BlockHeaderPtr pTip = pSuppliedTip != nullptr ? pSuppliedTip :
+			pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
 		if (pTip == nullptr) {
 			return Json::Value(Json::nullValue);
 		}

@@ -62,5 +62,5 @@ private:
 	const uint32_t m_errorCode; // TODO: Create EErrorType enum
 
 	// Error Message
-	const std::string& m_message;
+	const std::string m_message;
 };

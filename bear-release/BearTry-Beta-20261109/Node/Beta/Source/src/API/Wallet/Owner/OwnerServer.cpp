@@ -26,6 +26,7 @@
 #include "Handlers/GetTorConfigHandler.h"
 #include "Handlers/GetWalletAddressHandler.h"
 #include "Handlers/GetNewWalletAddressHandler.h"
+#include "Handlers/GetTxStatusHandler.h"
 
 OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const IWalletManagerPtr& pWalletManager)
 {
@@ -258,6 +259,9 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
         }
     */
     pServer->AddMethod("list_txs", std::shared_ptr<RPCMethod>(new ListTxsHandler(pWalletManager)));
+
+    // Additive: explicit tx lifecycle (finalized/posted/confirmed/unknown).
+    pServer->AddMethod("get_tx_status", std::shared_ptr<RPCMethod>(new GetTxStatusHandler(pWalletManager)));
 
     pServer->AddMethod("list_outputs", std::shared_ptr<RPCMethod>(new ListOutputsHandler(pWalletManager)));
 

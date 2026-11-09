@@ -230,7 +230,7 @@ void ConnectionManager::PruneConnections(const bool bInactiveOnly)
 	auto connectionsWriter = m_connections.Write();
 	std::vector<ConnectionPtr>& connections = *connectionsWriter;
 
-	for (auto iter = connections.begin(); iter < connections.end(); iter++) {
+	for (auto iter = connections.begin(); iter != connections.end();) {
 		ConnectionPtr pConnection = *iter;
 		if (!bInactiveOnly || !pConnection->IsConnectionActive()) {
 			try { 
@@ -239,7 +239,9 @@ void ConnectionManager::PruneConnections(const bool bInactiveOnly)
 			catch (std::exception& e) {
 				LOG_ERROR("Error disconnecting: " + std::string(e.what()));
 			}
-			connections.erase(iter);
+			iter = connections.erase(iter);
+		} else {
+			++iter;
 		}
 	}
 

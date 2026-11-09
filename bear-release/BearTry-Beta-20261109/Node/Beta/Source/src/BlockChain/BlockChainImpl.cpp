@@ -9,6 +9,8 @@
 #include "ChainResyncer.h"
 #include "CoinView.h"
 #include "ChainConsistency.h"
+#include "HeaderStateCheckpoint.h"
+#include <Core/Enums/Environment.h>
 #include <PMMR/KernelIndex.h>
 #include "DbCheckpoint.h"
 #include <BlockChain/DbRecovery.h>
@@ -19,20 +21,40 @@
 #include <Database/DbBackup.h>
 #include <Database/BlockDb.h>
 
+#include <Database/DbBackup.h>
+
 #include <Consensus.h>
 #include <GrinVersion.h>
 #include <Common/Logger.h>
+#include <Common/Util/ScopedTiming.h>
 #include <Core/Global.h>
 #include <Core/Exceptions/BadDataException.h>
 #include <Core/Config.h>
+
+#ifdef _MSC_VER
+#pragma warning(disable: 4996) // getenv for the experimental anchor env
+#endif
 #include <PMMR/TxHashSet.h>
 #include "../PMMR/TxHashSetImpl.h"
 #include <filesystem.h>
 #include <algorithm>
+#include <chrono>
+#include <stdexcept>
 #include <thread>
 
 namespace
 {
+	class CoinViewStartupGuard
+	{
+	public:
+		CoinViewStartupGuard() : m_previous(Global::GetCoinView()) { }
+		~CoinViewStartupGuard() { if (!m_committed) Global::SetCoinView(m_previous); }
+		void Commit() { m_committed = true; }
+	private:
+		std::shared_ptr<const ICoinView> m_previous;
+		bool m_committed = false;
+	};
+
 	// Rebuild the in-memory NRD recent-kernel index from the kernel MMR plus the
 	// header chain and require it to be complete. Rust grin 5.5.2 treats an
 	// invalid/incomplete NRD index as an error for the whole txhashset write
@@ -91,8 +113,159 @@ BlockChain::StateWriteGuard::~StateWriteGuard()
 {
 	m_chain.m_stateSequence.fetch_add(1, std::memory_order_release);
 }
+void BlockChain::StartHeaderCheckpointUpdater()
+{
+	const HeaderCheckpoint::EMode mode = HeaderCheckpoint::ModeFromEnv();
+	if (mode != HeaderCheckpoint::EMode::Write && mode != HeaderCheckpoint::EMode::Fast) {
+		return;
+	}
+
+	HeaderCheckpointData checkpoint;
+	std::string error;
+	if (!HeaderCheckpoint::Read(HeaderCheckpoint::Path(Global::GetConfig()), checkpoint, error) ||
+		(checkpoint.Trust != HeaderCheckpointData::TRUST_EXTERNAL &&
+		 checkpoint.Trust != HeaderCheckpointData::TRUST_DERIVED)) {
+		// Legacy/local bootstrap trust (TRUST_BOOTSTRAP) is not an external
+		// anchor. Do not start the updater from it.
+		return;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		m_headerCheckpointStop = false;
+		m_headerCheckpointDirty = false;
+	}
+
+	m_headerCheckpointThread = std::thread([this]() {
+		while (true) {
+			std::unique_lock<std::mutex> lock(m_headerCheckpointMutex);
+			m_headerCheckpointCv.wait(lock, [this]() {
+				return m_headerCheckpointStop || m_headerCheckpointDirty;
+			});
+			if (m_headerCheckpointStop) {
+				break;
+			}
+
+			// Coalesce bursts of header batches. Only a quiet period starts the
+			// expensive full-state hash, so normal sync is not constantly
+			// interrupted by checkpoint work.
+			m_headerCheckpointDirty = false;
+			auto quietDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+			while (!m_headerCheckpointStop) {
+				if (m_headerCheckpointCv.wait_until(lock, quietDeadline, [this]() {
+						return m_headerCheckpointStop || m_headerCheckpointDirty;
+					})) {
+					if (m_headerCheckpointStop) {
+						break;
+					}
+					m_headerCheckpointDirty = false;
+					quietDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+					continue;
+				}
+				break;
+			}
+			if (m_headerCheckpointStop) {
+				break;
+			}
+			lock.unlock();
+
+			try {
+				auto pStateReader = m_pChainState->Read();
+				auto pChainReader = pStateReader->GetChainStore();
+				auto pDbReader = pStateReader->GetBlockDB();
+				auto pHeaderReader = pStateReader->GetHeaderMMR();
+				HeaderCheckpointMetrics metrics;
+				std::string refreshError;
+				LOG_INFO("event=diagnostic_refresh_enter");
+				if (HeaderCheckpoint::Refresh(
+						Global::GetConfig(),
+						*pDbReader,
+						*pHeaderReader,
+						*pChainReader->GetCandidateChain(),
+						*pChainReader->GetConfirmedChain(),
+						metrics,
+						refreshError)) {
+					LOG_INFO_F(
+						"event=header_checkpoint_refresh duration_ms={} bytes={} candidate={} trust_preserved=1",
+						metrics.DurationMs,
+						metrics.BytesRead,
+						metrics.CandidateEntries);
+				} else if (refreshError != "checkpoint is already current") {
+					LOG_DEBUG_F("event=header_checkpoint_refresh_skipped reason={}", refreshError);
+				}
+			} catch (const std::exception& e) {
+				LOG_WARNING_F("event=header_checkpoint_refresh_failed error={}", e.what());
+			}
+		}
+	});
+}
+
+void BlockChain::StopHeaderCheckpointUpdater()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		m_headerCheckpointStop = true;
+	}
+	m_headerCheckpointCv.notify_all();
+	if (m_headerCheckpointThread.joinable()) {
+		m_headerCheckpointThread.join();
+	}
+}
+
+void BlockChain::NotifyHeaderCheckpointChanged()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		if (m_headerCheckpointStop || !m_headerCheckpointThread.joinable()) {
+			return;
+		}
+		m_headerCheckpointDirty = true;
+	}
+	m_headerCheckpointCv.notify_all();
+}
+
 BlockChain::~BlockChain()
 {
+	StopHeaderCheckpointUpdater();
+
+	// Persist a checkpoint for the state reached by this process. This is done
+	// here rather than on every header batch so sync is never blocked by a
+	// 3M-header hash pass. A crash leaves the previous checkpoint untouched and
+	// the next startup performs full validation.
+	if (m_pChainState != nullptr &&
+		(HeaderCheckpoint::ModeFromEnv() == HeaderCheckpoint::EMode::Write ||
+		 HeaderCheckpoint::ModeFromEnv() == HeaderCheckpoint::EMode::Fast)) {
+		try {
+			auto pChainStateReader = m_pChainState->Read();
+			auto pChainReader = pChainStateReader->GetChainStore();
+			auto pDbReader = pChainStateReader->GetBlockDB();
+			auto pHeaderReader = pChainStateReader->GetHeaderMMR();
+
+			HeaderCheckpointMetrics metrics;
+			std::string error;
+			if (HeaderCheckpoint::Refresh(
+					Global::GetConfig(),
+					*pDbReader,
+					*pHeaderReader,
+					*pChainReader->GetCandidateChain(),
+					*pChainReader->GetConfirmedChain(),
+					metrics,
+					error)) {
+				LOG_INFO_F(
+					"event=header_checkpoint_refresh duration_ms={} bytes={} candidate={} aggregate={}",
+					metrics.DurationMs,
+					metrics.BytesRead,
+					metrics.CandidateEntries,
+					"updated"
+				);
+			} else {
+				LOG_INFO_F("event=header_checkpoint_refresh skipped reason={}", error);
+			}
+		} catch (const std::exception& e) {
+			LOG_WARNING_F("event=header_checkpoint_refresh failed error={}", e.what());
+		}
+	}
+
 	Global::SetCoinView(nullptr);
 	m_pChainState.reset();
 	m_pTransactionPool.reset();
@@ -105,10 +278,16 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 	std::shared_ptr<ITransactionPool> pTransactionPool,
 	std::shared_ptr<Locked<IHeaderMMR>> pHeaderMMR)
 {
+	ScopedTiming createTiming("blockchain_create");
 	const FullBlock& genesisBlock = Global::GetGenesisBlock();
 	auto pGenesisIndex = std::make_shared<BlockIndex>(genesisBlock.GetHash(), 0);
 
-	auto pChainStore = ChainStore::Load(config, pGenesisIndex);
+	std::shared_ptr<Locked<ChainStore>> pChainStore;
+	{
+		ScopedTiming timing("blockchain_chain_store_load");
+		pChainStore = ChainStore::Load(config, pGenesisIndex);
+		timing.Success();
+	}
 
 	// header_mmr.bin and the chain files are committed independently. A crash
 	// between the commits used to leave them at different heights and loading
@@ -116,6 +295,7 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 	// throwing away headers: a lagging MMR is rebuilt from the block DB, and a
 	// missing chain segment aborts startup instead of silently truncating data.
 	{
+		ScopedTiming timing("blockchain_chain_store_repair");
 		const fs::path checkpointPath = config.GetChainPath() / "chain.checkpoint";
 		DbCheckpointData checkpoint;
 		const bool hasCheckpoint = DbCheckpoint::Read(checkpointPath, checkpoint);
@@ -283,52 +463,329 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 				LOG_WARNING("Failed to write the DB checkpoint.");
 			}
 		}
+		timing.Success();
 	}
-	// G-23: full hash revalidation. The structural repair above only makes
-	// sizes agree; this pass verifies every candidate header, its chain link,
-	// and the exact leaf hash stored in header_mmr.bin. A mismatch is fatal and
-	// never rewrites the stores.
-	DbCheckpointData validationCheckpoint;
-	const bool hasValidationCheckpoint = DbCheckpoint::Read(
-		config.GetChainPath() / "chain.checkpoint", validationCheckpoint);
-	if (hasValidationCheckpoint) {
-		// Hash validation is a durable-store check; a fresh/test database may
-		// legitimately not have a checkpoint or a populated header MMR yet.
+	const HeaderCheckpoint::EMode checkpointMode = HeaderCheckpoint::ModeFromEnv();
+	const bool forceFull = HeaderCheckpoint::ForceFullFromEnv();
+	bool headerCheckpointFastAccepted = false;
+
+	if (checkpointMode == HeaderCheckpoint::EMode::HashOnly) {
 		auto pChainReader = pChainStore->Read();
 		auto pDbReader = pDatabase->Read();
 		auto pHeaderReader = pHeaderMMR->Read();
-		const uint64_t validatedCandidateEntries =
-			pChainReader->GetCandidateChain()->GetHeight() + 1;
-		if (pHeaderReader->GetLeafCount() != validatedCandidateEntries) {
-			throw std::runtime_error("Header MMR leaf count does not match the candidate chain");
+		HeaderCheckpointData data;
+		HeaderCheckpointMetrics metrics;
+		std::string checkpointError;
+		if (!HeaderCheckpoint::Compute(
+				config,
+				*pDbReader,
+				*pHeaderReader,
+				*pChainReader->GetCandidateChain(),
+				*pChainReader->GetConfirmedChain(),
+				false,
+				false,
+				data,
+				metrics,
+				checkpointError)) {
+			throw std::runtime_error("header checkpoint hash-only computation failed: " + checkpointError);
 		}
 
-		Hash previousHash;
-		for (uint64_t height = 0; height < validatedCandidateEntries; ++height) {
-			const auto pIndex = pChainReader->GetCandidateChain()->GetByHeight(height);
-			if (pIndex == nullptr) {
-				throw std::runtime_error("Candidate chain is missing an entry at height " + std::to_string(height));
+		const double seconds = (std::max)((uint64_t)1, metrics.DurationMs) / 1000.0;
+		LOG_INFO_F(
+			"event=header_checkpoint_hash_only duration_ms={} cpu_ms={} bytes={} mb_per_s={:.3f} db_ms={} serialize_ms={} hash_ms={} threads={} candidate={} confirmed={} mmr_nodes={} aggregate={}",
+			metrics.DurationMs,
+			metrics.CpuMs,
+			metrics.BytesRead,
+			(metrics.BytesRead / (1024.0 * 1024.0)) / seconds,
+			metrics.DbReadMs,
+			metrics.SerializeMs,
+			metrics.HashMs,
+			metrics.Threads,
+			data.CandidateEntries,
+			data.ConfirmedEntries,
+			data.MmrNodes,
+			data.Aggregate.ToHex()
+		);
+		throw std::runtime_error("header checkpoint hash-only measurement completed");
+	}
+
+	DbCheckpointData validationCheckpoint;
+	const bool hasValidationCheckpoint = DbCheckpoint::Read(
+		config.GetChainPath() / "chain.checkpoint", validationCheckpoint);
+
+	// Test-only mutation hook. It changes the DB record but deliberately leaves
+	// the candidate chain and header MMR untouched, which is exactly the case
+	// the old G-23 could not see for fields outside the PoW-cycle hash.
+	{
+		auto pMutationWriter = pDatabase->Write();
+		std::string mutationError;
+		if (!HeaderCheckpoint::MutateHeaderForTest(
+				*pChainStore->Read()->GetCandidateChain(),
+				*pMutationWriter.GetShared(),
+				mutationError)) {
+			throw std::runtime_error("header field mutation failed: " + mutationError);
+		}
+		// Writer commits on scope exit.
+	}
+
+	if (hasValidationCheckpoint &&
+		checkpointMode == HeaderCheckpoint::EMode::Fast &&
+		!forceFull) {
+		HeaderCheckpointData storedCheckpoint;
+		std::string checkpointError;
+		const bool checkpointRead = HeaderCheckpoint::Read(
+			HeaderCheckpoint::Path(config), storedCheckpoint, checkpointError);
+		if (checkpointRead &&
+			(storedCheckpoint.Trust != HeaderCheckpointData::TRUST_EXTERNAL &&
+			 storedCheckpoint.Trust != HeaderCheckpointData::TRUST_DERIVED)) {
+			LOG_WARNING_F(
+				"event=header_checkpoint_full_fallback reason=untrusted_checkpoint trust={} trust_source={}",
+				(uint32_t)storedCheckpoint.Trust,
+				(uint32_t)storedCheckpoint.TrustSource);
+		} else if (checkpointRead) {
+			auto pChainReader = pChainStore->Read();
+			auto pDbReader = pDatabase->Read();
+			auto pHeaderReader = pHeaderMMR->Read();
+
+			HeaderCheckpointData currentMetadata;
+			if (HeaderCheckpoint::ReadMetadata(
+					config,
+					*pDbReader,
+					*pHeaderReader,
+					*pChainReader->GetCandidateChain(),
+					*pChainReader->GetConfirmedChain(),
+					currentMetadata,
+					checkpointError)) {
+				if (HeaderCheckpoint::MetadataEquals(storedCheckpoint, currentMetadata)) {
+					HeaderCheckpointData current;
+					HeaderCheckpointMetrics metrics;
+					if (!HeaderCheckpoint::Compute(
+							config,
+							*pDbReader,
+							*pHeaderReader,
+							*pChainReader->GetCandidateChain(),
+							*pChainReader->GetConfirmedChain(),
+							false,
+							false,
+							current,
+							metrics,
+							checkpointError)) {
+						throw std::runtime_error("header checkpoint fast verification failed: " + checkpointError);
+					}
+
+					if (HeaderCheckpoint::StateEquals(storedCheckpoint, current)) {
+						headerCheckpointFastAccepted = true;
+						LOG_INFO_F(
+							"event=header_checkpoint_fast duration_ms={} cpu_ms={} bytes={} db_ms={} serialize_ms={} hash_ms={} threads={} candidate={} tip={} aggregate={}",
+							metrics.DurationMs,
+							metrics.CpuMs,
+							metrics.BytesRead,
+							metrics.DbReadMs,
+							metrics.SerializeMs,
+							metrics.HashMs,
+							metrics.Threads,
+							current.CandidateEntries,
+							current.CandidateTip.ToHex(),
+							current.Aggregate.ToHex()
+						);
+					} else {
+						LOG_ERROR_F(
+							"event=header_checkpoint_mismatch {}",
+							HeaderCheckpoint::DescribeMismatch(storedCheckpoint, current)
+						);
+						throw std::runtime_error("header checkpoint mismatch; refusing to start");
+					}
+				} else {
+					// A trusted checkpoint can be behind by a bounded, purely
+					// append-only suffix. Refresh validates the old prefix and the
+					// new header/MMR/confirmed links, then atomically writes the
+					// extended checkpoint. Reorgs, gaps, corruption and any other
+					// doubt still fall through to full validation.
+					HeaderCheckpointMetrics extensionMetrics;
+					std::string extensionError;
+					if (HeaderCheckpoint::Refresh(
+							config,
+							*pDbReader,
+							*pHeaderReader,
+							*pChainReader->GetCandidateChain(),
+							*pChainReader->GetConfirmedChain(),
+							extensionMetrics,
+							extensionError,
+							true)) {
+						headerCheckpointFastAccepted = true;
+						LOG_INFO_F(
+							"event=header_checkpoint_fast_extended duration_ms={} bytes={} threads={} candidate={} tip={}",
+							extensionMetrics.DurationMs,
+							extensionMetrics.BytesRead,
+							extensionMetrics.Threads,
+							currentMetadata.CandidateEntries,
+							currentMetadata.CandidateTip.ToHex());
+					} else {
+						LOG_WARNING_F(
+							"event=header_checkpoint_full_fallback reason=extension_failed expected_candidate={} actual_candidate={} error={}",
+							storedCheckpoint.CandidateEntries,
+							currentMetadata.CandidateEntries,
+							extensionError);
+					}
+				}
+			} else {
+				LOG_WARNING_F("event=header_checkpoint_full_fallback reason=metadata_unavailable error={}", checkpointError);
+			}
+		} else {
+			LOG_WARNING_F("event=header_checkpoint_full_fallback reason=checkpoint_unusable error={}", checkpointError);
+		}
+	}
+
+	bool headerFullValidationRan = false;
+	if (!headerCheckpointFastAccepted) {
+		// Full validation is a durable-store check. Run it whenever the chain
+		// contains real headers, not only when chain.checkpoint happened to be
+		// readable: structural repair can otherwise hide a missing checkpoint.
+		auto pChainReader = pChainStore->Read();
+		auto pDbReader = pDatabase->Read();
+		auto pHeaderReader = pHeaderMMR->Read();
+		const uint64_t candidateEntries = pChainReader->GetCandidateChain()->GetHeight() + 1;
+		const uint64_t mmrLeaves = pHeaderReader->GetLeafCount();
+		if (candidateEntries > 1 && mmrLeaves > 0) {
+			HeaderCheckpointMetrics validationMetrics;
+			std::string validationError;
+			if (!HeaderCheckpoint::VerifyFull(
+					config,
+					*pDbReader,
+					*pHeaderReader,
+					*pChainReader->GetCandidateChain(),
+					*pChainReader->GetConfirmedChain(),
+					validationMetrics,
+					validationError)) {
+				throw std::runtime_error("Header full validation failed: " + validationError);
+			}
+			headerFullValidationRan = true;
+
+			if (checkpointMode != HeaderCheckpoint::EMode::Off) {
+				const double seconds = (std::max)((uint64_t)1, validationMetrics.DurationMs) / 1000.0;
+				LOG_INFO_F(
+					"event=header_full_validation duration_ms={} bytes={} mb_per_s={:.3f} candidate={}",
+					validationMetrics.DurationMs,
+					validationMetrics.BytesRead,
+					(validationMetrics.BytesRead / (1024.0 * 1024.0)) / seconds,
+					candidateEntries
+				);
+			}
+		}
+	}
+
+	if (!headerCheckpointFastAccepted &&
+		(checkpointMode == HeaderCheckpoint::EMode::Write ||
+		 checkpointMode == HeaderCheckpoint::EMode::Fast)) {
+		HeaderCheckpointData oldCheckpoint;
+		std::string readError;
+		const bool hasOldCheckpoint = HeaderCheckpoint::Read(
+			HeaderCheckpoint::Path(config), oldCheckpoint, readError);
+		const bool oldTrusted = hasOldCheckpoint &&
+			(oldCheckpoint.Trust == HeaderCheckpointData::TRUST_EXTERNAL ||
+			 oldCheckpoint.Trust == HeaderCheckpointData::TRUST_DERIVED);
+		const bool bootstrap = HeaderCheckpoint::BootstrapFromEnv();
+		const std::string trustAnchor = HeaderCheckpoint::TrustAnchorFromEnv();
+		const char* anchorManifestPath = std::getenv("GRINPP_HEADER_CKPT_TRUST_ANCHOR_MANIFEST");
+
+		if (!headerFullValidationRan) {
+			LOG_WARNING_F("event=header_checkpoint_not_written reason=no_full_validation");
+		} else if (!oldTrusted && (!bootstrap || trustAnchor.empty())) {
+			// A first checkpoint must have an out-of-band trust anchor. A local
+			// full pass cannot prove fields that are not locally verifiable
+			// (output/range/kernel roots, offset, nonce), so BOOTSTRAP=1 alone
+			// must never create trust.
+			LOG_WARNING_F(
+				"event=header_checkpoint_not_written reason=trust_anchor_required; provide GRINPP_HEADER_CKPT_BOOTSTRAP=1 and GRINPP_HEADER_CKPT_TRUST_ANCHOR=<published aggregate>");
+		} else {
+			auto pChainReader = pChainStore->Read();
+			auto pDbReader = pDatabase->Read();
+			auto pHeaderReader = pHeaderMMR->Read();
+
+			HeaderCheckpointData generated;
+			HeaderCheckpointMetrics metrics;
+			std::string checkpointError;
+			if (!HeaderCheckpoint::Compute(
+					config,
+					*pDbReader,
+					*pHeaderReader,
+					*pChainReader->GetCandidateChain(),
+					*pChainReader->GetConfirmedChain(),
+					false,
+					false,
+					generated,
+					metrics,
+					checkpointError)) {
+				throw std::runtime_error("header checkpoint generation failed: " + checkpointError);
 			}
 
-			const BlockHeaderPtr pHeader = pDbReader->GetBlockHeader(pIndex->GetHash());
-			if (pHeader == nullptr || pHeader->GetHeight() != height ||
-				pHeader->GetHash() != pIndex->GetHash()) {
-				throw std::runtime_error("Block header/hash mismatch at height " + std::to_string(height));
-			}
-			if (height > 0 && pHeader->GetPreviousHash() != previousHash) {
-				throw std::runtime_error("Candidate chain link mismatch at height " + std::to_string(height));
+			generated.Sequence = (hasOldCheckpoint ? oldCheckpoint.Sequence : 0) + 1;
+			bool writeAllowed = true;
+			if (oldTrusted) {
+				generated.Trust = oldCheckpoint.Trust;
+				generated.TrustSource = oldCheckpoint.TrustSource;
+			} else if (anchorManifestPath != nullptr && *anchorManifestPath != '\0') {
+				HeaderCheckpointAnchor anchor;
+				const std::string network = Env::ToString(Global::GetEnv());
+				if (!HeaderCheckpoint::ParseAnchorManifest(anchorManifestPath, anchor, checkpointError)) {
+					writeAllowed = false;
+					LOG_WARNING_F(
+						"event=header_checkpoint_not_written reason=anchor_manifest_invalid error={}",
+						checkpointError);
+				} else if (!HeaderCheckpoint::AnchorMatches(anchor, generated, network, checkpointError)) {
+					writeAllowed = false;
+					LOG_WARNING_F(
+						"event=header_checkpoint_not_written reason=anchor_manifest_mismatch error={}",
+						checkpointError);
+				} else {
+					generated.Trust = HeaderCheckpointData::TRUST_EXTERNAL;
+					generated.TrustSource = HeaderCheckpointData::TRUST_EXTERNAL;
+				}
+			} else {
+				const std::string aggregate = generated.Aggregate.ToHex();
+				if (aggregate.size() != trustAnchor.size()) {
+					writeAllowed = false;
+				} else {
+					for (size_t i = 0; i < aggregate.size(); ++i) {
+						if (std::tolower(static_cast<unsigned char>(aggregate[i])) !=
+							std::tolower(static_cast<unsigned char>(trustAnchor[i]))) {
+							writeAllowed = false;
+							break;
+						}
+					}
+				}
+
+				if (!writeAllowed) {
+					LOG_WARNING_F(
+						"event=header_checkpoint_not_written reason=trust_anchor_mismatch expected={} actual={}",
+						trustAnchor,
+						aggregate);
+				} else {
+					generated.Trust = HeaderCheckpointData::TRUST_EXTERNAL;
+					generated.TrustSource = HeaderCheckpointData::TRUST_EXTERNAL;
+				}
 			}
 
-			Serializer serializer;
-			pHeader->GetProofOfWork().SerializeCycle(serializer);
-			const uint64_t position = LeafIndex::At(height).GetPosition();
-			const Hash expected = MMRHashUtil::HashLeafWithIndex(serializer.vec(), position);
-			const std::unique_ptr<Hash> actual = pHeaderReader->GetHashAt(Index::At(position));
-			if (actual == nullptr || *actual != expected) {
-				throw std::runtime_error("Header MMR hash mismatch at height " + std::to_string(height));
+			if (writeAllowed && !HeaderCheckpoint::Write(HeaderCheckpoint::Path(config), generated, checkpointError)) {
+				throw std::runtime_error("header checkpoint write failed: " + checkpointError);
 			}
 
-			previousHash = pHeader->GetHash();
+			if (writeAllowed) {
+				const double seconds = (std::max)((uint64_t)1, metrics.DurationMs) / 1000.0;
+				LOG_INFO_F(
+					"event=header_checkpoint_write duration_ms={} cpu_ms={} bytes={} mb_per_s={:.3f} validated=1 trust={} candidate={} confirmed={} mmr_nodes={} tip={} aggregate={}",
+					metrics.DurationMs,
+					metrics.CpuMs,
+					metrics.BytesRead,
+					(metrics.BytesRead / (1024.0 * 1024.0)) / seconds,
+					(uint32_t)generated.Trust,
+					generated.CandidateEntries,
+					generated.ConfirmedEntries,
+					generated.MmrNodes,
+					generated.CandidateTip.ToHex(),
+					generated.Aggregate.ToHex()
+				);
+			}
 		}
 	}
 	auto pChainState = ChainState::Create(
@@ -340,11 +797,13 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		pTxHashSetManager,
 		genesisBlock
 	);
+	CoinViewStartupGuard coinViewGuard;
 	Global::SetCoinView(std::make_shared<CoinView>(*pChainState));
 
 	// G-23: if a TxHashSet is open, its three MMR roots must match the exact
 	// header it was flushed at. Do not accept a state whose roots were corrupted.
 	{
+		ScopedTiming timing("blockchain_txhashset_root_and_nrd_check");
 		auto pReader = pChainState->Read();
 		auto pTxHashSet = pReader->GetTxHashSetManager()->GetTxHashSet();
 		if (pTxHashSet != nullptr) {
@@ -368,9 +827,12 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 					"NRD recent-kernel index rebuild is incomplete; refusing to start on a txhashset state that Rust grin 5.5.2 would reject");
 			}
 		}
+		timing.Success();
 	}
 
 	// Migrate database
+	{
+	ScopedTiming timing("blockchain_db_migrate");
 	const uint8_t db_version = pDatabase->Read()->GetVersion();
 	if (db_version > 3) {
 		LOG_ERROR("Database is from a newer version of Grin++!");
@@ -382,7 +844,7 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		// the backup cannot be written: never migrate the only copy (G-22).
 		// A fresh database (version 0) has nothing to preserve.
 		const fs::path backupPath =
-			DbBackup::BackupBeforeMigration(config.GetDatabasePath(), db_version);
+			DbBackup::BackupBeforeMigration(pDatabase, config.GetDatabasePath(), db_version);
 		if (backupPath.empty()) {
 			LOG_ERROR("Failed to back up the database before migration; aborting.");
 			throw std::runtime_error("Database backup failed");
@@ -411,9 +873,12 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		pDatabase->Write()->MigrateBlocks();
 		pDatabase->Write()->SetVersion(3);
 	}
+	timing.Success();
+	}
 
 	// Trigger Compaction
 	{
+		ScopedTiming timing("blockchain_startup_block_compaction");
 		auto pBatchDB = pDatabase->BatchWrite();
 		pBatchDB->Compact(pChainStore->Read()->GetConfirmedChain());
 		pBatchDB->Commit();
@@ -430,19 +895,26 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 
 			pBatchTxHashSet->Commit();
 		}
+		timing.Success();
 	}
 
 	auto pBlockChain = std::shared_ptr<BlockChain>(new BlockChain(
 		pTransactionPool,
 		pChainState
 	));
-	if (!pBlockChain->EnsureKernelIndex()) {
-		// The index is an optimization; get_kernel has a bounded direct-scan
-		// fallback. Never prevent the node from starting because the index could
-		// not be built (e.g. during first-run/genesis or a test database).
-		LOG_WARNING("Kernel index is unavailable; get_kernel will use the direct scan.");
+	{
+		ScopedTiming timing("kernel_index_startup_ensure");
+		if (!pBlockChain->EnsureKernelIndex()) {
+			// The index is an optimization; get_kernel has a bounded direct-scan
+			// fallback. Never prevent the node from starting because the index could
+			// not be built (e.g. during first-run/genesis or a test database).
+			LOG_WARNING("Kernel index is unavailable; get_kernel will use the direct scan.");
+		}
+		timing.Success();
 	}
-
+	coinViewGuard.Commit();
+	createTiming.Success();
+	pBlockChain->StartHeaderCheckpointUpdater();
 	return pBlockChain;
 }
 
@@ -470,7 +942,22 @@ uint64_t BlockChain::GetTotalDifficulty(const EChainType chainType) const
 EBlockChainStatus BlockChain::AddBlock(const FullBlock& block)
 {
 	StateWriteGuard writeGuard(*this);
-	return BlockProcessor(m_pChainState).ProcessBlock(block);
+	BlockProcessor processor(m_pChainState);
+	const EBlockChainStatus status = processor.ProcessBlock(block);
+	if (status == EBlockChainStatus::SUCCESS && processor.KernelIndexNeedsRebuild()) {
+		ScopedTiming timing("kernel_index_rebuild_after_block");
+		LOG_WARNING("Kernel index lagged behind a committed block; running the verified index rebuild once.");
+		try {
+			if (!EnsureKernelIndexLocked()) {
+				LOG_WARNING("Verified kernel index rebuild failed; get_kernel will use the direct scan.");
+			}
+		} catch (const std::exception& e) {
+			LOG_WARNING_F("Verified kernel index rebuild threw: {}; get_kernel will use the direct scan.", e.what());
+		}
+		timing.Success();
+	}
+	if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
+	return status;
 }
 
 EBlockChainStatus BlockChain::AddCompactBlock(const CompactBlock& compactBlock)
@@ -551,21 +1038,36 @@ EBlockChainStatus BlockChain::ProcessTransactionHashSet(const Hash& blockHash, c
 		const bool success = processor.ProcessTxHashSet(blockHash, path, syncStatus);
 		if (success)
 		{
-			auto pReader = m_pChainState->Read();
-			auto pTxHashSet = pReader->GetTxHashSetManager()->GetTxHashSet();
-			const BlockHeaderPtr pTip = pReader->GetTipBlockHeader(EChainType::CONFIRMED);
-			if (pTxHashSet != nullptr && pTip != nullptr) {
-				// Defense-in-depth only: the processor already rebuilds and checks
-				// the NRD index before committing. Never report SUCCESS for a state
-				// whose NRD history cannot be rebuilt.
-				if (!RebuildNrdIndexAndRequireComplete(
-						const_cast<ITxHashSet*>(pTxHashSet.get()),
-						pReader->GetBlockDB().GetShared(),
-						pTip,
-						"txhashset install")) {
-					return EBlockChainStatus::STORE_ERROR;
+			{
+				auto pReader = m_pChainState->Read();
+				auto pTxHashSet = pReader->GetTxHashSetManager()->GetTxHashSet();
+				const BlockHeaderPtr pTip = pReader->GetTipBlockHeader(EChainType::CONFIRMED);
+				if (pTxHashSet != nullptr && pTip != nullptr) {
+					// Defense-in-depth only: the processor already rebuilds and checks
+					// the NRD index before committing. Never report SUCCESS for a state
+					// whose NRD history cannot be rebuilt.
+					if (!RebuildNrdIndexAndRequireComplete(
+							const_cast<ITxHashSet*>(pTxHashSet.get()),
+							pReader->GetBlockDB().GetShared(),
+							pTip,
+							"txhashset install")) {
+						return EBlockChainStatus::STORE_ERROR;
+					}
 				}
 			}
+			// A PIBD install can jump the confirmed tip by millions of blocks. Build
+			// the kernel index once here, while the chain and txhashset are already
+			// quiescent under StateWriteGuard, so the next restart can extend it
+			// instead of running the full rebuild on the startup critical path.
+			ScopedTiming indexTiming("kernel_index_after_txhashset_install");
+			try {
+				if (!EnsureKernelIndexLocked()) {
+					LOG_WARNING("Verified kernel index build after TxHashSet install failed; get_kernel will use the direct scan.");
+				}
+			} catch (const std::exception& e) {
+				LOG_WARNING_F("Kernel index build after TxHashSet install threw: {}; index stays unavailable for this state.", e.what());
+			}
+			indexTiming.Success();
 			return EBlockChainStatus::SUCCESS;
 		}
 	}
@@ -585,7 +1087,11 @@ EBlockChainStatus BlockChain::ProcessTransactionHashSet(const Hash& blockHash, c
 bool BlockChain::EnsureKernelIndex()
 {
 	StateWriteGuard writeGuard(*this);
+	return EnsureKernelIndexLocked();
+}
 
+bool BlockChain::EnsureKernelIndexLocked()
+{
 	std::shared_ptr<IBlockDB> pBlockDB;
 	BlockHeaderPtr pTip;
 	std::shared_ptr<ITxHashSet> pTxHashSet;
@@ -674,19 +1180,30 @@ EBlockChainStatus BlockChain::ProcessExistingTxHashSet(const Hash& blockHash, Sy
 	try {
 		const bool success = processor.ProcessExistingTxHashSet(blockHash, syncStatus);
 		if (success) {
-			auto pReader = m_pChainState->Read();
-			auto pTxHashSet = pReader->GetTxHashSetManager()->GetTxHashSet();
-			const BlockHeaderPtr pTip = pReader->GetTipBlockHeader(EChainType::CONFIRMED);
-			if (pTxHashSet != nullptr && pTip != nullptr) {
-				// Defense-in-depth only; the processor checks before committing.
-				if (!RebuildNrdIndexAndRequireComplete(
-						const_cast<ITxHashSet*>(pTxHashSet.get()),
-						pReader->GetBlockDB().GetShared(),
-						pTip,
-						"PIBD txhashset install")) {
-					return EBlockChainStatus::STORE_ERROR;
+			{
+				auto pReader = m_pChainState->Read();
+				auto pTxHashSet = pReader->GetTxHashSetManager()->GetTxHashSet();
+				const BlockHeaderPtr pTip = pReader->GetTipBlockHeader(EChainType::CONFIRMED);
+				if (pTxHashSet != nullptr && pTip != nullptr) {
+					// Defense-in-depth only; the processor checks before committing.
+					if (!RebuildNrdIndexAndRequireComplete(
+							const_cast<ITxHashSet*>(pTxHashSet.get()),
+							pReader->GetBlockDB().GetShared(),
+							pTip,
+							"PIBD txhashset install")) {
+						return EBlockChainStatus::STORE_ERROR;
+					}
 				}
 			}
+			ScopedTiming indexTiming("kernel_index_after_existing_txhashset");
+			try {
+				if (!EnsureKernelIndexLocked()) {
+					LOG_WARNING("Verified kernel index build after existing TxHashSet activation failed; get_kernel will use the direct scan.");
+				}
+			} catch (const std::exception& e) {
+				LOG_WARNING_F("Kernel index build after existing TxHashSet activation threw: {}; index stays unavailable for this state.", e.what());
+			}
+			indexTiming.Success();
 			return EBlockChainStatus::SUCCESS;
 		}
 	}
@@ -735,7 +1252,7 @@ EBlockChainStatus BlockChain::AddTransaction(TransactionPtr pTransaction, const 
 		LOG_ERROR_F("Exception thrown: {}", e.what());
 	}
 
-	return EBlockChainStatus::INVALID;
+	return EBlockChainStatus::UNKNOWN_ERROR;
 }
 
 TransactionPtr BlockChain::GetTransactionByKernelHash(const Hash& kernelHash) const
@@ -747,7 +1264,9 @@ EBlockChainStatus BlockChain::AddBlockHeader(BlockHeaderPtr pBlockHeader)
 {
 	try
 	{
-		return BlockHeaderProcessor(m_pChainState).ProcessSingleHeader(pBlockHeader);
+		const EBlockChainStatus status = BlockHeaderProcessor(m_pChainState).ProcessSingleHeader(pBlockHeader);
+		if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
+		return status;
 	}
 	catch (BadDataException& e)
 	{
@@ -764,7 +1283,9 @@ EBlockChainStatus BlockChain::AddBlockHeaders(const std::vector<BlockHeaderPtr>&
 {
 	try
 	{
-		return BlockHeaderProcessor(m_pChainState).ProcessSyncHeaders(blockHeaders);
+		const EBlockChainStatus status = BlockHeaderProcessor(m_pChainState).ProcessSyncHeaders(blockHeaders);
+		if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
+		return status;
 	}
 	catch (BadDataException& e)
 	{
@@ -851,6 +1372,7 @@ std::vector<BlockWithOutputs> BlockChain::GetOutputsByHeight(const uint64_t star
 	const uint64_t highestHeight = (std::min)(pChainStateReader->GetHeight(EChainType::CONFIRMED), maxHeight);
 
 	std::vector<BlockWithOutputs> blocksWithOutputs;
+	if (startHeight > highestHeight) return blocksWithOutputs;
 	blocksWithOutputs.reserve(highestHeight - startHeight + 1);
 
 	uint64_t height = startHeight;
@@ -884,6 +1406,13 @@ std::vector<std::pair<uint64_t, Hash>> BlockChain::GetBlocksNeeded(const uint64_
 
 bool BlockChain::ProcessNextOrphanBlock()
 {
+	// This is a chain-state mutation like AddBlock: serialize it with other
+	// mutations and repair the optimization index before returning. Orphan-block
+	// processing previously called BlockProcessor directly, so a rejected
+	// AppendBlock/RewindToAncestor could commit the block and leave the index
+	// stale until the next restart.
+	StateWriteGuard writeGuard(*this);
+
 	BlockHeaderPtr pNextHeader = nullptr;
 	std::shared_ptr<const FullBlock> pOrphanBlock = nullptr;
 
@@ -905,7 +1434,21 @@ bool BlockChain::ProcessNextOrphanBlock()
 
 	try
 	{
-		return BlockProcessor(m_pChainState).ProcessBlock(*pOrphanBlock) == EBlockChainStatus::SUCCESS;
+		BlockProcessor processor(m_pChainState);
+		const EBlockChainStatus status = processor.ProcessBlock(*pOrphanBlock);
+		if (status == EBlockChainStatus::SUCCESS && processor.KernelIndexNeedsRebuild()) {
+			ScopedTiming timing("kernel_index_rebuild_after_orphan");
+			LOG_WARNING("Kernel index lagged behind a committed orphan block; running the verified index rebuild once.");
+			try {
+				if (!EnsureKernelIndexLocked()) {
+					LOG_WARNING("Verified kernel index rebuild after orphan block failed; get_kernel will use the direct scan.");
+				}
+			} catch (const std::exception& e) {
+				LOG_WARNING_F("Verified kernel index rebuild after orphan block threw: {}; get_kernel will use the direct scan.", e.what());
+			}
+			timing.Success();
+		}
+		return status == EBlockChainStatus::SUCCESS;
 	}
 	catch (std::exception&)
 	{
@@ -943,3 +1486,7 @@ namespace BlockChainAPI
 		return BlockChain::Create(config, pDatabase, pTxHashSetManager, pTransactionPool, pHeaderMMR);
 	}
 }
+
+
+
+

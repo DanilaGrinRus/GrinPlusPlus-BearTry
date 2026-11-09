@@ -126,6 +126,9 @@ bool HeaderSyncer::IsHeaderSyncDue(const SyncStatus& syncStatus)
 
 bool HeaderSyncer::RequestHeaders(const SyncStatus& syncStatus)
 {
+	if (!PeerRatePolicy::HeaderRequestDue(PeerRatePolicy::Clock::now(), m_nextHeaderRequest)) {
+		return false;
+	}
 	LOG_TRACE("Requesting headers.");
 
 	std::vector<Hash> locators = BlockLocator(m_pBlockChain).GetLocators(syncStatus);
@@ -145,6 +148,7 @@ bool HeaderSyncer::RequestHeaders(const SyncStatus& syncStatus)
 
 	if (m_pPeer != nullptr)
 	{
+		m_nextHeaderRequest = PeerRatePolicy::Clock::now() + PeerRatePolicy::MIN_HEADER_REQUEST_INTERVAL;
 		LOG_TRACE("Headers requested.");
 		m_timeout = std::chrono::system_clock::now() + std::chrono::seconds(10);
 		m_lastHeight = syncStatus.GetHeaderHeight();

@@ -46,7 +46,7 @@ public:
 			sender = criteria.GetSlatepack().value().m_sender;
 		}
 
-		WALLET_INFO_F("Receiving slatepack from {}", sender.IsNull() ? "unknown sender" : sender.ToString());
+		WALLET_INFO_F("Receiving slate {}", uuids::to_string(criteria.GetSlate().GetId()));
 
 		Slate slate = m_pWalletManager->Receive(criteria);
 
@@ -64,7 +64,7 @@ public:
 		return request.BuildResult(result);
 	}
 
-	bool ContainsSecrets() const noexcept final { return false; }
+	bool ContainsSecrets() const noexcept final { return true; }
 
 	IWalletManagerPtr m_pWalletManager;
 };

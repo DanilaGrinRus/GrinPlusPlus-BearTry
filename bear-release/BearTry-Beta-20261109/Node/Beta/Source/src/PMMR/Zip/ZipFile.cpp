@@ -87,16 +87,22 @@ void ZipFile::ExtractFile(const std::string& path, const fs::path& destination,
 std::vector<std::string> ZipFile::ListFiles() const
 {
 	std::vector<std::string> files;
-	if (unzGoToFirstFile(m_unzFile) == UNZ_OK)
-	{
-		char buffer[256];
-		do
-		{
-			unz_file_info fileInfo;
-			unzGetCurrentFileInfo(m_unzFile, &fileInfo, buffer, 256, NULL, 0, NULL, 0);
-			files.push_back(buffer);
-		} while (unzGoToNextFile(m_unzFile) == UNZ_OK);
+	int status = unzGoToFirstFile(m_unzFile);
+	while (status == UNZ_OK) {
+		unz_file_info info{};
+		if (unzGetCurrentFileInfo(m_unzFile, &info, nullptr, 0, nullptr, 0, nullptr, 0) != UNZ_OK ||
+			info.size_filename > 65535) {
+			throw FILE_EXCEPTION("Invalid zip member metadata");
+		}
+		std::vector<char> name(info.size_filename + 1);
+		if (unzGetCurrentFileInfo(m_unzFile, &info, name.data(), static_cast<unsigned long>(name.size()),
+			nullptr, 0, nullptr, 0) != UNZ_OK) {
+			throw FILE_EXCEPTION("Cannot read zip member name");
+		}
+		files.emplace_back(name.data(), info.size_filename);
+		status = unzGoToNextFile(m_unzFile);
 	}
+	if (status != UNZ_END_OF_LIST_OF_FILE) throw FILE_EXCEPTION("Invalid zip directory");
 
 	return files;
 }

@@ -4,4 +4,7 @@ list_append_parent(
     "Test_BlockPipeBan.cpp"
     "Test_PibdNegativeAndLimits.cpp"
     "Test_TxHashSetRequestTracking.cpp"
+    "Test_P2PPortConfig.cpp"
+    "Test_InboundAdmission.cpp"
 )
+

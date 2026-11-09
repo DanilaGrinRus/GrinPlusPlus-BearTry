@@ -1,6 +1,7 @@
 #include "SqliteDB.h"
 
 #include <libsqlite3/sqlite3.h>
+#include <cctype>
 #include <Common/Logger.h>
 #include <Common/Util/FileUtil.h>
 #include <Common/Util/HexUtil.h>
@@ -21,7 +22,25 @@ SqliteDB::Statement::~Statement()
 
 bool SqliteDB::Statement::Step()
 {
-	return sqlite3_step(m_pStatement) == SQLITE_ROW;
+	const int result = sqlite3_step(m_pStatement);
+	if (result == SQLITE_ROW) {
+		return true;
+	}
+
+	if (result == SQLITE_DONE) {
+		return false;
+	}
+
+	WALLET_ERROR_F(
+		"Error stepping statement ({}): {}",
+		result,
+		sqlite3_errmsg(m_pDatabase)
+	);
+	throw WALLET_STORE_EXCEPTION_F(
+		"Error stepping statement ({}): {}",
+		result,
+		sqlite3_errmsg(m_pDatabase)
+	);
 }
 
 void SqliteDB::Statement::Finalize()
@@ -52,12 +71,21 @@ std::vector<uint8_t> SqliteDB::Statement::GetColumnBytes(const int col) const
 {
     const int size = sqlite3_column_bytes(m_pStatement, col);
     const unsigned char* pBytes = (const unsigned char*)sqlite3_column_blob(m_pStatement, col);
+    if (size <= 0 || pBytes == nullptr) {
+        return std::vector<uint8_t>{};
+    }
+
     return std::vector<uint8_t>{ pBytes, pBytes + size };
 }
 
 std::string SqliteDB::Statement::GetColumnString(const int col) const
 {
-	return (const char*)sqlite3_column_text(m_pStatement, col);
+	const unsigned char* pText = sqlite3_column_text(m_pStatement, col);
+	if (pText == nullptr) {
+		return std::string{};
+	}
+
+	return std::string((const char*)pText);
 }
 
 /**
@@ -124,18 +152,66 @@ SqliteDB::Statement::UPtr SqliteDB::Query(const std::string& query, const std::v
 		throw WALLET_STORE_EXCEPTION("Error compiling statement.");
 	}
 
+    auto statement = std::make_unique<Statement>(m_pDatabase, stmt);
     int index = 1;
-    for (const auto& pParam : parameters)
-    {
+    for (const auto& pParam : parameters) {
         pParam->Bind(stmt, index++);
     }
-
-    return std::make_unique<SqliteDB::Statement>(m_pDatabase, stmt);
+    return statement;
 }
 
 std::string SqliteDB::GetError() const
 {
     return std::string(sqlite3_errmsg(m_pDatabase));
+}
+
+namespace
+{
+	bool IsSimpleIdentifier(const std::string& identifier)
+	{
+		if (identifier.empty()) {
+			return false;
+		}
+
+		for (const char c : identifier) {
+			if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+				return false;
+			}
+		}
+
+		return true;
+	}
+}
+
+bool SqliteDB::TableExists(const std::string& table)
+{
+	std::vector<IParameter::UPtr> parameters;
+	parameters.push_back(TextParameter::New(table));
+
+	auto pStatement = Query(
+		"SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+		parameters
+	);
+
+	return pStatement->Step();
+}
+
+bool SqliteDB::TableHasColumn(const std::string& table, const std::string& column)
+{
+	if (!IsSimpleIdentifier(table) || !IsSimpleIdentifier(column)) {
+		throw WALLET_STORE_EXCEPTION("Invalid schema identifier.");
+	}
+
+	// PRAGMA statements do not support parameter binding. table/column are
+	// restricted to simple identifiers above, which makes concatenation safe.
+	auto pStatement = Query("PRAGMA table_info(" + table + ")");
+	while (pStatement->Step()) {
+		if (pStatement->GetColumnString(1) == column) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -146,7 +222,10 @@ std::string SqliteDB::GetError() const
 
 void TextParameter::Bind(sqlite3_stmt* stmt, const int index) const
 {
-	if (sqlite3_bind_text(stmt, index, m_value.c_str(), (int)m_value.size(), NULL) != SQLITE_OK) {
+	// SQLITE_TRANSIENT lets SQLite own a copy. Bind() is used for both Update()
+	// (parameters outlive the statement) and Query() (parameters are destroyed
+	// before the caller calls Step()), so SQLITE_STATIC would dangle.
+	if (sqlite3_bind_text(stmt, index, m_value.c_str(), (int)m_value.size(), SQLITE_TRANSIENT) != SQLITE_OK) {
 		WALLET_ERROR_F("Failed to bind: {}", m_value);
 		throw WALLET_STORE_EXCEPTION("Failed to bind.");
     }
@@ -162,7 +241,7 @@ void IntParameter::Bind(sqlite3_stmt* stmt, const int index) const
 
 void BlobParameter::Bind(sqlite3_stmt* stmt, const int index) const
 {
-	if (sqlite3_bind_blob(stmt, index, (const void*)m_blob.data(), (int)m_blob.size(), NULL) != SQLITE_OK) {
+	if (sqlite3_bind_blob(stmt, index, (const void*)m_blob.data(), (int)m_blob.size(), SQLITE_TRANSIENT) != SQLITE_OK) {
 		WALLET_ERROR_F("Failed to bind: {}", HexUtil::ConvertToHex(m_blob));
 		throw WALLET_STORE_EXCEPTION("Failed to bind.");
     }

@@ -60,6 +60,9 @@ std::vector<PeerPtr> PeerDB::LoadAllPeers() const
 		ByteBuffer byteBuffer(std::move(data));
 		peers.emplace_back(Peer::Deserialize(byteBuffer));
 	}
+	if (!it->status().ok()) {
+		throw DATABASE_EXCEPTION("Failed to iterate peers: " + it->status().ToString());
+	}
 
 	return peers;
 }
@@ -113,7 +116,10 @@ void PeerDB::SavePeers(const std::vector<PeerPtr>& peers)
 		writeBatch.Put(key, value);
 	}
 
-	m_pDatabase->Write(WriteOptions(), &writeBatch);
+	const Status status = m_pDatabase->Write(WriteOptions(), &writeBatch);
+	if (!status.ok()) {
+		throw DATABASE_EXCEPTION("Failed to persist peers: " + status.ToString());
+	}
 }
 
 void PeerDB::DeletePeers(const std::vector<PeerPtr>& peers)

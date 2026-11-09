@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <chrono>
+#include <Common/Logger.h>
 
 enum class ESyncStatus
 {
@@ -65,6 +67,8 @@ public:
 		m_blockRequests(other.m_blockRequests.load()),
 		m_blockTimeouts(other.m_blockTimeouts.load()),
 		m_blockReassignments(other.m_blockReassignments.load()),
+		m_blockCooldownReassignments(other.m_blockCooldownReassignments.load()),
+		m_blockRetries(other.m_blockRetries.load()),
 		m_bansFraudHeight(other.m_bansFraudHeight.load()),
 		m_bansInvalidData(other.m_bansInvalidData.load()),
 		m_pibdReceived(other.m_pibdReceived.load()),
@@ -102,6 +106,8 @@ public:
 	uint64_t GetBlockRequests() const { return m_blockRequests; }
 	uint64_t GetBlockTimeouts() const { return m_blockTimeouts; }
 	uint64_t GetBlockReassignments() const { return m_blockReassignments; }
+	uint64_t GetBlockCooldownReassignments() const { return m_blockCooldownReassignments; }
+	uint64_t GetBlockRetries() const { return m_blockRetries; }
 	uint64_t GetBansFraudHeight() const { return m_bansFraudHeight; }
 	uint64_t GetBansInvalidData() const { return m_bansInvalidData; }
 	uint64_t GetPibdReceived() const { return m_pibdReceived; }
@@ -114,6 +120,8 @@ public:
 	void IncrementBlockRequests(const uint64_t count = 1) const { m_blockRequests += count; }
 	void IncrementBlockTimeouts(const uint64_t count = 1) const { m_blockTimeouts += count; }
 	void IncrementBlockReassignments(const uint64_t count = 1) const { m_blockReassignments += count; }
+	void IncrementBlockCooldownReassignments(const uint64_t count = 1) const { m_blockCooldownReassignments += count; }
+	void IncrementBlockRetries(const uint64_t count = 1) const { m_blockRetries += count; }
 	void IncrementBansFraudHeight(const uint64_t count = 1) const { m_bansFraudHeight += count; }
 	void IncrementBansInvalidData(const uint64_t count = 1) const { m_bansInvalidData += count; }
 
@@ -130,7 +138,50 @@ public:
 		return m_waitingReason;
 	}
 
-	void UpdateStatus(const ESyncStatus syncStatus) { m_syncStatus = syncStatus; }
+	// Waiting reasons are historical outside the waiting state.
+	std::string GetCurrentWaitingReason() const
+	{
+		return GetStatus() == ESyncStatus::WAITING_FOR_PEERS ? GetWaitingReason() : "";
+	}
+
+	void EnableStageLogging()
+	{
+		std::lock_guard<std::mutex> lock(m_stageMutex);
+		m_stageLogging = true;
+		m_stageStart = std::chrono::steady_clock::now();
+		try { LoggerAPI::LogSyncEvent(std::string("event=stage_begin stage=") + StatusName(m_syncStatus.load()) +
+			" height=" + std::to_string(m_blockHeight.load()) + " network_height=" + std::to_string(m_networkHeight.load())); } catch (...) { }
+	}
+
+	void UpdateStatus(const ESyncStatus syncStatus)
+	{
+		if (m_syncStatus.load() == syncStatus) return;
+		std::lock_guard<std::mutex> lock(m_stageMutex);
+		const ESyncStatus previous = m_syncStatus.load();
+		if (previous == syncStatus) return;
+		m_syncStatus = syncStatus;
+		if (m_stageLogging) {
+			const auto now = std::chrono::steady_clock::now();
+			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_stageStart).count();
+			m_stageStart = now;
+			try {
+				LoggerAPI::LogSyncEvent(std::string("event=stage_transition previous=") + StatusName(previous) +
+					" stage=" + StatusName(syncStatus) + " previous_duration_ms=" + std::to_string(ms) +
+					" height=" + std::to_string(m_blockHeight.load()) + " network_height=" + std::to_string(m_networkHeight.load()));
+			} catch (...) { }
+		}
+	}
+
+	void EndStageLogging()
+	{
+		std::lock_guard<std::mutex> lock(m_stageMutex);
+		if (!m_stageLogging) return;
+		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - m_stageStart).count();
+		try { LoggerAPI::LogSyncEvent(std::string("event=stage_end stage=") + StatusName(m_syncStatus.load()) +
+			" duration_ms=" + std::to_string(ms) + " reason=shutdown"); } catch (...) { }
+		m_stageLogging = false;
+	}
 
 	void UpdateNetworkStatus(const uint64_t numActiveConnections, const uint64_t networkHeight, const uint64_t networkDifficulty)
 	{
@@ -214,6 +265,22 @@ public:
 	}
 
 private:
+	static const char* StatusName(const ESyncStatus status) noexcept
+	{
+		switch (status) {
+			case ESyncStatus::SYNCING_HEADERS: return "headers";
+			case ESyncStatus::SYNCING_TXHASHSET: return "state_download";
+			case ESyncStatus::PROCESSING_TXHASHSET: return "state_validation";
+			case ESyncStatus::TXHASHSET_SYNC_FAILED: return "state_failed";
+			case ESyncStatus::SYNCING_BLOCKS: return "blocks";
+			case ESyncStatus::WAITING_FOR_PEERS: return "waiting_for_peers";
+			case ESyncStatus::NOT_SYNCING: return "fully_synced";
+		}
+		return "unknown";
+	}
+	std::mutex m_stageMutex;
+	bool m_stageLogging = false;
+	std::chrono::steady_clock::time_point m_stageStart;
 	std::atomic<ESyncStatus> m_syncStatus;
 	std::atomic<uint64_t> m_numActiveConnections;
 	std::atomic<uint64_t> m_networkHeight;
@@ -227,11 +294,13 @@ private:
 	std::atomic<uint64_t> m_txHashSetTotalSize;
 	std::atomic<uint8_t> m_txHashSetProcessingStatus;
 
-	mutable std::atomic<uint64_t> m_blockRequests;
-	mutable std::atomic<uint64_t> m_blockTimeouts;
-	mutable std::atomic<uint64_t> m_blockReassignments;
-	mutable std::atomic<uint64_t> m_bansFraudHeight;
-	mutable std::atomic<uint64_t> m_bansInvalidData;
+	mutable std::atomic<uint64_t> m_blockRequests{0};
+	mutable std::atomic<uint64_t> m_blockTimeouts{0};
+	mutable std::atomic<uint64_t> m_blockReassignments{0};
+	mutable std::atomic<uint64_t> m_blockCooldownReassignments{0};
+	mutable std::atomic<uint64_t> m_blockRetries{0};
+	mutable std::atomic<uint64_t> m_bansFraudHeight{0};
+	mutable std::atomic<uint64_t> m_bansInvalidData{0};
 	mutable std::atomic_bool m_txHashSetDownloading{ false };
 	mutable std::mutex m_headerTipMutex;
 	mutable std::mutex m_reasonMutex;

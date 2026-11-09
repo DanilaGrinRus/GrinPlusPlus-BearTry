@@ -73,6 +73,7 @@ namespace
 
 		const std::string value = StringUtil::Trim(hostHeader);
 		std::string portPart;
+		if (value.empty()) return false;
 		if (value.front() == '[') {
 			const size_t close = value.find(']');
 			if (close == std::string::npos) {

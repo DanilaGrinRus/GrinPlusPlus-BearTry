@@ -8,6 +8,7 @@
 #include <Core/Models/OutputLocation.h>
 #include <Database/DatabaseException.h>
 #include <Database/KernelIndexState.h>
+#include <PMMR/Common/LeafIndex.h>
 #include <Crypto/Hasher.h>
 #include <cstdio>
 #include <cstring>
@@ -144,6 +145,11 @@ void BlockDB::SetVersion(const uint8_t version)
 	m_pRocksDB->Put("default", DBEntry("VERSION", DBVersion(version)));
 }
 
+bool BlockDB::CreateCheckpoint(const fs::path& checkpointPath) const
+{
+	return m_pRocksDB->CreateCheckpoint(checkpointPath);
+}
+
 void BlockDB::MigrateBlocks()
 {
 	//std::vector<FullBlock> blocks;
@@ -170,6 +176,7 @@ void BlockDB::MigrateBlocks()
 
 void BlockDB::Compact(const std::shared_ptr<const Chain>& pChain)
 {
+	if (pChain == nullptr) throw DATABASE_EXCEPTION("Cannot compact blocks without a confirmed chain");
 	std::vector<std::string> blocks_to_remove;
 
 	const uint64_t horizon = Consensus::GetHorizonHeight(pChain->GetHeight());
@@ -178,17 +185,26 @@ void BlockDB::Compact(const std::shared_ptr<const Chain>& pChain)
 		rocksdb::Slice key = iter->key();
 		try {
 			auto pBlock = m_pRocksDB->Get<FullBlock>("BLOCK", key);
+			if (pBlock == nullptr) {
+				throw DATABASE_EXCEPTION("Block disappeared during compaction scan");
+			}
 			if (pBlock->GetHeight() < horizon) {
 				blocks_to_remove.push_back(key.ToString());
 			}
 		}
-		catch (std::exception& e) {
-			LOG_DEBUG_F("Failed to deserialize block {}. Error: {}", key.ToString(true), e.what());
-			blocks_to_remove.push_back(key.ToString());
+		catch (const std::exception& e) {
+			// A failed read cannot establish the block height. Abort before any
+			// deletions instead of treating an unreadable block as expired.
+			LOG_ERROR_F("Aborting compaction: cannot read block {}: {}", key.ToString(true), e.what());
+			throw DATABASE_EXCEPTION("Block compaction scan failed; no blocks deleted");
 		}
 	}
+	if (!iter->status().ok()) {
+		LOG_ERROR_F("Aborting compaction: block iterator failed: {}", iter->status().ToString());
+		throw DATABASE_EXCEPTION("Block compaction iteration failed; no blocks deleted");
+	}
 
-	m_pRocksDB->Delete("BLOCK", blocks_to_remove);
+	m_pRocksDB->DeleteBatch("BLOCK", blocks_to_remove);
 }
 
 BlockHeaderPtr BlockDB::GetBlockHeader(const Hash& hash) const
@@ -553,6 +569,63 @@ void BlockDB::ClearKernelPositions(const uint64_t generation)
 	}
 }
 
+std::pair<uint64_t, Hash> BlockDB::RemoveKernelPositionsFrom(
+	const uint64_t generation,
+	const uint64_t firstLeafIndex)
+{
+	// Keys of one generation are ordered by the 8-byte big-endian MMR position,
+	// which increases monotonically with the kernel leaf index. Seek directly to
+	// the first leaf that must be removed.
+	const std::string primaryPrefix = PrimaryPrefix(generation);
+	const std::string seekKey = primaryPrefix + EncodePosition(LeafIndex::At(firstLeafIndex).GetPosition());
+
+	std::vector<std::string> keys;
+	Hash removedChecksum;
+	uint64_t removedCount = 0;
+	auto pIterator = m_pRocksDB->GetIterator(KERNEL_POS_TABLE);
+	for (pIterator->Seek(seekKey); pIterator->Valid(); pIterator->Next()) {
+		const rocksdb::Slice key = pIterator->key();
+		const std::string keyString = key.ToString();
+		if (keyString.rfind(primaryPrefix, 0) != 0) {
+			break;
+		}
+		if (!IsPrimaryKey(keyString, primaryPrefix)) {
+			continue;
+		}
+
+		// key layout: primaryPrefix | position (8, big-endian) | excess (33)
+		uint64_t position = 0;
+		for (size_t i = 0; i < 8; ++i) {
+			position = (position << 8) | static_cast<uint8_t>(keyString[primaryPrefix.size() + i]);
+		}
+
+		const std::vector<uint8_t> excessBytes(
+			keyString.begin() + static_cast<std::ptrdiff_t>(primaryPrefix.size() + 8),
+			keyString.end());
+		const Commitment excess{ CBigInteger<33>(excessBytes) };
+
+		const rocksdb::Slice value = pIterator->value();
+		std::vector<uint8_t> data(value.data(), value.data() + value.size());
+		ByteBuffer buffer(std::move(data));
+		const OutputLocation location = OutputLocation::Deserialize(buffer);
+
+		removedChecksum = KernelIndexXorHash(removedChecksum, excess, location);
+		keys.emplace_back(keyString);
+		keys.emplace_back(SecondaryKey(generation, excess, position));
+		++removedCount;
+	}
+
+	if (!pIterator->status().ok()) {
+		throw DATABASE_EXCEPTION("Kernel index rewind iterator failed");
+	}
+
+	if (!keys.empty()) {
+		m_pRocksDB->Delete(KERNEL_POS_TABLE, keys);
+	}
+
+	return { removedCount, removedChecksum };
+}
+
 void BlockDB::ClearAllKernelPositions()
 {
 	LOG_WARNING("Deleting all kernel positions.");
@@ -625,6 +698,36 @@ Hash BlockDB::GetKernelPositionChecksum(const uint64_t generation) const
 	}
 
 	return checksum;
+}
+
+std::pair<uint64_t, Hash> BlockDB::GetKernelPositionDigest(const uint64_t generation) const
+{
+	const std::string prefix = PrimaryPrefix(generation);
+	uint64_t count = 0;
+	Hash checksum;
+	auto pIterator = m_pRocksDB->GetIterator(KERNEL_POS_TABLE);
+	for (pIterator->Seek(prefix); pIterator->Valid(); pIterator->Next()) {
+		const std::string key = pIterator->key().ToString();
+		if (key.rfind(prefix, 0) != 0) {
+			break;
+		}
+		if (!IsPrimaryKey(key, prefix)) {
+			continue;
+		}
+		const rocksdb::Slice value = pIterator->value();
+		std::vector<uint8_t> data(value.data(), value.data() + value.size());
+		ByteBuffer buffer(std::move(data));
+		const OutputLocation location = OutputLocation::Deserialize(buffer);
+		const std::vector<uint8_t> excessBytes(
+			key.begin() + static_cast<std::ptrdiff_t>(prefix.size() + 8), key.end());
+		const Commitment excess{CBigInteger<33>(excessBytes)};
+		checksum = KernelIndexXorHash(checksum, excess, location);
+		++count;
+	}
+	if (!pIterator->status().ok()) {
+		throw DATABASE_EXCEPTION("Kernel index digest iterator failed");
+	}
+	return { count, checksum };
 }
 
 void BlockDB::OnInitWrite(const bool batch)

@@ -61,6 +61,11 @@ TEST_CASE("KernelIndex schema v2 keeps duplicate excesses and latest position")
 
 	// Every leaf is counted, including duplicate excesses.
 	REQUIRE(pBlockDB->Read()->GetKernelPositionCount(generation) == 4);
+	{
+		const auto digest = pBlockDB->Read()->GetKernelPositionDigest(generation);
+		REQUIRE(digest.first == 4);
+		REQUIRE(digest.second == pBlockDB->Read()->GetKernelPositionChecksum(generation));
+	}
 
 	// Latest occurrence wins, matching Rust find_kernel's backward scan.
 	{
@@ -133,6 +138,60 @@ namespace
 			rocksdb::ColumnFamilyDescriptor("SPENT_OUTPUTS", options)
 		};
 	}
+}
+
+TEST_CASE("Startup compaction preserves all blocks when one record is corrupt")
+{
+	{
+		auto server = TestServer::Create();
+		server->SetPreserveDataOnDestruct(true);
+		TestMiner miner(server);
+		KeyChain keyChain = KeyChain::FromRandom();
+		REQUIRE(miner.MineChain(keyChain, 2).size() == 2);
+	}
+
+	const fs::path dbPath = Global::GetConfig().GetDatabasePath() / "CHAIN/";
+	const std::string corruptKey(32, static_cast<char>(0x7f));
+	std::vector<std::pair<std::string, std::string>> originalBlocks;
+	std::string corruptValue;
+	{
+		auto db = RocksDBFactory::Open(dbPath, ChainTables());
+		auto iterator = db->GetIterator("BLOCK");
+		for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next()) {
+			originalBlocks.emplace_back(iterator->key().ToString(), iterator->value().ToString());
+		}
+		REQUIRE(iterator->status().ok());
+		REQUIRE_FALSE(originalBlocks.empty());
+		REQUIRE_FALSE(db->GetRawValue("BLOCK", rocksdb::Slice(corruptKey)).has_value());
+		const OutputLocation invalidBlockBytes = MakeLocation(1, 1);
+		db->Put("BLOCK", DBEntry<OutputLocation>(rocksdb::Slice(corruptKey), invalidBlockBytes));
+		const auto value = db->GetRawValue("BLOCK", rocksdb::Slice(corruptKey));
+		REQUIRE(value.has_value());
+		corruptValue = *value;
+	}
+
+	// Opening the node invokes compaction. It must fail rather than silently
+	// remove the corrupt row or any other row accumulated before it.
+	bool compactionRejected = false;
+	try {
+		TestServer::OpenExisting();
+	} catch (const std::exception& e) {
+		compactionRejected = std::string(e.what()).find("Block compaction scan failed") != std::string::npos;
+	}
+	REQUIRE(compactionRejected);
+	{
+		auto db = RocksDBFactory::Open(dbPath, ChainTables());
+		REQUIRE(db->GetRawValue("BLOCK", rocksdb::Slice(corruptKey)).value() == corruptValue);
+		for (const auto& block : originalBlocks) {
+			const auto value = db->GetRawValue("BLOCK", rocksdb::Slice(block.first));
+			REQUIRE(value.has_value());
+			REQUIRE(*value == block.second);
+		}
+		// Only the test repairs its deliberately injected invalid record.
+		db->Delete("BLOCK", rocksdb::Slice(corruptKey));
+	}
+	auto recovered = TestServer::OpenExisting();
+	REQUIRE(recovered->GetBlockChain()->GetTipBlockHeader(EChainType::CONFIRMED) != nullptr);
 }
 
 // Legacy keys from schema v1 (KERNELPOS/... and KERNELIDX/STATE) must never be

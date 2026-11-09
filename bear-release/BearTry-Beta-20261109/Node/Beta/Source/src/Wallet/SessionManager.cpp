@@ -164,7 +164,7 @@ SessionToken SessionManager::Login(
 	m_sessionsById[sessionId] = std::make_shared<LoggedInSession>(
 		wallet,
 		walletImpl,
-		std::move(encryptedSeedWithCS)
+		std::move(encryptedSeedWithCS), Hasher::SHA256(token.GetTokenKey())
 	);
 
 	KeyChain keyChain = KeyChain::FromSeed(seed);
@@ -192,7 +192,8 @@ void SessionManager::Logout(const SessionToken& token)
 	auto iter = m_sessionsById.find(token.GetSessionId());
 	if (iter != m_sessionsById.end())
 	{
-		std::string username = iter->second->m_wallet.Read()->GetUsername();
+		const auto& session = RequireSession(token);
+		std::string username = session.m_wallet.Read()->GetUsername();
 		m_pForeignController->StopListener(iter->second->m_wallet.Read()->GetUsername());
 		if (!m_pForeignController->IsListening(username)) {
 			m_pWalletDB->CloseWallet(username);
@@ -201,53 +202,40 @@ void SessionManager::Logout(const SessionToken& token)
 	}
 }
 
-SecureVector SessionManager::GetSeed(const SessionToken& token) const
+const LoggedInSession& SessionManager::RequireSession(const SessionToken& token) const
 {
 	auto iter = m_sessionsById.find(token.GetSessionId());
-	if (iter != m_sessionsById.end())
-	{
-		std::shared_ptr<const LoggedInSession> pSession = iter->second;
-		
-		std::vector<unsigned char> seedWithCS(pSession->m_encryptedSeedWithCS.size());
-		for (size_t i = 0; i < seedWithCS.size(); i++)
-		{
-			seedWithCS[i] = pSession->m_encryptedSeedWithCS[i] ^ token.GetTokenKey()[i];
-		}
-
-		SecureVector seed(seedWithCS.cbegin(), seedWithCS.cbegin() + seedWithCS.size() - 4);
-		CBigInteger<32> hash = Hasher::SHA256((const std::vector<unsigned char>&)seed);
-		for (int i = 0; i < 4; i++)
-		{
-			if (seedWithCS[(seedWithCS.size() - 4) + i] != hash[i])
-			{
-				throw SessionTokenException();
-			}
-		}
-
-		return seed;
+	if (iter == m_sessionsById.end() || token.GetTokenKey().size() != iter->second->m_encryptedSeedWithCS.size() ||
+		Hasher::SHA256(token.GetTokenKey()) != iter->second->m_tokenHash) {
+		throw SessionTokenException();
 	}
+	return *iter->second;
+}
 
-	throw SessionTokenException();
+SecureVector SessionManager::GetSeed(const SessionToken& token) const
+{
+	const auto& session = RequireSession(token);
+	SecureVector seedWithCS(session.m_encryptedSeedWithCS.size());
+	for (size_t i = 0; i < seedWithCS.size(); ++i) {
+		seedWithCS[i] = session.m_encryptedSeedWithCS[i] ^ token.GetTokenKey()[i];
+	}
+	if (seedWithCS.size() < 4) {
+		throw SessionTokenException();
+	}
+	SecureVector seed(seedWithCS.begin(), seedWithCS.end() - 4);
+	const auto hash = Hasher::SHA256(seed.data(), seed.size());
+	if (!std::equal(seedWithCS.end() - 4, seedWithCS.end(), hash.cbegin())) {
+		throw SessionTokenException();
+	}
+	return seed;
 }
 
 Locked<Wallet> SessionManager::GetWallet(const SessionToken& token) const
 {
-	auto iter = m_sessionsById.find(token.GetSessionId());
-	if (iter != m_sessionsById.end())
-	{
-		return iter->second->m_wallet;
-	}
-
-	throw SessionTokenException();
+	return RequireSession(token).m_wallet;
 }
 
 Locked<WalletImpl> SessionManager::GetWalletImpl(const SessionToken& token) const
 {
-	auto iter = m_sessionsById.find(token.GetSessionId());
-	if (iter != m_sessionsById.end())
-	{
-		return iter->second->m_walletImpl;
-	}
-
-	throw SessionTokenException();
+	return RequireSession(token).m_walletImpl;
 }

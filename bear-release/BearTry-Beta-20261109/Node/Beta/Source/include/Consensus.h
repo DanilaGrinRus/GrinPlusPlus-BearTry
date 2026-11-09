@@ -194,7 +194,7 @@ namespace Consensus
 	static int64_t GetMaxBlockTime(const std::chrono::time_point<std::chrono::system_clock>& currentTime)
 	{
 		auto maxBlockTime = currentTime + std::chrono::seconds(DEFAULT_FUTURE_TIME_LIMIT_SEC);
-		return maxBlockTime.time_since_epoch().count();
+		return std::chrono::duration_cast<std::chrono::seconds>(maxBlockTime.time_since_epoch()).count();
 	}
 
 	/// Difficulty adjustment half life (actually, 60s * number of 0s-blocks to raise diff by factor e) is 4 hours

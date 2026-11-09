@@ -14,11 +14,53 @@
 #include <Common/Util/StringUtil.h>
 #include <Common/Logger.h>
 
+#include <system_error>
+#include <vector>
+
 static const uint8_t ENCRYPTION_FORMAT = 0;
+
+namespace
+{
+	// Returns true when the directory contained only leftovers from an
+	// interrupted wallet create (and they were removed). Anything unknown is
+	// left untouched.
+	bool CleanupInterruptedCreateArtifacts(const fs::path& directory)
+	{
+		std::vector<fs::path> artifacts;
+		std::error_code ec;
+		for (fs::directory_iterator it(directory, ec), end; !ec && it != end; it.increment(ec)) {
+			if (!fs::is_regular_file(it->path())) {
+				return false;
+			}
+
+			const std::string name = it->path().filename().u8string();
+			if (name == "seed.json.tmp"
+				|| name == "wallet.db-journal"
+				|| name == "wallet.db-wal"
+				|| name == "wallet.db-shm") {
+				artifacts.push_back(it->path());
+			} else {
+				return false;
+			}
+		}
+
+		if (ec) {
+			return false;
+		}
+
+		for (const fs::path& artifact : artifacts) {
+			FileUtil::RemoveFile(artifact);
+		}
+
+		return true;
+	}
+}
 
 std::shared_ptr<SqliteStore> SqliteStore::Open(const Config& config)
 {
-	return std::make_shared<SqliteStore>(SqliteStore(config.GetWalletPath()));
+	// SqliteStore owns a std::mutex, so it is neither copyable nor movable.
+	// Construct it in place instead of make_shared<T>(T(...)).
+	return std::shared_ptr<SqliteStore>(new SqliteStore(config.GetWalletPath()));
 }
 
 fs::path SqliteStore::GetDBFile(const std::string& username) const
@@ -33,6 +75,8 @@ std::vector<GrinStr> SqliteStore::GetAccounts() const
 
 Locked<IWalletDB> SqliteStore::OpenWallet(const std::string& username, const SecureVector& masterSeed)
 {
+	std::lock_guard<std::mutex> lock(m_userDBsMutex);
+
 	auto iter = m_userDBs.find(username);
 	if (iter != m_userDBs.end()) {
 		WALLET_DEBUG_F("wallet.db already open for user: {}", username);
@@ -52,12 +96,9 @@ Locked<IWalletDB> SqliteStore::OpenWallet(const std::string& username, const Sec
 		SqliteTransaction transaction(pDatabase);
 		transaction.Begin();
 
-		VersionTable::UpdateSchema(*pDatabase, version);
-		OutputsTable::UpdateSchema(*pDatabase, masterSeed, version);
-		MetadataTable::UpdateSchema(*pDatabase, version);
-		SlateContextTable::UpdateSchema(*pDatabase, version);
-		SlateTable::UpdateSchema(*pDatabase, version);
-		AccountsTable::UpdateSchema(*pDatabase, version);
+		// Migrate() verifies the resulting schema before recording the latest
+		// version, so an incomplete database is never advertised as v4.
+		VersionTable::Migrate(*pDatabase, masterSeed, version);
 
 		transaction.Commit();
 	} else if (version > LATEST_SCHEMA_VERSION) {
@@ -71,6 +112,8 @@ Locked<IWalletDB> SqliteStore::OpenWallet(const std::string& username, const Sec
 
 void SqliteStore::CloseWallet(const std::string& username)
 {
+	std::lock_guard<std::mutex> lock(m_userDBsMutex);
+
 	auto iter = m_userDBs.find(username);
 	if (iter != m_userDBs.end()) {
 		WALLET_DEBUG_F("Closing wallet.db for user: {}", username);
@@ -80,11 +123,49 @@ void SqliteStore::CloseWallet(const std::string& username)
 
 Locked<IWalletDB> SqliteStore::CreateWallet(const std::string& username, const EncryptedSeed& encryptedSeed)
 {
+	std::lock_guard<std::mutex> lock(m_userDBsMutex);
+
 	const fs::path userDBPath = m_walletDirectory / username;
 	const fs::path seedFile = userDBPath / "seed.json";
+	const fs::path walletDBFile = GetDBFile(username);
+
 	if (FileUtil::Exists(seedFile)) {
+		if (!FileUtil::Exists(walletDBFile)) {
+			WALLET_ERROR_F("Wallet seed exists without wallet.db for user: {}", username);
+			throw WALLET_STORE_EXCEPTION(
+				"Wallet seed exists without wallet database; manual recovery required."
+			);
+		}
+
 		WALLET_WARNING("Wallet already exists for user: " + username);
 		throw WALLET_STORE_EXCEPTION("Wallet already exists.");
+	}
+
+	if (FileUtil::Exists(userDBPath)) {
+		// A partial create may have left a directory behind. Never delete a
+		// directory that could belong to a real wallet (seed/DB), and never
+		// follow a reparse point.
+		if (fs::is_symlink(userDBPath)) {
+			throw WALLET_STORE_EXCEPTION("Wallet directory is a reparse point; refusing to overwrite.");
+		}
+
+		if (FileUtil::Exists(walletDBFile)) {
+			WALLET_ERROR_F("Wallet database exists without seed.json for user: {}", username);
+			throw WALLET_STORE_EXCEPTION(
+				"Wallet database exists without a seed file; manual recovery required."
+			);
+		}
+
+		std::error_code ec;
+		const bool empty = fs::is_empty(userDBPath, ec);
+		if (ec || (!empty && !CleanupInterruptedCreateArtifacts(userDBPath))) {
+			WALLET_ERROR_F("Wallet directory is not empty for user: {}", username);
+			throw WALLET_STORE_EXCEPTION("Wallet directory is not empty; refusing to overwrite.");
+		}
+
+		if (!FileUtil::RemoveFile(userDBPath)) {
+			throw WALLET_STORE_EXCEPTION("Failed to clean up incomplete wallet directory.");
+		}
 	}
 
 	if (!FileUtil::CreateDirectories(userDBPath)) {
@@ -92,19 +173,62 @@ Locked<IWalletDB> SqliteStore::CreateWallet(const std::string& username, const E
 		throw WALLET_STORE_EXCEPTION("Failed to create directory.");
 	}
 
-	const std::string seedJSON = encryptedSeed.ToJSON().toStyledString();
-	const std::vector<unsigned char> seedBytes(seedJSON.data(), seedJSON.data() + seedJSON.size());
-	FileUtil::SafeWriteToFile(seedFile, seedBytes);
+	bool seedWritten = false;
+	try
+	{
+		const std::string seedJSON = encryptedSeed.ToJSON().toStyledString();
+		const std::vector<unsigned char> seedBytes(seedJSON.data(), seedJSON.data() + seedJSON.size());
+		FileUtil::SafeWriteToFile(seedFile, seedBytes);
+		seedWritten = true;
 
-	SqliteDB::Ptr pDatabase = CreateWalletDB(username);
+		// SafeWriteToFile does not report write/close failures. Verify the
+		// contents before creating a database around a potentially truncated
+		// seed file.
+		std::vector<unsigned char> seedBytesRead;
+		if (!FileUtil::ReadFile(seedFile, seedBytesRead) || seedBytesRead != seedBytes) {
+			throw WALLET_STORE_EXCEPTION("Failed to verify seed.json after write.");
+		}
 
-	Locked<IWalletDB> walletDB(std::shared_ptr<IWalletDB>(new WalletSqlite(m_walletDirectory, username, pDatabase)));
-	m_userDBs.insert(std::make_pair(username, walletDB));
-	return walletDB;
+		SqliteDB::Ptr pDatabase = CreateWalletDB(username);
+
+		Locked<IWalletDB> walletDB(std::shared_ptr<IWalletDB>(new WalletSqlite(m_walletDirectory, username, pDatabase)));
+		m_userDBs.insert(std::make_pair(username, walletDB));
+		return walletDB;
+	}
+	catch (...)
+	{
+		// Only remove artifacts belonging to this attempt. A pre-existing seed
+		// is rejected above, so seedFile here was written by this call.
+		WALLET_ERROR_F("Failed to create wallet for user: {}; cleaning up partial files", username);
+		if (seedWritten) {
+			FileUtil::RemoveFile(seedFile);
+		}
+
+		const auto removeArtifact = [](const fs::path& base, const std::string& suffix) {
+			fs::path artifact = base;
+			artifact += suffix;
+			FileUtil::RemoveFile(artifact);
+		};
+
+		removeArtifact(seedFile, ".tmp");
+		removeArtifact(walletDBFile, "");
+		removeArtifact(walletDBFile, "-journal");
+		removeArtifact(walletDBFile, "-wal");
+		removeArtifact(walletDBFile, "-shm");
+
+		std::error_code ec;
+		if (fs::is_empty(userDBPath, ec) && !ec) {
+			FileUtil::RemoveFile(userDBPath);
+		}
+
+		throw;
+	}
 }
 
 void SqliteStore::DeleteWallet(const std::string& username)
 {
+	std::lock_guard<std::mutex> lock(m_userDBsMutex);
+
 	if (m_userDBs.find(username) != m_userDBs.end()) {
 		WALLET_ERROR_F("User '{}' still logged in. Can't delete wallet.", username);
 		throw WALLET_STORE_EXCEPTION("User still logged in.");
@@ -158,6 +282,18 @@ SqliteDB::Ptr SqliteStore::CreateWalletDB(const std::string& username)
 		std::string table_creation_cmd = StringUtil::Format("insert into accounts values('m/0/0','DEFAULT',{}, 0);", nextChildPath.GetKeyIndices().back());
 
 		pDatabase->Execute(table_creation_cmd);
+
+		// A newly created wallet must already be at LATEST_SCHEMA_VERSION and
+		// contain every required column. Otherwise remove it and fail instead
+		// of producing a wallet that only fails on its first reopen.
+		VersionTable::VerifySchema(*pDatabase);
+		if (VersionTable::GetCurrentVersion(*pDatabase) != LATEST_SCHEMA_VERSION) {
+			throw WALLET_STORE_EXCEPTION_F(
+				"New wallet database was created with schema version {}, expected {}",
+				VersionTable::GetCurrentVersion(*pDatabase),
+				LATEST_SCHEMA_VERSION
+			);
+		}
 
 		transaction.Commit();
 		

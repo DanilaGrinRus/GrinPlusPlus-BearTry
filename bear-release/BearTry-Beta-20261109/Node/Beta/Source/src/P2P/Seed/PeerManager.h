@@ -39,6 +39,7 @@ public:
 	void AddFreshPeers(const std::vector<SocketAddress>& peerAddresses);
 	void BanPeer(const IPAddress& address, const EBanReason banReason);
 	void UnbanPeer(const IPAddress& address);
+	void UnbanAllPeers();
 
 private:
 	PeerManager(const std::shared_ptr<Context>& pContext, std::shared_ptr<Locked<IPeerDB>> pPeerDB);

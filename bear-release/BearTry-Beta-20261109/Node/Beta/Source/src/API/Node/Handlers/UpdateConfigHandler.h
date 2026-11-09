@@ -145,7 +145,11 @@ public:
 		writePeers("ALLOWED_PEERS", allowedPeers);
 		writePeers("BLOCKED_PEERS", blockedPeers);
 
-		const fs::path configPath = config.GetDataDirectory() / "server_config.json";
+		fs::path configPath = Global::GetConfigFilePath();
+		if (configPath.empty())
+		{
+			configPath = config.GetDataDirectory() / "server_config.json";
+		}
 		const fs::path tempPath = configPath.string() + ".tmp";
 		const fs::path backupPath = configPath.string() + ".bak";
 		std::error_code error;

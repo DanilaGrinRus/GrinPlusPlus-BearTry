@@ -100,7 +100,7 @@ void TxHashSetPipe::ReceiveTxHashSet(const Connection::Ptr& pConnection, const T
 	} catch (...) {
 		m_processing = false;
 		m_pSyncStatus->SetTxHashSetDownloading(false);
-		pConnection->ResumeReceives();
+		pConnection->CloseAfterMessage();
 		throw;
 	}
 }

@@ -27,6 +27,9 @@ public:
 	uint8_t GetVersion() const final;
 	void SetVersion(const uint8_t version) final;
 
+	// Consistent point-in-time checkpoint of the open chain RocksDB.
+	bool CreateCheckpoint(const fs::path& checkpointPath) const;
+
 	void MigrateBlocks() final;
 	void Compact(const std::shared_ptr<const Chain>& pChain) final;
 
@@ -57,10 +60,12 @@ public:
 	void AddKernelPosition(uint64_t generation, const Commitment& kernelExcess, const OutputLocation& location) final;
 	std::unique_ptr<OutputLocation> GetKernelPosition(uint64_t generation, const Commitment& kernelExcess) const final;
 	void RemoveKernelPosition(uint64_t generation, const Commitment& kernelExcess, const OutputLocation& location) final;
+	std::pair<uint64_t, Hash> RemoveKernelPositionsFrom(uint64_t generation, uint64_t firstLeafIndex) final;
 	void ClearKernelPositions(uint64_t generation) final;
 	void ClearAllKernelPositions() final;
 	uint64_t GetKernelPositionCount(uint64_t generation) const final;
 	Hash GetKernelPositionChecksum(uint64_t generation) const final;
+	std::pair<uint64_t, Hash> GetKernelPositionDigest(uint64_t generation) const final;
 
 private:
 	const Config& m_config;

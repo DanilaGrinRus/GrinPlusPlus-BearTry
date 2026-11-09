@@ -1,4 +1,5 @@
 #include "PeersAPI.h"
+#include <Net/PeerAPIPath.h>
 #include "../NodeContext.h"
 
 #include <Core/Global.h>
@@ -116,7 +117,7 @@ int PeersAPI::GetAllPeers_Handler(struct mg_connection* conn, void* pNodeContext
 	{
 		const std::vector<PeerConstPtr> peers = pServer->m_pP2PServer->GetAllPeers();
 
-		Json::Value json;
+		Json::Value json(Json::arrayValue);
 		for (PeerConstPtr peer : peers)
 		{
 			json.append(peer->ToJSON());
@@ -145,7 +146,7 @@ int PeersAPI::GetConnectedPeers_Handler(struct mg_connection* conn, void* pNodeC
 	{
 		const std::vector<ConnectedPeer> connectedPeers = pServer->m_pP2PServer->GetConnectedPeers();
 
-		Json::Value json;
+		Json::Value json(Json::arrayValue);
 		for (const ConnectedPeer& connectedPeer : connectedPeers)
 		{
 			json.append(connectedPeer.ToJSON());
@@ -213,7 +214,7 @@ int PeersAPI::Peer_Handler(struct mg_connection* conn, void* pNodeContext)
 			{
 				return HTTPUtil::BuildSuccessResponse(
 					conn,
-					Json::Value().append(peerOpt.value()->ToJSON()).toStyledString()
+					peerOpt.value()->ToJSON().toStyledString()
 				);
 			}
 		}
@@ -229,6 +230,7 @@ int PeersAPI::Peer_Handler(struct mg_connection* conn, void* pNodeContext)
 	catch (std::exception& e)
 	{
 		LOG_ERROR_F("Exception thrown: {}", e.what());
+		return HTTPUtil::BuildInternalErrorResponse(conn, "Peer operation failed.");
 	}
 
 	return HTTPUtil::BuildNotFoundResponse(conn, "Peer not found.");
@@ -236,19 +238,7 @@ int PeersAPI::Peer_Handler(struct mg_connection* conn, void* pNodeContext)
 
 std::string PeersAPI::ParseIPAddress(const std::string& request)
 {
-	const std::size_t colonPos = request.find(":");
-	if (colonPos != std::string::npos)
-	{
-		return request.substr(0, colonPos);
-	}
-
-	const std::size_t slashPos = request.find("/");
-	if (slashPos != std::string::npos)
-	{
-		return request.substr(0, slashPos);
-	}
-
-	return request;
+	return PeerAPIPath::Address(request);
 }
 
 std::string PeersAPI::ParseCommand(const std::string& request)

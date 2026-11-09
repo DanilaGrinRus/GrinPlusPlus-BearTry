@@ -61,7 +61,7 @@ TEST_CASE("BitmapBlock::BitOrderMatchesGrin")
 // they are absent (CI, clean checkouts).
 TEST_CASE("PibdOracleVector::BitmapRootsMatchRust")
 {
-	const fs::path dir = "C:/DHW/.tmp/oracle/out";
+	const fs::path dir = "fixtures/pibd/oracle";
 	const fs::path fullSegmentPath = dir / "seg_h9_i0.bin";
 	const fs::path wholeSegmentPath = dir / "seg_h13_i0.bin";
 	if (!FileUtil::Exists(fullSegmentPath) || !FileUtil::Exists(wholeSegmentPath)) {

@@ -29,15 +29,16 @@ public:
 	}
 
 	CBigInteger(const std::vector<unsigned char, ALLOC>& data)
-		: m_data(data.cbegin(), data.cbegin() + NUM_BYTES)
-	{
-
+		{
+		if (data.size() < NUM_BYTES) throw std::invalid_argument("Short fixed-width integer");
+		m_data.assign(data.begin(), data.begin() + NUM_BYTES);
 	}
 
 	CBigInteger(std::vector<unsigned char, ALLOC>&& data)
 		: m_data(std::move(data))
 	{
-
+		if (m_data.size() < NUM_BYTES) throw std::invalid_argument("Short fixed-width integer");
+		m_data.resize(NUM_BYTES);
 	}
 
 	CBigInteger(const unsigned char* data)
@@ -153,7 +154,7 @@ public:
 
 	CBigInteger& operator++()
 	{
-		for (size_t i = NUM_BYTES - 1; i >= 0; i--)
+		for (size_t i = NUM_BYTES; i-- > 0;)
 		{
 			if (m_data[i] == UINT8_MAX) {
 				m_data[i] = 0;
@@ -169,18 +170,8 @@ public:
 
 	CBigInteger operator++(int)
 	{
-		CBigInteger<NUM_BYTES, ALLOC> current = *this;
-		for (size_t i = NUM_BYTES - 1; i >= 0; i--)
-		{
-			if (m_data[i] == UINT8_MAX) {
-				m_data[i] = 0;
-			}
-			else {
-				++m_data[i];
-				break;
-			}
-		}
-
+		CBigInteger current = *this;
+		++(*this);
 		return current;
 	}
 

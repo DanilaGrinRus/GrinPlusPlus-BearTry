@@ -168,9 +168,49 @@ public:
 		return m_scheduler->TakeRequests(now);
 	}
 
+	std::vector<PibdScheduler::AssignedRequest> TakeRequestsForPeers(
+		const Clock::time_point now,
+		const std::vector<std::string>& peers,
+		const size_t perPeerLimit)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_status != EStatus::Downloading || m_scheduler == nullptr) {
+			return {};
+		}
+		if (m_scheduler->IsFailed()) {
+			FailLocked(m_scheduler->GetFailure());
+			return {};
+		}
+		if (m_scheduler->IsComplete()) {
+			m_status = EStatus::Completed;
+			return {};
+		}
+		return m_scheduler->TakeRequestsForPeers(now, peers, perPeerLimit);
+	}
+
+	void ReleaseAssignment(const PibdScheduler::AssignedRequest& assigned)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_scheduler != nullptr) {
+			m_scheduler->ReleaseAssignment(assigned);
+		}
+	}
+
+	size_t ReleasePeer(const std::string& peer)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_scheduler != nullptr) {
+			return m_scheduler->ReleasePeer(peer);
+		}
+		return 0;
+	}
+
 	// Feed a segment response. An invalid segment fails the attempt (the caller
 	// then falls back to the legacy download).
-	bool OnResponse(const SegmentResponseMessage& message, const Clock::time_point now)
+	bool OnResponse(
+		const SegmentResponseMessage& message,
+		const Clock::time_point now,
+		const std::string& peer = std::string())
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (m_status != EStatus::Downloading || m_scheduler == nullptr) {
@@ -178,7 +218,7 @@ public:
 		}
 
 		try {
-			const bool applied = m_scheduler->OnResponse(message, now);
+			const bool applied = m_scheduler->OnResponse(message, now, peer);
 			if (applied) {
 				m_resume.Store(message.GetMessageType(), message.SerializePayload());
 			}

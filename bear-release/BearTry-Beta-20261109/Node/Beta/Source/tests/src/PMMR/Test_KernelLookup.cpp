@@ -63,5 +63,15 @@ TEST_CASE("TxHashSet::FindKernelByExcess uses 1-based PMMR positions")
 	REQUIRE(bounded.has_value());
 	REQUIRE(bounded->second == 5);
 
+	pKernelMMR->Commit();
+	pKernelMMR->Rewind(3);
+	pKernelMMR->ApplyKernel(MakeKernel(9));
+	pKernelMMR->Rewind(2);
+	pKernelMMR->Rollback();
+	for (uint8_t i = 1; i <= 3; ++i) {
+		auto restored = pKernelMMR->GetKernelAt(LeafIndex::At(i));
+		REQUIRE(restored != nullptr);
+		REQUIRE(restored->GetExcessCommitment() == MakeCommitment(i));
+	}
 	fs::remove_all(dir, error);
 }

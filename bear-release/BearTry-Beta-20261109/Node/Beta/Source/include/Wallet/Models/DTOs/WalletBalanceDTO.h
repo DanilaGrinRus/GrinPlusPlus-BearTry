@@ -45,7 +45,7 @@ public:
 private:
     static std::string FormatAmount(const uint64_t amount)
     {
-        return std::to_string(amount / 1000000000) + "." + std::to_string(amount % 1000000000);
+        return std::to_string(amount / 1000000000) + "." + std::to_string(1000000000 + amount % 1000000000).substr(1);
     }
 
     uint64_t m_blockHeight;

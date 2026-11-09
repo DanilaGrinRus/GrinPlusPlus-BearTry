@@ -11,8 +11,10 @@
 #include <Core/Config.h>
 #include <chrono>
 #include <atomic>
+#include <functional>
 #include <queue>
 #include <deque>
+#include <utility>
 
 // Forward Declarations
 class IMessage;
@@ -56,6 +58,12 @@ public:
 
 	void Connect();
 	void Disconnect();
+	// Invoked exactly once when the handshake thread finishes, before the
+	// connection enters the normal message loop (or after a failed handshake).
+	void SetHandshakeCallback(std::function<void()> callback)
+	{
+		m_handshakeCallback = std::move(callback);
+	}
 	// Called from a message handler while m_mutex is already held. The raw
 	// archive body cannot be parsed as a following P2P message.
 	void CloseAfterMessage();
@@ -97,6 +105,7 @@ public:
 
 private:
 	static void Thread_Connect(std::shared_ptr<Connection> pConnection);
+	void NotifyHandshakeComplete();
 	void HandleConnected(const asio::error_code& ec);
 	void HandleReceivedHeader(const asio::error_code& ec, const size_t bytes_received);
 	void HandleReceivedBody(MessageHeader msg_header, const asio::error_code& ec, const size_t bytes_received);
@@ -111,10 +120,12 @@ private:
 	std::chrono::system_clock::time_point m_lastReceived;
 	std::vector<uint8_t> m_received;
 
+	std::atomic<int> m_connectError{0};
 	std::atomic<bool> m_terminate;
 	std::atomic<bool> m_sendingDisabled;
-	std::atomic<bool> m_receivingDisabled;
+	std::atomic<bool> m_receivingDisabled{false};
 	std::thread m_connectionThread;
+	std::function<void()> m_handshakeCallback;
 	const uint64_t m_connectionId;
 	ConnectedPeer m_connectedPeer;
 	mutable SocketPtr m_pSocket;

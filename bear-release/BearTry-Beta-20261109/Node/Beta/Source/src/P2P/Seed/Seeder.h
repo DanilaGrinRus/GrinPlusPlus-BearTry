@@ -2,6 +2,7 @@
 
 #include "../ConnectionManager.h"
 #include "../MessageProcessor.h"
+#include <P2P/Seed/InboundAdmission.h>
 
 #include <Core/Config.h>
 #include <BlockChain/BlockChain.h>
@@ -69,6 +70,13 @@ private:
 	std::shared_ptr<asio::io_service> m_pAsioContext;
 	std::shared_ptr<asio::ip::tcp::acceptor> m_pAcceptor;
 	std::shared_ptr<asio::ip::tcp::socket> m_pSocket;
+
+	// Bounds pre-handshake inbound connections. MAX_PEERS alone only bounds
+	// established connections, so a peer could otherwise open an unbounded
+	// number of sockets that each hold a handshake thread. Shared ownership
+	// lets a detached handshake thread release its slot after Seeder shutdown.
+	std::shared_ptr<P2P::InboundAdmission> m_inboundAdmission =
+		std::make_shared<P2P::InboundAdmission>();
 
 	std::thread m_asioThread;
 	std::thread m_seedThread;

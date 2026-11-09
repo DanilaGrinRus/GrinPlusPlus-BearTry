@@ -9,28 +9,68 @@
 #include <Wallet/Models/Slatepack/Armor.h>
 #include <Wallet/NodeClient.h>
 #include <Wallet/Wallet.h>
+#include <Wallet/WalletTxType.h>
 
 // TODO: To help prevent "play" attacks, make sure any outputs provided by the receiver are not already on-chain.
 
-std::pair<Slate, Transaction> FinalizeSlateBuilder::Finalize(const Slate& rcvSlate) const
+FinalizeSlateBuilder::FinalizeResult FinalizeSlateBuilder::Finalize(const Slate& rcvSlate) const
 {
 	Slate finalizeSlate = rcvSlate;
 	finalizeSlate.stage = ESlateStage::STANDARD_FINALIZED;
-	
+
+	// Load WalletTx first: it identifies whether this slate was already
+	// finalized. Repeated finalize calls must not insert a duplicate slate row.
+	WalletTx walletTx = m_pWallet->GetTransactionBySlateId(finalizeSlate.GetId());
+
+	if (walletTx.GetType() == EWalletTxType::SENDING_FINALIZED)
+	{
+		if (!walletTx.GetTransaction().has_value())
+		{
+			throw WALLET_EXCEPTION_F("Finalized transaction {} has no stored transaction.", walletTx.GetId());
+		}
+
+		// The S3 slate and the SENDING_FINALIZED status are written in the same
+		// database batch, so a finalized transaction always has a stored S3 slate.
+		Slate storedSlate = m_pWallet->GetSlate(finalizeSlate.GetId(), ESlateStage::STANDARD_FINALIZED);
+
+		WALLET_INFO_F(
+			"Slate {} is already finalized; reusing stored transaction (idempotent finalize).",
+			uuids::to_string(finalizeSlate.GetId())
+		);
+
+		return FinalizeResult{ storedSlate, walletTx.GetTransaction().value(), walletTx.GetId(), true };
+	}
+
+	if (walletTx.GetType() != EWalletTxType::SENDING_STARTED)
+	{
+		WALLET_ERROR_F(
+			"Cannot finalize slate {}: wallet tx {} is in status {}.",
+			uuids::to_string(finalizeSlate.GetId()),
+			walletTx.GetId(),
+			WalletTxType::ToString(walletTx.GetType())
+		);
+		throw WALLET_EXCEPTION_F(
+			"Cannot finalize slate in status {}.",
+			WalletTxType::ToString(walletTx.GetType())
+		);
+	}
+
 	// Load original send Slate
 	Slate sendSlate = m_pWallet->GetSlate(finalizeSlate.GetId(), ESlateStage::STANDARD_SENT);
-
-	// Load WalletTx
-	WalletTx walletTx = m_pWallet->GetTransactionBySlateId(finalizeSlate.GetId());
 
 	// Load private context
 	SlateContextEntity slateContext = m_pWallet->GetSlateContext(finalizeSlate.GetId());
 
+	if (!walletTx.GetTransaction().has_value())
+	{
+		throw WALLET_EXCEPTION_F("Send transaction {} has no stored transaction.", walletTx.GetId());
+	}
+
 	if (finalizeSlate.offset.IsNull()) {
 		finalizeSlate.offset = walletTx.GetTransaction().value().GetOffset();
-		WALLET_INFO_F("Offset not supplied. Using original: {}", finalizeSlate.offset.ToHex());
+		WALLET_DEBUG_F("Offset not supplied for slate {}; using the original offset.", uuids::to_string(finalizeSlate.GetId()));
 	} else {
-		WALLET_INFO_F("Offset {} supplied by receiver.", finalizeSlate.offset.ToHex());
+		WALLET_DEBUG_F("Offset supplied by receiver for slate {}.", uuids::to_string(finalizeSlate.GetId()));
 	}
 
 	// Add inputs, outputs, and omitted fields
@@ -93,7 +133,7 @@ std::pair<Slate, Transaction> FinalizeSlateBuilder::Finalize(const Slate& rcvSla
 		Armor::Pack(m_pWallet->GetSlatepackAddress(), finalizeSlate)
 	);
 
-	return std::pair{ finalizeSlate, *pTransaction };
+	return FinalizeResult{ finalizeSlate, *pTransaction, walletTx.GetId(), false };
 }
 
 void FinalizeSlateBuilder::AddPartialSignature(
@@ -153,8 +193,9 @@ std::unique_ptr<Transaction> FinalizeSlateBuilder::BuildTransaction(
 	Signature aggSignature = SignatureUtil::AggregateSignatures(finalizeSlate);
 	
 	PublicKey totalExcess = finalizeSlate.CalculateTotalExcess();
-	WALLET_INFO_F(
-		"Validating signature {} for excess {} against message {}.",
+	WALLET_DEBUG_F(
+		"Validating slate {}: signature {} for excess {} against message {}.",
+		uuids::to_string(finalizeSlate.GetId()),
 		aggSignature,
 		totalExcess,
 		kernelMessage

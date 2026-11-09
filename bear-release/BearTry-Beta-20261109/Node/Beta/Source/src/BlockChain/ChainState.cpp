@@ -220,6 +220,7 @@ std::unique_ptr<BlockWithOutputs> ChainState::GetBlockWithOutputs(const uint64_t
 std::vector<std::pair<uint64_t, Hash>> ChainState::GetBlocksNeeded(const uint64_t maxNumBlocks) const
 {
     std::vector<std::pair<uint64_t, Hash>> blocksNeeded;
+    if (maxNumBlocks == 0) return blocksNeeded;
     blocksNeeded.reserve(maxNumBlocks);
 
     std::shared_ptr<const Chain> pCandidateChain = GetChainStore()->GetCandidateChain();
