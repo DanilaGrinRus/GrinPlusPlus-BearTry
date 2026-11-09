@@ -1,0 +1,201 @@
+diff --git a/src/P2P/Sync/StateSyncer.cpp b/src/P2P/Sync/StateSyncer.cpp
+index 238fefe..1e95ce2 100644
+--- a/src/P2P/Sync/StateSyncer.cpp
++++ b/src/P2P/Sync/StateSyncer.cpp
+@@ -58,22 +58,7 @@ namespace
+ 	// snapshot/rewind; refuse the attempt if the bound cannot be recorded.
+ 	bool IsRecoveryMarkerWritable()
+ 	{
+-		const fs::path marker = RecoveryFailedMarker();
+-		std::error_code error;
+-		fs::create_directories(marker.parent_path(), error);
+-		if (error) {
+-			return false;
+-		}
+-
+-		const fs::path probe = marker.string() + ".write_probe";
+-		{
+-			std::ofstream out(probe, std::ios::trunc);
+-			if (!out.good()) {
+-				return false;
+-			}
+-		}
+-		fs::remove(probe, error);
+-		return true;
++		return StateSyncer::IsRecoveryMarkerPathWritable(RecoveryFailedMarker());
+ 	}
+ 
+ 	void RecordRecoveryFailure(const Hash& horizonHash, const std::string& error)
+@@ -505,6 +490,48 @@ void StateSyncer::TryRecoverArchive()
+ 	}
+ }
+ 
++bool StateSyncer::FlushedMatchesConfirmed(
++	const BlockHeaderPtr& pFlushed,
++	const BlockHeaderPtr& pConfirmedTip,
++	std::string* pReason)
++{
++	if (pFlushed == nullptr || pConfirmedTip == nullptr) {
++		if (pReason != nullptr) *pReason = "flushed/confirmed header is missing";
++		return false;
++	}
++
++	if (pConfirmedTip->GetHash() != pFlushed->GetHash() ||
++		pConfirmedTip->GetHeight() != pFlushed->GetHeight()) {
++		if (pReason != nullptr) *pReason = "flushed TxHashSet is not the confirmed tip";
++		return false;
++	}
++
++	return true;
++}
++
++bool StateSyncer::ValidateExistingArchiveForHeader(
++	const fs::path& archivePath,
++	const BlockHeaderPtr& pHeader,
++	std::string* pError)
++{
++	return IsReadyArchiveForHeader(archivePath, pHeader, pError);
++}
++
++bool StateSyncer::IsRecoveryMarkerPathWritable(const fs::path& markerPath)
++{
++	std::error_code error;
++	fs::create_directories(markerPath.parent_path(), error);
++	if (error) return false;
++
++	const fs::path probe = markerPath.string() + ".write_probe";
++	{
++		std::ofstream out(probe, std::ios::trunc);
++		if (!out.good()) return false;
++	}
++	fs::remove(probe, error);
++	return true;
++}
++
+ bool StateSyncer::PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::string* pError)
+ {
+ 	std::string localError;
+@@ -537,9 +564,7 @@ bool StateSyncer::PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::str
+ 		return false;
+ 	}
+ 
+-	if (pConfirmedTip->GetHash() != pFlushed->GetHash() ||
+-		pConfirmedTip->GetHeight() != pFlushed->GetHeight()) {
+-		error = "archive preflight: flushed TxHashSet is not the confirmed tip";
++	if (!FlushedMatchesConfirmed(pFlushed, pConfirmedTip, &error)) {
+ 		return false;
+ 	}
+ 
+diff --git a/src/P2P/Sync/StateSyncer.h b/src/P2P/Sync/StateSyncer.h
+index cb06c06..2740b75 100644
+--- a/src/P2P/Sync/StateSyncer.h
++++ b/src/P2P/Sync/StateSyncer.h
+@@ -31,6 +31,17 @@ public:
+ 
+ 	bool SyncState(SyncStatus& syncStatus);
+ 
++	// Testable fail-closed invariants (see build-14 fixtures).
++	static bool FlushedMatchesConfirmed(
++		const BlockHeaderPtr& pFlushed,
++		const BlockHeaderPtr& pConfirmedTip,
++		std::string* pReason = nullptr);
++	static bool ValidateExistingArchiveForHeader(
++		const fs::path& archivePath,
++		const BlockHeaderPtr& pHeader,
++		std::string* pError = nullptr);
++	static bool IsRecoveryMarkerPathWritable(const fs::path& markerPath);
++
+ 	enum class EPibdResult
+ 	{
+ 		NotAttempted,   // fall back to txhashset.zip
+diff --git a/tests/src/P2P/CMakeLists.txt b/tests/src/P2P/CMakeLists.txt
+index c0290ee..d425c94 100644
+--- a/tests/src/P2P/CMakeLists.txt
++++ b/tests/src/P2P/CMakeLists.txt
+@@ -2,4 +2,5 @@ list_append_parent(
+     test_sources
+     ${CMAKE_CURRENT_LIST_DIR}
+     "Test_BlockPipeBan.cpp"
++    "Test_StateSyncerInvariants.cpp"
+ )
+diff --git a/tests/src/P2P/Test_StateSyncerInvariants.cpp b/tests/src/P2P/Test_StateSyncerInvariants.cpp
+new file mode 100644
+index 0000000..e92da01
+--- /dev/null
++++ b/tests/src/P2P/Test_StateSyncerInvariants.cpp
+@@ -0,0 +1,34 @@
++#include <catch.hpp>
++
++#include "../PMMR/Test_NrdSupport.h"
++#include <P2P/Sync/StateSyncer.h>
++
++#include <filesystem.h>
++
++TEST_CASE("StateSyncer flushed/confirmed invariant fails closed")
++{
++	const BlockHeaderPtr pA = NrdTest::MakeHeader(4, 10, HASH::ZERO, 1, 1);
++	const BlockHeaderPtr pB = NrdTest::MakeHeader(4, 10, HASH::ZERO, 1, 2);
++
++	std::string reason;
++	REQUIRE(StateSyncer::FlushedMatchesConfirmed(pA, pA, &reason));
++	REQUIRE(reason.empty());
++	REQUIRE_FALSE(StateSyncer::FlushedMatchesConfirmed(pA, pB, &reason));
++	REQUIRE_FALSE(reason.empty());
++	REQUIRE_FALSE(StateSyncer::FlushedMatchesConfirmed(nullptr, pA, &reason));
++	REQUIRE_FALSE(StateSyncer::FlushedMatchesConfirmed(pA, nullptr, &reason));
++}
++
++TEST_CASE("StateSyncer recovery marker probe rejects unwritable path")
++{
++	const fs::path root = fs::temp_directory_path() / "state-syncer-marker-probe";
++	std::error_code error;
++	fs::remove_all(root, error);
++	fs::create_directories(root / "marker_is_dir", error);
++	REQUIRE_FALSE(error);
++
++	REQUIRE_FALSE(StateSyncer::IsRecoveryMarkerPathWritable(root / "marker_is_dir"));
++	REQUIRE(StateSyncer::IsRecoveryMarkerPathWritable(root / "recovery_failed"));
++
++	fs::remove_all(root, error);
++}
+diff --git a/tests/src/PMMR/Test_PibdServing.cpp b/tests/src/PMMR/Test_PibdServing.cpp
+index 96d1def..6c45e3b 100644
+--- a/tests/src/PMMR/Test_PibdServing.cpp
++++ b/tests/src/PMMR/Test_PibdServing.cpp
+@@ -11,6 +11,7 @@
+ #include <Crypto/Models/Signature.h>
+ #include <P2P/PIBD/PibdArchiveServer.h>
+ #include <P2P/ArchivePublication.h>
++#include <P2P/Sync/StateSyncer.h>
+ #include <P2P/PIBD/PibdParams.h>
+ #include <P2P/PIBD/PibdSegmentService.h>
+ #include <P2P/PIBD/PibdSession.h>
+@@ -868,3 +869,28 @@ TEST_CASE("P2P::ArchivePublicationValidatedAtomicPublish")
+ 
+ 	fs::remove_all(root, error);
+ }
++// F13: a container-valid archive with a header that does not match its roots
++// must not be accepted as ready. Uses the existing tiny-state zip helpers.
++TEST_CASE("PibdArchiveServer::ExistingArchiveHeaderRootsValidated")
++{
++	const fs::path root = fs::temp_directory_path() / "g09-readiness-wrong-root";
++	std::error_code error;
++	fs::remove_all(root, error);
++	fs::create_directories(root, error);
++	REQUIRE_FALSE(error);
++
++	const fs::path stateDir = root / "state";
++	const PibdSnapshot snapshot = WriteTestState(stateDir);
++	const BlockHeaderPtr pGoodHeader = MakeArchiveHeader(snapshot);
++	const fs::path zipPath = BuildArchiveZip(stateDir, root / "build", true);
++
++	std::string validationError;
++	REQUIRE(StateSyncer::ValidateExistingArchiveForHeader(zipPath, pGoodHeader, &validationError));
++	REQUIRE(validationError.empty());
++
++	const BlockHeaderPtr pWrongHeader = Global::GetGenesisHeader();
++	REQUIRE_FALSE(StateSyncer::ValidateExistingArchiveForHeader(zipPath, pWrongHeader, &validationError));
++	REQUIRE_FALSE(validationError.empty());
++
++	fs::remove_all(root, error);
++}

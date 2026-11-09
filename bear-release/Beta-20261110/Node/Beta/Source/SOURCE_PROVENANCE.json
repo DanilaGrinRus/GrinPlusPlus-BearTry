@@ -1,0 +1,36 @@
+{
+  "status": "RECOVERED SOURCE — buildable, not byte-identical to B565",
+  "recovered_at": "2026-11-09T18:30:00+07:00",
+  "base": "source-vcpkg.tar.gz (Windows-buildable CMake)",
+  "base_sha256": "634CCE1DD40459E1CC5728600C5916D81A2CE11AA73A5AC44D7E57E9F23C4EBA",
+  "linux_variant": {
+    "archive": "source-build.tar.gz",
+    "sha256": "FE1C2E53F00D94EB7DB661F0083F1B9147C9110BDA7EA316DA9669E97F161DB6",
+    "note": "Linux-patched CMake variant; not the base of the frozen Windows tree"
+  },
+  "binary": "B565612BCA31D9EFE4117FC37FD2C7680ED8B84D9830E47591EFA3C28BA3D64D",
+  "binary_source_exact": false,
+  "task72_patch": {
+    "sha256": "C4E042F1C52D4BAFD62606D2EAF63912092354BF20F517FDFE5F94BA6ADA0AC1",
+    "applied": true,
+    "note": "Exact patch from agent bundle, not compact rewrite."
+  },
+  "wallet_overlay": "Wallet/Support: TorConfig preserve/write-error, Config helpers, UpdateTorConfigHandler, Test_TorConfig",
+  "write_torrc_content": "present only in wallet overlay; absent from B565",
+  "build": {
+    "verified": true,
+    "generator": "Visual Studio 17 2022 x64 Release",
+    "result": "GrinNode and Tests build from Source with local sysroot",
+    "grinnode_sha256": "B52B6C5D84B25375463634F087E39CD65CF9BF2F3A1E4DB090E7AEAFEBB69C4A",
+    "grinnode_size": 8476672,
+    "tests_sha256": "96E80CBB9BF3C3C5382126A304BF0B628E4B38573E9B84CCAF602ECC471C6708",
+    "tests_size": 11655168,
+    "matches_b565": false,
+    "delta": "GrinNode +14336 B vs B565; not byte-exact"
+  },
+  "unproven": [
+    "exact per-file B565 manifest",
+    "byte-identical B565 EXE reproduction (build path/toolchain state unavailable)"
+  ],
+  "note": "Source builds and runs; binary remains authoritative. This is the accepted recovered source state."
+}

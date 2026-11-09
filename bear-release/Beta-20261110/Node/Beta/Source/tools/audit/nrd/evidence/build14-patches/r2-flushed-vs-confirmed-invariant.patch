@@ -1,0 +1,61 @@
+diff --git a/src/P2P/Sync/StateSyncer.cpp b/src/P2P/Sync/StateSyncer.cpp
+index 6193e59..0f0d58a 100644
+--- a/src/P2P/Sync/StateSyncer.cpp
++++ b/src/P2P/Sync/StateSyncer.cpp
+@@ -426,7 +426,7 @@ void StateSyncer::TryRecoverArchive()
+ 	}
+ }
+ 
+-bool StateSyncer::PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::string* pError) const
++bool StateSyncer::PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::string* pError)
+ {
+ 	std::string localError;
+ 	std::string& error = pError != nullptr ? *pError : localError;
+@@ -436,10 +436,31 @@ bool StateSyncer::PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::str
+ 		return false;
+ 	}
+ 
+-	const BlockHeaderPtr pFlushed =
+-		m_pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
++	// The snapshot/Rewind starts from the TxHashSet flushed header, not from the
++	// confirmed chain tip. Require the two views to be identical before using
++	// confirmed headers to validate a rewind range.
++	const std::shared_ptr<ITxHashSet> pTxHashSet = m_pBlockChain->GetTxHashSet();
++	if (pTxHashSet == nullptr) {
++		error = "archive preflight: live TxHashSet is missing";
++		return false;
++	}
++
++	const BlockHeaderPtr pFlushed = pTxHashSet->GetFlushedBlockHeader();
+ 	if (pFlushed == nullptr) {
+-		error = "archive preflight: confirmed flushed tip header is missing";
++		error = "archive preflight: TxHashSet flushed header is missing";
++		return false;
++	}
++
++	const BlockHeaderPtr pConfirmedTip =
++		m_pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
++	if (pConfirmedTip == nullptr) {
++		error = "archive preflight: confirmed tip header is missing";
++		return false;
++	}
++
++	if (pConfirmedTip->GetHash() != pFlushed->GetHash() ||
++		pConfirmedTip->GetHeight() != pFlushed->GetHeight()) {
++		error = "archive preflight: flushed TxHashSet is not the confirmed tip";
+ 		return false;
+ 	}
+ 
+diff --git a/src/P2P/Sync/StateSyncer.h b/src/P2P/Sync/StateSyncer.h
+index f7f8502..cb06c06 100644
+--- a/src/P2P/Sync/StateSyncer.h
++++ b/src/P2P/Sync/StateSyncer.h
+@@ -56,7 +56,7 @@ private:
+ 	// Fail-closed preflight before any snapshot/rewind: every block from the
+ 	// target state through the confirmed flushed tip must have a body record and
+ 	// every input commitment must be present in the canonical SPENT_OUTPUTS map.
+-	bool PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::string* pError = nullptr) const;
++	bool PreflightArchiveRewind(const BlockHeaderPtr& pTarget, std::string* pError = nullptr);
+ 	// If a previous activation left pibd_state.complete but no archive (e.g. the
+ 	// snapshot failed), retry once on startup.
+ 	void TryRecoverArchive();

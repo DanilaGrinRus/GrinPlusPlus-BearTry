@@ -1,0 +1,85 @@
+diff --git a/src/P2P/Sync/StateSyncer.cpp b/src/P2P/Sync/StateSyncer.cpp
+index 6193e59..87ebf78 100644
+--- a/src/P2P/Sync/StateSyncer.cpp
++++ b/src/P2P/Sync/StateSyncer.cpp
+@@ -64,6 +64,50 @@ namespace
+ 			// The failure marker is diagnostic only; never mask the original failure.
+ 		}
+ 	}
++
++	// An existing final archive is only "ready" if its exact header roots/sizes
++	// validate. Container-only readiness would suppress regeneration of a
++	// complete-but-wrong-root archive.
++	bool IsReadyArchiveForHeader(
++		const fs::path& archivePath,
++		const BlockHeaderPtr& pHeader,
++		std::string* pError)
++	{
++		std::string readinessError;
++		if (!ArchivePublication::IsReadyArchive(archivePath, &readinessError)) {
++			if (pError != nullptr) {
++				*pError = readinessError;
++			}
++			return false;
++		}
++
++		static std::atomic<uint64_t> s_validationId{ 0 };
++		const fs::path validationRoot = fs::temp_directory_path() /
++			("g09-readiness-validate-" + pHeader->ShortHash() + "-" +
++				std::to_string(s_validationId.fetch_add(1)));
++		FileRemover validationRemover(validationRoot);
++
++		TxHashSetZip archiveZip(Global::GetConfig());
++		if (!archiveZip.Extract(archivePath, *pHeader, validationRoot)) {
++			if (pError != nullptr) {
++				*pError = "existing archive extraction failed";
++			}
++			return false;
++		}
++
++		std::string validationError;
++		if (PibdArchiveServer::LoadAndValidate(
++				validationRoot, pHeader, &validationError) == nullptr) {
++			if (pError != nullptr) {
++				*pError = validationError.empty()
++					? "existing archive root validation failed"
++					: validationError;
++			}
++			return false;
++		}
++
++		return true;
++	}
+ }
+ 
+ bool StateSyncer::SyncState(SyncStatus& syncStatus)
+@@ -400,10 +444,14 @@ void StateSyncer::TryRecoverArchive()
+ 
+ 		const fs::path archivePath = TxHashSetArchive::Path(
+ 			Global::GetConfig().GetTxHashSetPath(), pHeader);
+-		if (ArchivePublication::IsReadyArchive(archivePath)) {
++		std::string archiveValidationError;
++		if (IsReadyArchiveForHeader(archivePath, pHeader, &archiveValidationError)) {
+ 			ClearRecoveryBlocked();
+ 			return;
+ 		}
++		LOG_WARNING_F(
++			"Existing archive at {} failed exact-header readiness; regenerating: {}",
++			archivePath.string(), archiveValidationError);
+ 
+ 		// Fail-closed and bounded: a persisted failure marker is only honored for
+ 		// the same target hash. A different activation/horizon gets one fresh try.
+@@ -503,9 +551,10 @@ bool StateSyncer::ArchivePibdState(const Hash& horizonHash, std::string* pError)
+ 		const fs::path archivePath = TxHashSetArchive::Path(
+ 			Global::GetConfig().GetTxHashSetPath(),
+ 			pHeader);
+-		// Readiness must validate the archive, not merely check existence. Root
+-		// validation still happens in PibdArchiveServer before it is advertised.
+-		if (ArchivePublication::IsReadyArchive(archivePath)) {
++		// Readiness must validate the archive against the exact target header, not
++		// merely check container entries. A complete-but-wrong-root archive must
++		// not suppress regeneration.
++		if (IsReadyArchiveForHeader(archivePath, pHeader, &error)) {
+ 			ClearRecoveryBlocked();
+ 			return true;
+ 		}

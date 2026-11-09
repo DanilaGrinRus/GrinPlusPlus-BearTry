@@ -1,0 +1,293 @@
+{
+  "schema": "gpp-line3-test-run/v1",
+  "run_id": "b17-ownerauth-20261103-154852",
+  "status": "PASS",
+  "no_tests_ran": false,
+  "fail_on_no_tests": false,
+  "created_utc": "2026-11-03T08:48:57.1529404Z",
+  "repo": "C:\\DHW\\Gplus\\src\\grinplusplus",
+  "git_head": "921bcfd6f9965307b14973451d3175c82beef712",
+  "git_status_porcelain": [
+    "M docs/modernization/ACCEPTANCE_REPORT.md",
+    " M docs/modernization/AUDIT_CHECKLIST.md",
+    " M docs/modernization/AUDIT_COMMENTS.md",
+    " M docs/modernization/AUDIT_DELTA.de.md",
+    " M docs/modernization/AUDIT_DELTA.en.md",
+    " M docs/modernization/AUDIT_DELTA.ru.md",
+    " M docs/modernization/AUDIT_PACKAGE.md",
+    " M docs/modernization/AUDIT_README.de.md",
+    " M docs/modernization/AUDIT_README.en.md",
+    " M docs/modernization/AUDIT_README.ru.md",
+    " M docs/modernization/DB_CONSISTENCY.md",
+    " M docs/modernization/G09_ARCHIVE_SERVING.md",
+    " M docs/modernization/GAP_MATRIX.md",
+    " M docs/modernization/IMPLEMENTATION_PLAN.md",
+    " M docs/modernization/PIHD_UPSTREAM.md",
+    " M docs/modernization/REMAINING.md",
+    " M docs/modernization/REMAINING_TASKS_COMMENTS.md",
+    " M docs/modernization/SANITIZERS.md",
+    " M docs/modernization/TEST_RESULTS.md",
+    " M docs/modernization/THREE_LINE_STATUS.md",
+    " M docs/modernization/VERIFICATION_P2.md",
+    " M evidence/line3/EVIDENCE_LINE3.md",
+    " M src/API/Node/Handlers/GetConnectedPeersOwnerHandler.h",
+    " M src/API/Node/Handlers/GetPeersOwnerHandler.h",
+    " M src/API/Node/Handlers/GetStatusOwnerHandler.h",
+    " M src/P2P/Sync/StateSyncer.cpp",
+    " M src/P2P/Sync/StateSyncer.h",
+    " M tests/src/API/CMakeLists.txt",
+    " M tests/src/Net/CMakeLists.txt",
+    " M tests/src/P2P/CMakeLists.txt",
+    " M tests/src/PMMR/CMakeLists.txt",
+    "?? evidence/line3/b16-full-01/",
+    "?? evidence/line3/b16-owneraccess-01/",
+    "?? evidence/line3/b16-rpcauth-01/",
+    "?? evidence/line3/b17-b1-wire-01/",
+    "?? evidence/line3/build-16-freeze-snapshot-final.json",
+    "?? evidence/line3/layerA-A1-A3-A4-audit-20261103.md",
+    "?? evidence/line3/layerA-A3-20261103/",
+    "?? evidence/line3/layerA-A3-live-20261103.json",
+    "?? evidence/line3/layerA-A3-live-20261103.md",
+    "?? evidence/line3/layerA-A3-live-20261103/",
+    "?? evidence/line3/layerA-A3-owner-auth-audit-20261103.json",
+    "?? evidence/line3/layerA-A3-owner-auth-audit-20261103.md",
+    "?? evidence/line3/layerA-public-floonet-preauth-20261103.json",
+    "?? evidence/line3/layerA-public-floonet-preauth-20261103.md",
+    "?? evidence/line3/layerA-public-sync-20261103.md",
+    "?? evidence/line3/layerA-public-sync-20261103/",
+    "?? evidence/line3/layerB-index-20261103.json",
+    "?? evidence/line3/layerB1-negative-wire-20261103.md",
+    "?? evidence/line3/layerB1-resource-concurrency-20261103.md",
+    "?? evidence/line3/layerB1-tests-freeze-20261103.md",
+    "?? evidence/line3/layerB2-crash-publication-20261103.md",
+    "?? evidence/line3/layerB2-crash-publication-20261103/",
+    "?? evidence/line3/layerB4-db-fault-matrix-20261103.md",
+    "?? evidence/line3/normal-binary-build16-audit-20261103.md",
+    "?? tests/src/API/Test_OwnerHandlerAccess.cpp",
+    "?? tests/src/Net/Test_RpcAuth.cpp",
+    "?? tests/src/P2P/Test_PibdNegativeAndLimits.cpp",
+    "?? tests/src/PMMR/Test_StateSyncerFailClosed.cpp",
+    "?? tools/audit/nrd/evidence/isolated/b16-full-20261103-150051/",
+    "?? tools/audit/nrd/evidence/isolated/b16-owneraccess-20261103-150051/",
+    "?? tools/audit/nrd/evidence/isolated/b16-rpcauth-20261103-150051/",
+    "?? tools/audit/nrd/evidence/isolated/b17-b1neg-20261103-154852/",
+    "?? tools/audit/nrd/evidence/isolated/b17-b1res-20261103-154852/",
+    "?? tools/audit/nrd/evidence/isolated/b17-b2-20261103-154852/",
+    "?? tools/audit/nrd/evidence/isolated/b17-owneraccess-20261103-154852/",
+    "?? tools/audit/nrd/evidence/kernel-index-legacy-counts-20261103.json",
+    "?? tools/audit/nrd/evidence/layerb-db-resilience-fault-matrix-20261103.md",
+    "?? tools/audit/nrd/evidence/layerb-risk-checklist-20261103.md"
+  ],
+  "git_diff_stat": "warning: in the working copy of 'evidence/line3/EVIDENCE_LINE3.md', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'src/API/Node/Handlers/GetConnectedPeersOwnerHandler.h', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'src/API/Node/Handlers/GetPeersOwnerHandler.h', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'src/API/Node/Handlers/GetStatusOwnerHandler.h', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tests/src/API/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tests/src/Net/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tests/src/P2P/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it\r\n docs/modernization/ACCEPTANCE_REPORT.md            |   2 +\r\n docs/modernization/AUDIT_CHECKLIST.md              |   2 +\r\n docs/modernization/AUDIT_COMMENTS.md               |   2 +\r\n docs/modernization/AUDIT_DELTA.de.md               |   8 +-\r\n docs/modernization/AUDIT_DELTA.en.md               |   8 +-\r\n docs/modernization/AUDIT_DELTA.ru.md               |   8 +-\r\n docs/modernization/AUDIT_PACKAGE.md                |   2 +\r\n docs/modernization/AUDIT_README.de.md              |   2 +-\r\n docs/modernization/AUDIT_README.en.md              |   2 +-\r\n docs/modernization/AUDIT_README.ru.md              |   2 +-\r\n docs/modernization/DB_CONSISTENCY.md               |   2 +\r\n docs/modernization/G09_ARCHIVE_SERVING.md          |   2 +\r\n docs/modernization/GAP_MATRIX.md                   |   2 +-\r\n docs/modernization/IMPLEMENTATION_PLAN.md          |   2 +\r\n docs/modernization/PIHD_UPSTREAM.md                |   2 +\r\n docs/modernization/REMAINING.md                    | 125 +++++++++++++++++++++\r\n docs/modernization/REMAINING_TASKS_COMMENTS.md     |   2 +\r\n docs/modernization/SANITIZERS.md                   |   2 +\r\n docs/modernization/TEST_RESULTS.md                 |   2 +\r\n docs/modernization/THREE_LINE_STATUS.md            |  28 +++--\r\n docs/modernization/VERIFICATION_P2.md              |   2 +\r\n evidence/line3/EVIDENCE_LINE3.md                   |  51 +++++++++\r\n .../Node/Handlers/GetConnectedPeersOwnerHandler.h  |   2 +\r\n src/API/Node/Handlers/GetPeersOwnerHandler.h       |   2 +\r\n src/API/Node/Handlers/GetStatusOwnerHandler.h      |   2 +\r\n src/P2P/Sync/StateSyncer.cpp                       |  81 ++++++++++++-\r\n src/P2P/Sync/StateSyncer.h                         |   7 +-\r\n tests/src/API/CMakeLists.txt                       |   1 +\r\n tests/src/Net/CMakeLists.txt                       |   1 +\r\n tests/src/P2P/CMakeLists.txt                       |   1 +\r\n tests/src/PMMR/CMakeLists.txt                      |   1 +\r\n 31 files changed, 329 insertions(+), 29 deletions(-)",
+  "source_hashes": {
+    "tests/src/TestMain.cpp": "6BAC17446DE696518FD364220569185F43769B813F59A25372037FBC53D8527B",
+    "tests/src/PMMR/CMakeLists.txt": "EAC368A9F15AA54A0CD27F96787FCF3562C41812264699CEF455B61266F549C5",
+    "tests/src/PMMR/Test_ZipFile.cpp": "B9BE2B4AA86EDC7DEE478BC230C186066B0255F1F3E1B5728E4656E757D55B75",
+    "include/P2P/Capabilities.h": "FD3997F591512A83E23DBEC2CFF3DFAC5D247E470D87E2000690F85AAD97665E",
+    "src/PMMR/Zip/ZipFile.cpp": "0097B38DF25439C7EBA6EEA3C8260C246C79BC0F600D57A3099CCFC08A0026C3",
+    "include/PMMR/NrdRules.h": "0F63E0CDEF08EAD92A39F9321D92A40019B3AFAC68E65BA28DCE0618C1262A2C",
+    "include/PMMR/KernelIndex.h": "419A037C83F6D3B689950E6EE4D18A64A4690DB13B0CE0A9C04CE89AD1BCDDBA",
+    "src/PMMR/KernelIndex.cpp": "AD0350E991830DCEB062FE3737267E96665B372C8F62DC15363D6434B8B3D4DE",
+    "tests/src/PMMR/Test_NrdRules.cpp": "E5E720584BDBE8AC2A35008C986FE52ED8DCABDBEFAD25BA1C225ABB81267503",
+    "tests/src/PMMR/Test_NrdDifferential.cpp": "5026F63ACB93A884232CB651CCAE116BA76FF87C475AF72FD380A9C26D5831FE",
+    "tests/src/PMMR/Test_NrdIndexRebuild.cpp": "4C47A0B0290F11BC03B3971AE9BDE30DAD71D2A476598BF608D91B2186A9A94E",
+    "tests/src/PMMR/Test_NrdSupport.h": "1AC6059F8958D78EDC18B0564AEFCA47B800C1DCAD9CF881B81823E6F7082B84"
+  },
+  "host": {
+    "os": "Microsoft Windows NT 10.0.26300.0",
+    "pwsh": "7.6.9",
+    "architecture": "AMD64",
+    "user_profile": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home",
+    "utc_offset_min": 420
+  },
+  "binary": {
+    "source_path": "C:\\DHW\\Gplus\\src\\grinplusplus\\bin\\Release\\Release\\Tests.exe",
+    "source_sha256": "95358EFC813B08B2A661B72860CF0E3344C565E6267995ECBB9887210F423E58",
+    "copy_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\bin\\Tests.exe",
+    "copy_sha256": "95358EFC813B08B2A661B72860CF0E3344C565E6267995ECBB9887210F423E58",
+    "copy_sha256_after": "95358EFC813B08B2A661B72860CF0E3344C565E6267995ECBB9887210F423E58",
+    "copy_unchanged": true,
+    "bytes": 9577472,
+    "pe_timestamp": {
+      "raw_hex": "0x6AE99FE7",
+      "utc": "2026-11-03T08:48:39.0000000Z"
+    },
+    "pe_timestamp_copy": {
+      "raw_hex": "0x6AE99FE7",
+      "utc": "2026-11-03T08:48:39.0000000Z"
+    },
+    "copied_asan_runtime": []
+  },
+  "isolation": {
+    "mode": "PerRun",
+    "run_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852",
+    "cwd": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\cwd",
+    "home_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\home",
+    "tmp_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\tmp",
+    "env": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\home",
+      "USERPROFILE": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\home",
+      "HOME": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\home",
+      "TMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\tmp",
+      "TEMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\tmp",
+      "TMPDIR": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\tmp"
+    },
+    "env_before": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home",
+      "USERPROFILE": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home",
+      "HOME": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home",
+      "TMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\tmp",
+      "TEMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\tmp",
+      "TMPDIR": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\tmp"
+    },
+    "expected_test_data_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\home\\.GrinPP\\AUTOMATED_TESTING",
+    "test_data_dir_created": true,
+    "test_log_dir_created": true,
+    "cwd_tree": null,
+    "home_tree_sample": [
+      {
+        "rel": ".GrinPP",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Node.log",
+        "dir": false,
+        "bytes": 1022
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Wallet.log",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\CHAIN",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\DB",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\kernel",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\output",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\rangeproof",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR\\.torrc",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\WALLET",
+        "dir": true,
+        "bytes": 1
+      }
+    ],
+    "home_tree_entries": 15,
+    "user_profile_before": {
+      "path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 14,
+      "total_bytes": 90,
+      "latest_write_utc": "2026-11-03T08:48:56.1026053Z",
+      "listing_sha256": "e254fd46debc8bda6d74551dcbe6e6e03802da4540d9700cafcde7ceca208852"
+    },
+    "user_profile_after": {
+      "path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-owneraccess-20261103-154852\\home\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 14,
+      "total_bytes": 90,
+      "latest_write_utc": "2026-11-03T08:48:56.1026053Z",
+      "listing_sha256": "e254fd46debc8bda6d74551dcbe6e6e03802da4540d9700cafcde7ceca208852"
+    },
+    "user_profile_unchanged": true,
+    "reparse_point_check": "passed",
+    "disposable_base": "C:\\DHW\\.tmp\\line2-nrd\\iso"
+  },
+  "command": {
+    "exe": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\bin\\Tests.exe",
+    "args": "\"Owner RPC methods reject missing/wrong token*\"",
+    "test_args": [
+      "Owner RPC methods reject missing/wrong token*"
+    ],
+    "raw_exe_args": "",
+    "fail_on_no_tests": false,
+    "working_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\cwd",
+    "instances": 1,
+    "timeout_sec": 900,
+    "started_utc": "2026-11-03T08:48:56.5659585Z",
+    "finished_utc": "2026-11-03T08:48:57.0900774Z",
+    "wall_sec": 0.524
+  },
+  "instances": [
+    {
+      "index": 1,
+      "pid": 2732,
+      "started_utc": "2026-11-03T08:48:56.7567170Z",
+      "duration_sec": 0.335,
+      "exit_code": {
+        "decimal": 0,
+        "hex": "0x00000000"
+      },
+      "status": "PASS",
+      "no_tests_ran": false,
+      "stdout_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\out\\instance-1.stdout.log",
+      "stdout_sha256": "963BE6A93EAE24715C60A8E17B14C09F06C12972D8655F8F4069141CD7E3FD0F",
+      "stdout_bytes": 232,
+      "stderr_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b17-ownerauth-20261103-154852\\out\\instance-1.stderr.log",
+      "stderr_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "stderr_bytes": 0,
+      "summary_lines": [
+        "Test Runtime Initialized.",
+        "Running Tests...",
+        "All tests passed (8 assertions in 1 test case)"
+      ]
+    }
+  ],
+  "windows_application_events": null,
+  "notes": [
+    "Non-instrumented build: no sanitizer. Evidence covers test-run isolation and runtime behavior only.",
+    "stdout redirected to a file is block-buffered; an empty log does not prove the process died before printing.",
+    "Windows Application Error events are matched by the unique copy path inside this run directory."
+  ]
+}

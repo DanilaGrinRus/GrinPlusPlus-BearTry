@@ -1,0 +1,42 @@
+{
+  "audit": "kernel-index-legacy-keys-copy",
+  "date_local": "2026-11-03T14:40:00+07:00",
+  "scope": "read-only copy; no deletion; not line1 public profile",
+  "copy": {
+    "path": "C:\\DHW\\.tmp\\line2-nrd-spent-audit\\copy\\NODE\\DB\\CHAIN",
+    "origin": "copy of g09-live-02 cpp-profile NODE/DB/CHAIN; original untouched",
+    "current": "MANIFEST-000443",
+    "db_files_bytes": 2374105120,
+    "sst_bytes": 2368581823,
+    "entries_in_default_cf": 10063554
+  },
+  "legacy": {
+    "prefix": "KERNELPOS/",
+    "state_key": "KERNELIDX/STATE",
+    "legacy_position_keys": 3354326,
+    "legacy_generations": {"0000000000000001": 3354326},
+    "legacy_state_key_present": false,
+    "legacy_state_key_value": null,
+    "key_layout": "KERNELPOS/<16-digit generation>/<33-byte excess>",
+    "key_bytes_each": 60,
+    "value_bytes_each": 16,
+    "logical_bytes_total": 254928776,
+    "logical_mib": 243.118,
+    "logical_bytes_note": "key+value logical bytes, not guaranteed immediate on-disk reclaim; compaction required"
+  },
+  "v2": {
+    "prefix": "KERNELPOS2/",
+    "position_keys": 6709226,
+    "state_keys": 1,
+    "state_key": "KERNELIDX2/STATE",
+    "logical_bytes": {"positions": 583702662, "state": 148},
+    "position_keys_equals_two_per_leaf": true,
+    "leaf_count_evidence": 3354613
+  },
+  "verification": {
+    "read_only": true,
+    "rocksdb_access": "rocksdict AccessType.read_only",
+    "deleted": false,
+    "source_profile_modified": false
+  }
+}
