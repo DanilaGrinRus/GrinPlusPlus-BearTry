@@ -1,22 +1,23 @@
 {
   "status": "RECONSTRUCTED — NOT EXACT B565",
-  "reconstructed_at": "2026-11-09T15:20:00+07:00",
-  "base": "C:\\Users\\nurli\\Documents\\Codex\\2026-11-06\\files-pasted-by-the-user-grinplusplus\\gp3-independent\\source",
+  "reconstructed_at": "2026-11-09T15:25:00+07:00",
+  "base": "gp3-independent/source (2026-11-06 snapshot)",
   "binary": "B565612BCA31D9EFE4117FC37FD2C7680ED8B84D9830E47591EFA3C28BA3D64D",
   "binary_source_exact": false,
   "included": [
     "GP-1 InboundAdmission",
     "GP-2 accept re-arm",
     "GP-3 handshake deadline/type/length",
-    "P2P archive request/close fixes present in gp3-independent"
+    "P2P archive request/close fixes present in gp3-independent",
+    "task-72 ratefix (PeerRatePolicy/Connection from C:\\DHW\\ratefix-*)"
   ],
   "missing_vs_B565": [
     "wallet format-1 EtM / row-bound AEAD migration",
     "Tor atomic temp/rename fix",
     "API secret ACL repair",
-    "task-72 loopback rate-limit fix (ratefix.patch does not apply to this base)",
-    "task-66 log gate and task-67 status reset"
+    "task-66 log gate",
+    "task-67 status reset"
   ],
   "build_verified": false,
-  "note": "Best-effort source reconstruction only. Do not treat this as the exact build input of B565."
+  "note": "Best-effort source reconstruction. Not the exact build input of B565; binary remains authoritative."
 }

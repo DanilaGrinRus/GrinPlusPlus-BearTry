@@ -81,7 +81,6 @@ public:
 	void ResumeReceives();
 	bool ReceiveSync(std::vector<uint8_t>& bytes, const size_t num_bytes);
 
-	bool ExceedsRateLimit() const;
 	bool AllowPibdRequest();
 	void BanPeer(const EBanReason reason);
 	void CheckPing();
@@ -118,6 +117,13 @@ private:
 
 	std::chrono::system_clock::time_point m_lastPing;
 	std::chrono::system_clock::time_point m_lastReceived;
+	// Throttles the "loopback peer over rate limit, not banning" warning; the
+	// ping thread runs every second.
+	std::chrono::system_clock::time_point m_lastLoopbackRateLog{ std::chrono::system_clock::time_point::min() };
+	// Incoming block/header responses during sync are counted separately from
+	// generic traffic so a legitimate catch-up burst is not mistaken for spam.
+	RateCounter m_syncReceivedCounter;
+	std::chrono::system_clock::time_point m_lastSyncRateLog{ std::chrono::system_clock::time_point::min() };
 	std::vector<uint8_t> m_received;
 
 	std::atomic<int> m_connectError{0};
