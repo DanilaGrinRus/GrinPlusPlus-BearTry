@@ -1,0 +1,61 @@
+#pragma once
+
+#include <Core/Enums/Environment.h>
+#include <Crypto/Models/Hash.h>
+#include <cstdint>
+#include <atomic>
+#include <memory>
+#include <vector>
+
+#include <filesystem.h>
+
+#include <optional>
+
+// Forward Declarations
+class Context;
+class Config;
+class ICoinView;
+class FullBlock;
+class BlockHeader;
+class ITorProcess;
+
+class Global
+{
+public:
+    /// <summary>
+    /// Initializes global context.
+    /// </summary>
+    /// <param name="pContext"></param>
+    static void Init(const std::shared_ptr<Context>& pContext);
+    static const std::atomic_bool& IsRunning();
+    static void Shutdown();
+    
+    static Config& GetConfig();
+    static std::shared_ptr<Context> GetContext();
+    static std::shared_ptr<ITorProcess> GetTorProcess();
+
+    //
+    // Environment
+    //
+    static Environment GetEnv();
+    static bool IsMainnet() { return GetEnv() == Environment::MAINNET; }
+    static bool IsTestnet() { return GetEnv() == Environment::FLOONET; }
+    static bool IsAutomatedTesting() { return GetEnv() == Environment::AUTOMATED_TESTING; }
+    static const std::vector<uint8_t>& GetMagicBytes();
+
+    //
+    // Genesis Block
+    //
+    static const FullBlock& GetGenesisBlock();
+    static const std::shared_ptr<const BlockHeader>& GetGenesisHeader();
+    static const Hash& GetGenesisHash();
+
+    static void SetCoinView(const std::shared_ptr<const ICoinView>& pCoinView);
+    static std::shared_ptr<const ICoinView> GetCoinView();
+
+    static void SetConfigFilePath(const std::optional<fs::path>& pFilePath,  std::string environment);
+    static fs::path& GetConfigFilePath();
+
+private:
+    static std::shared_ptr<Context> LockContext();
+};

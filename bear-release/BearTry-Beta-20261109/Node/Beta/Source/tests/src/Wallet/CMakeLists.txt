@@ -1,0 +1,13 @@
+list_append_parent(
+    test_sources
+    ${CMAKE_CURRENT_LIST_DIR}
+    "Test_Bech32Address.cpp"
+    "Test_InitializeNewWallet.cpp"
+    "Test_KeyDerivation.cpp"
+    "Test_Mnemonic.cpp"
+    "Test_RewindBulletproof.cpp"
+    "Test_Slate.cpp"
+    "Test_Slatepack.cpp"
+    "Test_TransactionBuilder.cpp"
+    "Test_Config.cpp"
+)

@@ -1,0 +1,15 @@
+list_append_parent(
+    test_sources
+    ${CMAKE_CURRENT_LIST_DIR}
+    "Test_IPAddress.cpp"
+    "Test_Socket.cpp"
+    "Test_SocketAddress.cpp"
+    "Test_P2PCompat.cpp"
+    "Test_BlockSyncPolicy.cpp"
+    "Test_TxHashSetLimits.cpp"
+    "Test_SeederPolicy.cpp"
+    "Test_ApiAccess.cpp"
+    "Test_RpcAuth.cpp"
+    "Tor/Test_TorAddressParser.cpp"
+    "Tor/Test_TorConnection.cpp"
+)

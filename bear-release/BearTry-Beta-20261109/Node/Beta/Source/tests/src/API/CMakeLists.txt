@@ -1,0 +1,14 @@
+list_append_parent(
+    test_sources
+    ${CMAKE_CURRENT_LIST_DIR}
+    "Test_NodeApiPrintables.cpp"
+    "Test_UnspentPagination.cpp"
+    "Test_GetKernelHandler.cpp"
+    "Test_OwnerHandlerAccess.cpp"
+    "Wallet/Foreign/Test_CheckVersion.cpp"
+    "Wallet/Owner/Test_CreateWallet.cpp"
+    "Wallet/Owner/Test_EstimateFee.cpp"
+    "Wallet/Owner/Test_Login.cpp"
+    "Wallet/Owner/Test_Send.cpp"
+    "Wallet/Owner/Test_Receive.cpp"
+)

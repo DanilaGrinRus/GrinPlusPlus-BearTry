@@ -1,0 +1,7 @@
+{
+  "binary": "B565612B…",
+  "note": "snapshot of canonical source tree; Beta binary was built from work\\source-build before work cleanup; exact build dir removed",
+  "dirty_files": 18,
+  "commit": "d76063eae4aeaa0b9ea6b78e0552c4e66c60fb31",
+  "source": "Gplus\\src\\grinplusplus"
+}
