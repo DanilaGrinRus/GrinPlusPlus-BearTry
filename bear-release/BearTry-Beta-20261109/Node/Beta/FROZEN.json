@@ -1,0 +1,29 @@
+{
+  "status": "FROZEN",
+  "frozen_at": "2026-11-09T14:20:00+07:00",
+  "folder": "C:\\DHW\\Gplus\\Beta",
+  "mode": "Beta node-only (--mainnet --headless --no-wallet)",
+  "artifacts": {
+    "GrinNode.exe": "B565612BCA31D9EFE4117FC37FD2C7680ED8B84D9830E47591EFA3C28BA3D64D",
+    "Tests.exe": "2B5BD9853979ED7AEFB4B2C3E6D9B27B6BB397E6E816CE2D52FC9E2E74B25DF3",
+    "GrinDbTool.exe": "8C0113D2E11A3655DDE2372515974E6B7D832076CC5229C82706616B89F00656"
+  },
+  "smoke": {
+    "status": "PASS",
+    "health": "ready",
+    "chain_type": "main",
+    "sync_status": "SYNCING_HEADERS",
+    "node_log_created": true
+  },
+  "tests": {
+    "historical_full_suite": "PASS 468 test cases / 19303 assertions (task-72 pair)",
+    "rerun_2026_11_09": "ASIO teardown 0xC0000409 before summary; known harness flake",
+    "conclusion": "historical PASS + smoke accepted; rerun harness not clean"
+  },
+  "rc1": "C:\\DHW\\Gplus\\RC1",
+  "limitations": [
+    "public inbound/firewall not verified",
+    "public Mainnet reorg not verified",
+    "wallet+node mode is a separate testnet track, not Beta acceptance"
+  ]
+}
