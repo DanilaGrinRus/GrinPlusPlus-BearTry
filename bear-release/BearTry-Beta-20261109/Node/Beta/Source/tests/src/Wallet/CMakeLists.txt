@@ -10,6 +10,7 @@ list_append_parent(
     "Test_Slatepack.cpp"
     "Test_TransactionBuilder.cpp"
     "Test_Config.cpp"
+    "Test_TorConfig.cpp"
     "Test_SqliteDB.cpp"
     "Test_WalletDBMigration.cpp"
     "Test_Lockable.cpp"
