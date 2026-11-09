@@ -689,13 +689,13 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		const char* anchorManifestPath = std::getenv("GRINPP_HEADER_CKPT_TRUST_ANCHOR_MANIFEST");
 
 		if (!headerFullValidationRan) {
-			LOG_WARNING_F("event=header_checkpoint_not_written reason=no_full_validation");
+			LOG_WARNING("event=header_checkpoint_not_written reason=no_full_validation");
 		} else if (!oldTrusted && (!bootstrap || trustAnchor.empty())) {
 			// A first checkpoint must have an out-of-band trust anchor. A local
 			// full pass cannot prove fields that are not locally verifiable
 			// (output/range/kernel roots, offset, nonce), so BOOTSTRAP=1 alone
 			// must never create trust.
-			LOG_WARNING_F(
+			LOG_WARNING(
 				"event=header_checkpoint_not_written reason=trust_anchor_required; provide GRINPP_HEADER_CKPT_BOOTSTRAP=1 and GRINPP_HEADER_CKPT_TRUST_ANCHOR=<published aggregate>");
 		} else {
 			auto pChainReader = pChainStore->Read();

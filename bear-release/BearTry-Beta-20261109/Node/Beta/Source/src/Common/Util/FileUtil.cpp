@@ -6,7 +6,10 @@
 #include <fstream>
 #include <cstdlib>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <aclapi.h>
+#pragma comment(lib, "advapi32.lib")
+#else
 #include <unistd.h>
 #endif
 
@@ -60,6 +63,31 @@ void FileUtil::SafeWriteToFile(const fs::path& filePath, const std::vector<uint8
 	file.exceptions(std::ios::badbit | std::ios::failbit);
 	if (!data.empty()) file.write(reinterpret_cast<const char*>(data.data()), data.size());
 	file.close();
+
+#ifdef _WIN32
+	// W-10 residual: make the rename durable. std::ofstream::close only flushes
+	// user-space buffers; without FlushFileBuffers a power loss can leave an
+	// empty/partial seed.json even though rename succeeded.
+	HANDLE hFile = CreateFileW(
+		tmpFilePath.wstring().c_str(),
+		GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		nullptr,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		nullptr
+	);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		LOG_ERROR_F("Failed to open {} for flush", tmpFilePath);
+		throw FILE_EXCEPTION_F("Failed to open {} for flush", tmpFilePath);
+	}
+	const BOOL flushed = FlushFileBuffers(hFile);
+	CloseHandle(hFile);
+	if (!flushed) {
+		LOG_ERROR_F("Failed to flush {}", tmpFilePath);
+		throw FILE_EXCEPTION_F("Failed to flush {}", tmpFilePath);
+	}
+#endif
 
 	RenameFile(tmpFilePath, filePath);
 }
@@ -226,6 +254,87 @@ std::vector<GrinStr> FileUtil::GetSubDirectories(const fs::path& filePath, const
 	}
 
 	return listOfFiles;
+}
+
+bool FileUtil::HardenPermissions(const fs::path& path) noexcept
+{
+#ifdef _WIN32
+	try
+	{
+		const std::wstring widePath = path.wstring();
+		PSID pOwner = nullptr;
+		PSECURITY_DESCRIPTOR pSD = nullptr;
+		if (::GetNamedSecurityInfoW(
+				const_cast<LPWSTR>(widePath.c_str()),
+				SE_FILE_OBJECT,
+				OWNER_SECURITY_INFORMATION,
+				&pOwner,
+				nullptr,
+				nullptr,
+				nullptr,
+				&pSD) != ERROR_SUCCESS)
+		{
+			return false;
+		}
+
+		BYTE systemSid[SECURITY_MAX_SID_SIZE];
+		DWORD systemSidSize = static_cast<DWORD>(sizeof(systemSid));
+		BYTE adminSid[SECURITY_MAX_SID_SIZE];
+		DWORD adminSidSize = static_cast<DWORD>(sizeof(adminSid));
+		const bool haveSids =
+			::CreateWellKnownSid(WinLocalSystemSid, nullptr, reinterpret_cast<PSID>(systemSid), &systemSidSize) != FALSE &&
+			::CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, reinterpret_cast<PSID>(adminSid), &adminSidSize) != FALSE;
+		if (!haveSids || pOwner == nullptr)
+		{
+			::LocalFree(pSD);
+			return false;
+		}
+
+		const DWORD inheritance = fs::is_directory(path)
+			? SUB_CONTAINERS_AND_OBJECTS_INHERIT
+			: NO_INHERITANCE;
+
+		EXPLICIT_ACCESS_W entries[3] = {};
+		const auto fill = [&](const int index, PSID sid) {
+			entries[index].grfAccessPermissions = GENERIC_ALL;
+			entries[index].grfAccessMode = SET_ACCESS;
+			entries[index].grfInheritance = inheritance;
+			entries[index].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+			entries[index].Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
+			entries[index].Trustee.ptstrName = reinterpret_cast<LPWSTR>(sid);
+		};
+		fill(0, pOwner);
+		fill(1, reinterpret_cast<PSID>(systemSid));
+		fill(2, reinterpret_cast<PSID>(adminSid));
+
+		PACL pNewAcl = nullptr;
+		if (::SetEntriesInAclW(3, entries, nullptr, &pNewAcl) != ERROR_SUCCESS)
+		{
+			::LocalFree(pSD);
+			return false;
+		}
+
+		const DWORD status = ::SetNamedSecurityInfoW(
+			const_cast<LPWSTR>(widePath.c_str()),
+			SE_FILE_OBJECT,
+			DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+			nullptr,
+			nullptr,
+			pNewAcl,
+			nullptr);
+
+		::LocalFree(pNewAcl);
+		::LocalFree(pSD);
+		return status == ERROR_SUCCESS;
+	}
+	catch (...)
+	{
+		return false;
+	}
+#else
+	(void)path;
+	return true;
+#endif
 }
 
 size_t FileUtil::GetFileSize(const fs::path& file)

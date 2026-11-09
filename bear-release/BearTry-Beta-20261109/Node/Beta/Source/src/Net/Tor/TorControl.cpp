@@ -9,6 +9,7 @@
 #include <cppcodec/base64_rfc4648.hpp>
 #include <Crypto/ED25519.h>
 #include <Net/Tor/TorProcess.h>
+#include <Common/Util/FileUtil.h>
 #include <filesystem.h>
 
 #include <fstream>
@@ -58,12 +59,17 @@ std::shared_ptr<TorControl> TorControl::Create(
 		std::string torrcPath = "./tor/.torrc";
 #endif
 
+		// T2: no hardcoded control password. Tor generates a per-run 32-byte
+		// cookie in its DataDirectory; TorControlClient authenticates with it.
+		const fs::path cookieFile = torDataDir / "control_auth_cookie";
+
 		std::vector<std::string> args({
 			command.u8string(),
 			"--ControlPort", std::to_string(controlPort),
 			"--SocksPort", std::to_string(socksPort),
 			"--DataDirectory", torDataDir.u8string(),
-			"--HashedControlPassword", Global::GetConfig().GetHashedControlPassword(),
+			"--CookieAuthentication", "1",
+			"--CookieAuthFile", cookieFile.u8string(),
 			"--ignore-missing-torrc",
 			"--hush",
 			"-f", torrcPath
@@ -76,8 +82,14 @@ std::shared_ptr<TorControl> TorControl::Create(
 			pProcess = ChildProcess::Create(args);
 		}
 
-		auto pClient = TorControlClient::Connect(controlPort, Global::GetConfig().GetControlPassword());
+		auto pClient = TorControlClient::ConnectCookie(controlPort, cookieFile);
 		if (pClient != nullptr) {
+			// T2 hardening: the control cookie grants full Tor control to whoever
+			// can read it. Keep it owner-only even if the Tor DataDirectory was
+			// created with inherited ACLs.
+			if (!FileUtil::HardenPermissions(cookieFile)) {
+				LOG_WARNING_F("Failed to harden Tor control cookie permissions: {}", cookieFile.u8string());
+			}
 			return std::make_unique<TorControl>(
 				socksPort,
 				controlPort,

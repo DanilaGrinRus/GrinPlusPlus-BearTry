@@ -33,7 +33,7 @@ protected:
 			m_socket.close();
 		}
 
-		asio::ip::address ipAddress(asio::ip::address_v4::from_string(address.GetIPAddress().Format()));
+		asio::ip::address ipAddress(asio::ip::make_address_v4(address.GetIPAddress().Format()));
 		asio::ip::tcp::endpoint endpoint(ipAddress, address.GetPortNumber());
 
 		// Start the asynchronous operation itself. The boost::lambda function
@@ -60,12 +60,9 @@ protected:
 			m_socket.close();
 		}
 
-		asio::io_service ios;
+		asio::io_context ios;
 
-		// Step 3. Creating a query.
-		asio::ip::tcp::resolver::query resolver_query(host, std::to_string(port), asio::ip::tcp::resolver::query::numeric_service);
-
-		// Step 4. Creating a resolver.
+		// Step 3/4. Creating a resolver.
 		asio::ip::tcp::resolver resolver(ios);
 
 		// Used to store information about error that happens
@@ -73,7 +70,7 @@ protected:
 		std::error_code ec;
 
 		// Step 5.
-		asio::ip::tcp::resolver::iterator it = resolver.resolve(resolver_query, ec);
+		auto results = resolver.resolve(host, std::to_string(port), ec);
 
 		// Handling errors if any.
 		if (ec) {
@@ -87,7 +84,7 @@ protected:
 		// operation completes. The blocking_udp_client.cpp example shows how you
 		// can use boost::bind rather than boost::lambda.
 		ec.clear();
-		m_socket.async_connect(it->endpoint(), std::bind(&Client::handle_connect, std::placeholders::_1, &ec));
+		m_socket.async_connect(results.begin()->endpoint(), std::bind(&Client::handle_connect, std::placeholders::_1, &ec));
 
 		// Run the operation until it completes, or until the timeout.
 		run(timeout);

@@ -9,6 +9,10 @@
 #include <cstdint>
 #include <string>
 #include <iostream>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <chrono>
 #include <fstream>
 #include <iostream>
 
@@ -154,8 +158,8 @@ public:
 	{
 		m_socksPort = 3422;
 		m_controlPort = 3423;
-		m_password = "MyPassword";
-		m_hashedPassword = "16:906248AB51F939ED605CE9937D3B1FDE65DEB4098A889B2A07AC221D8F";
+		m_password = "";
+		m_hashedPassword = "";
 		m_torDataPath = torDataPath;
 		m_torrcPath = torDataPath / ".torrc";
 		fs::create_directories(torDataPath);
@@ -179,8 +183,8 @@ public:
 	TorConfig(const uint16_t socksPort, const uint16_t controlPort, const fs::path& torDataPath)
 		: m_socksPort(socksPort),
 		m_controlPort(controlPort),
-		m_password("MyPassword"),
-		m_hashedPassword("16:906248AB51F939ED605CE9937D3B1FDE65DEB4098A889B2A07AC221D8F"),
+		m_password(""),
+		m_hashedPassword(""),
 		m_torDataPath(torDataPath)
 	{
 
@@ -194,6 +198,38 @@ private:
 	fs::path m_torDataPath;
 	fs::path m_torrcPath;
 
+	void ReplaceTorrc(const fs::path& temp) const noexcept
+	{
+		std::error_code ec;
+#ifdef _WIN32
+		if (!MoveFileExW(temp.wstring().c_str(), m_torrcPath.wstring().c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+			std::cerr << "warning: atomic torrc replace failed: " << GetLastError() << "\n";
+			std::error_code removeEc;
+			fs::remove(temp, removeEc);
+		}
+#else
+		fs::rename(temp, m_torrcPath, ec);
+		if (ec) {
+			std::cerr << "warning: atomic torrc replace failed: " << ec.message() << "\n";
+			fs::remove(temp, ec);
+		}
+#endif
+	}
+
+	fs::path CreateTempTorrcPath() const noexcept
+	{
+		const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+		for (int attempt = 0; attempt < 32; ++attempt) {
+			fs::path candidate = m_torrcPath;
+			candidate += ".tmp." + std::to_string(stamp) + "." + std::to_string(attempt);
+			std::error_code ec;
+			if (!fs::exists(candidate, ec) && !fs::is_symlink(candidate, ec)) {
+				return candidate;
+			}
+		}
+		return m_torrcPath.string() + ".tmp";
+	}
 	void AddObfs4Config() const noexcept
 	{
 		AddRequiredHeadersTorBridges(false);
@@ -212,7 +248,8 @@ private:
 		std::string line;
 		
 		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
+		const fs::path tempTorrc = CreateTempTorrcPath();
+		newConfigFile.open(tempTorrc, std::ofstream::out | std::ofstream::trunc);
 		newConfigFile << "UseBridges 1" << "\n";
 		if (snowflake)
 		{
@@ -247,8 +284,7 @@ private:
 		
 		newConfigFile.close();
 		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
+		ReplaceTorrc(tempTorrc);
 		
 		return;
 	}
@@ -259,7 +295,8 @@ private:
 		std::string line;
 
 		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
+		const fs::path tempTorrc = CreateTempTorrcPath();
+		newConfigFile.open(tempTorrc, std::ofstream::out | std::ofstream::trunc);
 
 		while (std::getline(configFile, line))
 		{
@@ -276,8 +313,7 @@ private:
 
 		newConfigFile.close();
 		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
+		ReplaceTorrc(tempTorrc);
 
 		return;
 	}
@@ -288,7 +324,8 @@ private:
 		std::string line;
 		
 		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
+		const fs::path tempTorrc = CreateTempTorrcPath();
+		newConfigFile.open(tempTorrc, std::ofstream::out | std::ofstream::trunc);
 
 		while (std::getline(configFile, line))
 		{
@@ -306,8 +343,7 @@ private:
 
 		newConfigFile.close();
 		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
+		ReplaceTorrc(tempTorrc);
 
 		return;
 	}

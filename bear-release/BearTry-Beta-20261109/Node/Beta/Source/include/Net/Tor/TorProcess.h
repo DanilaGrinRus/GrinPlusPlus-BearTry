@@ -59,7 +59,7 @@ private:
 	static bool IsTorPresent();
 
 	std::unique_ptr<TorAddress> AddListener(
-		const std::unique_lock<std::mutex>&,
+		const std::unique_lock<std::timed_mutex>&,
 		const ed25519_secret_key_t& secretKey,
 		const uint16_t portNumber
 	);
@@ -73,6 +73,6 @@ private:
 	ConcurrentQueue<std::pair<ed25519_secret_key_t, uint16_t>> m_servicesToAdd;
 
 	std::atomic_bool m_shutdown;
-	std::mutex m_mutex;
+	std::timed_mutex m_mutex;
 	std::thread m_initThread;
 };

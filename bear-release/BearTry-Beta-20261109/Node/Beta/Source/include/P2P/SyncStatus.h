@@ -207,6 +207,17 @@ public:
 	void UpdateDownloaded(const uint64_t downloaded) { m_txHashSetDownloaded = downloaded; }
 	void UpdateDownloadSize(const uint64_t downloadSize) { m_txHashSetTotalSize = downloadSize; }
 	void UpdateProcessingStatus(const uint8_t processingStatus) { m_txHashSetProcessingStatus = processingStatus; }
+	// A failed or abandoned archive transfer must not leave the size of the
+	// failed attempt visible as state.download_size while downloaded is 0 (the
+	// task-64 stand observed a stale 64 MiB after an interrupted transfer).
+	// Clear only the transfer progress counters; the sync status and the request
+	// identity are set/kept separately so retry/ban logic is unchanged.
+	void ClearTxHashSetProgress() noexcept
+	{
+		m_txHashSetDownloaded = 0;
+		m_txHashSetTotalSize = 0;
+		m_txHashSetProcessingStatus = 0;
+	}
 	void SetTxHashSetDownloading(const bool downloading) const { m_txHashSetDownloading = downloading; }
 	bool IsTxHashSetDownloading() const { return m_txHashSetDownloading.load(); }
 

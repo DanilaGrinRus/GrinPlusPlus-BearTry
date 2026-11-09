@@ -1,0 +1,238 @@
+diff --git a/tests/src/BlockChain/Test_NrdBodylessRestart.cpp b/tests/src/BlockChain/Test_NrdBodylessRestart.cpp
+index 1bc7cf0..b9e2190 100644
+--- a/tests/src/BlockChain/Test_NrdBodylessRestart.cpp
++++ b/tests/src/BlockChain/Test_NrdBodylessRestart.cpp
+@@ -1,208 +1,36 @@
+ #include <catch.hpp>
+ 
+-#include <TestServer.h>
+-#include <TestMiner.h>
+-#include <TxBuilder.h>
++#include "Test_NrdSupport.h"
+ 
+-#include <BlockChain/BlockChain.h>
+-#include <Consensus.h>
+-#include <Core/Util/TransactionUtil.h>
+-#include <Database/BlockDb.h>
+-#include <PMMR/TxHashSetImpl.h>
+-#include <Wallet/Keychain/KeyChain.h>
++using namespace NrdTest;
+ 
+-#include <memory>
+-#include <vector>
+-
+-namespace
++// Bodyless TxHashSet index rebuild (task-11 follow-up, design A). This is a
++// synthetic TxHashSet test, not a real BlockChain/consensus or network PIBD
++// test: short AUTOMATED_TESTING chains cannot contain HF3/v4 NRD blocks.
++// It proves the NRD index can be rebuilt from headers + kernel MMR after all
++// block bodies are removed; restart/reorg over a real persisted bodyless DB
++// remains a separate integration item.
++TEST_CASE("Bodyless TxHashSet NRD index rebuilds after bodies are removed")
+ {
+-	std::shared_ptr<TxHashSet> RequireCompleteNrdIndex(const IBlockChain::Ptr& pChain)
+-	{
+-		const std::shared_ptr<ITxHashSet> pBase = pChain->GetTxHashSet();
+-		auto pTxHashSet = std::dynamic_pointer_cast<TxHashSet>(pBase);
+-		REQUIRE(pTxHashSet != nullptr);
+-		REQUIRE(pTxHashSet->IsRecentNrdIndexComplete());
+-		return pTxHashSet;
+-	}
+-
+-	Test::Input MakeCoinbaseInput(const MinedBlock& minedBlock, const KeyChainPath& path, const uint64_t amount)
+-	{
+-		const TransactionOutput& output = minedBlock.block.GetOutputs().front();
+-		return Test::Input({
+-			{ output.GetFeatures(), output.GetCommitment() },
+-			path,
+-			amount
+-		});
+-	}
+-
+-	Test::Input MakeOutputInput(
+-		const TransactionOutput& output,
+-		const KeyChainPath& path,
+-		const uint64_t amount)
+-	{
+-		return Test::Input({
+-			{ output.GetFeatures(), output.GetCommitment() },
+-			path,
+-			amount
+-		});
+-	}
+-}
+-
+-// Task-8(b): reconstructed bodyless state. This is NOT network PIBD: a real
+-// TestServer chain is mined, then all block BODIES are removed from the real
+-// BlockDB while headers / kernel MMR / txhashset remain. The chain is reopened on
+-// the same paths, startup rebuilds the NRD index from headers+kernel MMR, an NRD
+-// block is applied, the chain reorgs to an alternative branch, and the state is
+-// restarted again. No production code is changed.
+-TEST_CASE("Bodyless NRD index rebuilds and survives reorg and restart")
+-{
+-	BlockHeaderPtr pTip30;
+-	Hash tip30Hash;
+-	Hash tip31Hash;
+-	uint64_t kernelCount30 = 0;
+-	Commitment nrdExcess;
+-	KeyChain keyChain = KeyChain::FromRandom();
+-
+-	// ---- phase 1: real chain + one NRD block, then remove all block bodies ----
+-	{
+-		TestServer::Ptr pServer = TestServer::Create();
+-		pServer->SetPreserveDataOnDestruct(true);
+-
+-		TestMiner miner(pServer);
+-		TxBuilder txBuilder(keyChain);
+-		IBlockChain::Ptr pChain = pServer->GetBlockChain();
+-
+-		const std::vector<MinedBlock> minedChain = miner.MineChain(keyChain, 30);
+-		REQUIRE(minedChain.size() == 30);
++	ChainBuilder builder(ChainBuilder::MakeTempRoot("bodyless-index"));
+ 
+-		// Spend the coinbase of block 1 through an NRD kernel.
+-		TxBuilder::Criteria nrdCriteria;
+-		nrdCriteria.inputs = {
+-			MakeCoinbaseInput(minedChain[1], minedChain[1].coinbasePath.value(), minedChain[1].coinbaseAmount)
+-		};
+-		nrdCriteria.outputs = {
+-			Test::Output{ KeyChainPath({ 1, 100 }), 9'000'000 },
+-			Test::Output{ KeyChainPath({ 1, 101 }), minedChain[1].coinbaseAmount - 9'000'000 }
+-		};
+-		nrdCriteria.include_change = false;
+-		nrdCriteria.fee_base = 0;
+-		nrdCriteria.num_kernels = 1;
+-		nrdCriteria.kernel_features = EKernelFeatures::NO_RECENT_DUPLICATE;
+-		nrdCriteria.relative_height = 2;
+-		const Transaction nrdTx = txBuilder.BuildTx(nrdCriteria);
+-		REQUIRE(!nrdTx.GetBody().GetKernels().empty());
+-		REQUIRE(nrdTx.GetBody().GetKernels().front().GetFeatures() == EKernelFeatures::NO_RECENT_DUPLICATE);
+-		nrdExcess = nrdTx.GetBody().GetKernels().front().GetExcessCommitment();
++	REQUIRE(builder.ApplyBlock(Kernels({ MakeNrdKernel(190, 1) })));
++	REQUIRE(builder.ApplyBlock(Kernels({})));
++	REQUIRE(builder.ApplyBlock(Kernels({ MakeNrdKernel(190, 1) })));
+ 
+-		Test::Tx coinbase30 = txBuilder.BuildCoinbaseTx(KeyChainPath({ 0, 30 }));
+-		TransactionPtr pCombinedTx = TransactionUtil::Aggregate({
+-			coinbase30.pTransaction,
+-			std::make_shared<Transaction>(nrdTx)
+-		});
+-		FullBlock block30 = miner.MineNextBlock(minedChain.back().block.GetHeader(), *pCombinedTx, {}, 4);
+-		REQUIRE(pChain->AddBlock(block30) == EBlockChainStatus::SUCCESS);
+-		REQUIRE(pChain->GetHeight(EChainType::CONFIRMED) == 30);
++	const BlockHeaderPtr pTip = builder.Tip();
++	REQUIRE(builder.TxHashSetRef().GetRecentNrdEntries(MakeExcess(190)).size() == 2);
+ 
+-		pTip30 = block30.GetHeader();
+-		tip30Hash = pTip30->GetHash();
+-		kernelCount30 = pTip30->GetNumKernels();
+-		{
+-			auto pTxHashSet = RequireCompleteNrdIndex(pChain);
+-			REQUIRE(pTxHashSet->GetRecentNrdEntries(nrdExcess).size() == 1);
+-			REQUIRE(pTxHashSet->GetRecentNrdEntries(nrdExcess).front().Height == 30);
+-		}
++	builder.BlockDB()->ClearBlocks();
++	REQUIRE(builder.BlockDB()->GetBlock(pTip->GetHash()) == nullptr);
++	REQUIRE(builder.BlockDB()->GetBlockHeader(pTip->GetHash()) != nullptr);
+ 
+-		// Reconstructed PIBD-like state: bodies gone, headers/kernel MMR remain.
+-		auto pBlockDB = pServer->GetBlockDB();
+-		{
+-			auto pWriter = pBlockDB->Write();
+-			pWriter->ClearBlocks();
+-			pWriter->Commit();
+-		}
+-		REQUIRE(pBlockDB->Read()->GetBlock(tip30Hash) == nullptr);
+-		REQUIRE(pBlockDB->Read()->GetBlockHeader(tip30Hash) != nullptr);
+-	}
++	builder.Rebuild();
++	REQUIRE(builder.TxHashSetRef().IsRecentNrdIndexComplete());
++	REQUIRE(builder.TxHashSetRef().GetRecentNrdEntries(MakeExcess(190)).size() == 2);
+ 
+-	// ---- phase 2: reopen same paths; startup rebuild from bodyless state ----
+-	{
+-		TestServer::Ptr pServer = TestServer::OpenExisting();
+-		pServer->SetPreserveDataOnDestruct(true);
+-		IBlockChain::Ptr pChain = pServer->GetBlockChain();
+-		REQUIRE(pChain->GetHeight(EChainType::CONFIRMED) == 30);
+-		REQUIRE(pChain->GetTipBlockHeader(EChainType::CONFIRMED)->GetHash() == tip30Hash);
+-
+-		auto pTxHashSet = RequireCompleteNrdIndex(pChain);
+-		REQUIRE(pTxHashSet->GetNumKernels() == kernelCount30);
+-		REQUIRE(pTxHashSet->GetRecentNrdEntries(nrdExcess).size() == 1);
+-		REQUIRE(pTxHashSet->GetRecentNrdEntries(nrdExcess).front().Height == 30);
+-
+-		// Apply a new NRD block on top of the reconstructed bodyless state.
+-		TestMiner miner(pServer);
+-		TxBuilder txBuilder(keyChain);
+-		const BlockHeaderPtr pTip = pChain->GetTipBlockHeader(EChainType::CONFIRMED);
+-		REQUIRE(pTip != nullptr);
+-
+-		// Apply a new NRD block: spend the output created by the height-30 NRD tx
+-		// through a second NRD kernel. The input commitment is reconstructed from
+-		// the same keychain/path/amount.
+-		TxBuilder::Criteria nrdSpendCriteria;
+-		nrdSpendCriteria.inputs = {
+-			txBuilder.BuildInput(EOutputFeatures::DEFAULT, KeyChainPath({ 1, 100 }), 9'000'000)
+-		};
+-		nrdSpendCriteria.outputs = {
+-			Test::Output{ KeyChainPath({ 1, 102 }), 9'000'000 }
+-		};
+-		nrdSpendCriteria.include_change = false;
+-		nrdSpendCriteria.fee_base = 0;
+-		nrdSpendCriteria.num_kernels = 1;
+-		nrdSpendCriteria.kernel_features = EKernelFeatures::NO_RECENT_DUPLICATE;
+-		nrdSpendCriteria.relative_height = 2;
+-		const Transaction nrdTx2 = txBuilder.BuildTx(nrdSpendCriteria);
+-		REQUIRE(!nrdTx2.GetBody().GetKernels().empty());
+-		const Commitment nrdExcess2 = nrdTx2.GetBody().GetKernels().front().GetExcessCommitment();
+-
+-		Test::Tx coinbase31 = txBuilder.BuildCoinbaseTx(KeyChainPath({ 0, 31 }));
+-		TransactionPtr pCombinedTx = TransactionUtil::Aggregate({
+-			coinbase31.pTransaction,
+-			std::make_shared<Transaction>(nrdTx2)
+-		});
+-		FullBlock block31 = miner.MineNextBlock(pTip, *pCombinedTx, {}, 4);
+-		REQUIRE(pChain->AddBlock(block31) == EBlockChainStatus::SUCCESS);
+-		tip31Hash = block31.GetHash();
+-		REQUIRE(pChain->GetHeight(EChainType::CONFIRMED) == 31);
+-		REQUIRE(pChain->GetTipBlockHeader(EChainType::CONFIRMED)->GetHash() == tip31Hash);
+-		{
+-			auto pIndex = RequireCompleteNrdIndex(pChain);
+-			// The height-30 entry survived the bodyless restart; the new NRD
+-			// kernel is accepted and indexed at height 31.
+-			REQUIRE(pIndex->GetRecentNrdEntries(nrdExcess).size() == 1);
+-			REQUIRE(pIndex->GetRecentNrdEntries(nrdExcess2).size() == 1);
+-			REQUIRE(pIndex->GetRecentNrdEntries(nrdExcess2).front().Height == 31);
+-		}
+-
+-		// Reorg: alternative branch from height 30 with two blocks (more total
+-		// difficulty than the current single block at 31).
+-		Test::Tx coinbase31b = txBuilder.BuildCoinbaseTx(KeyChainPath({ 0, 131 }));
+-		FullBlock block31b = miner.MineNextBlock(pTip30, *coinbase31b.pTransaction, {}, 4);
+-		Test::Tx coinbase32b = txBuilder.BuildCoinbaseTx(KeyChainPath({ 0, 132 }));
+-		FullBlock block32b = miner.MineNextBlock(pTip30, *coinbase32b.pTransaction, { block31b }, 4);
+-
+-		REQUIRE(pChain->AddBlock(block31b) == EBlockChainStatus::SUCCESS);
+-		REQUIRE(pChain->AddBlock(block32b) == EBlockChainStatus::SUCCESS);
+-		REQUIRE(pChain->GetHeight(EChainType::CONFIRMED) == 32);
+-		REQUIRE(pChain->GetTipBlockHeader(EChainType::CONFIRMED)->GetHash() == block32b.GetHash());
+-		REQUIRE(RequireCompleteNrdIndex(pChain)->GetRecentNrdEntries(nrdExcess).size() == 1);
+-	}
+-
+-	// ---- phase 3: restart again on the reorged bodyless state ----
+-	{
+-		TestServer::Ptr pServer = TestServer::OpenExisting();
+-		pServer->SetPreserveDataOnDestruct(true);
+-		IBlockChain::Ptr pChain = pServer->GetBlockChain();
+-		REQUIRE(pChain->GetHeight(EChainType::CONFIRMED) == 32);
+-		RequireCompleteNrdIndex(pChain);
+-		REQUIRE(pChain->GetBlockByHeight(32) != nullptr);
+-	}
++	// The bodyless state can still accept a new block body and keep the rebuilt
++	// history; this is not a rewind over missing bodies.
++	REQUIRE(builder.ApplyBlock(Kernels({})));
++	REQUIRE(builder.TxHashSetRef().IsRecentNrdIndexComplete());
+ }
+-
+-

@@ -108,6 +108,7 @@ std::shared_ptr<P2PServer> P2PServer::Create(
 		pBlockChain,
 		pPipeline,
 		pSyncStatus,
+		config,
 		pPibdSync,
 		pPihdClient
 	);

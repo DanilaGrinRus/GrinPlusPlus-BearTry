@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../ConnectionManager.h"
+#include "SyncLogGate.h"
 
 #include <BlockChain/BlockChain.h>
 #include <chrono>
@@ -87,6 +88,11 @@ private:
 	std::chrono::time_point<std::chrono::system_clock> m_timeRequested;
 	uint64_t m_requestedHeight;
 	PeerPtr m_pPeer;
+
+	// Emits each transition warning once per request epoch (not per sync-loop
+	// iteration); re-armed when a new request is actually sent. Mutable because
+	// IsStateSyncDue() is const but must record that it already logged.
+	mutable SyncLogGate m_logGate;
 
 	std::weak_ptr<ConnectionManager> m_pConnectionManager;
 	IBlockChain::Ptr m_pBlockChain;

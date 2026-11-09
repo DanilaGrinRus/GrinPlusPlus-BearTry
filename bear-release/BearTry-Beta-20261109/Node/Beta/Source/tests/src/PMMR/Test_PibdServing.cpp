@@ -805,6 +805,31 @@ TEST_CASE("PibdArchiveServer::ServingOptInParsing")
 	REQUIRE(PibdArchiveServer::ResolveServingOptIn(true));
 }
 
+TEST_CASE("PibdArchiveServer::MainnetRefusalIsUnconditional")
+{
+	// The policy gate is pure, so the mainnet refusal is pinned without a Global
+	// or chain context.
+	REQUIRE_FALSE(PibdArchiveServer::IsServingAllowed(false, false));
+	REQUIRE_FALSE(PibdArchiveServer::IsServingAllowed(false, true));
+	REQUIRE(PibdArchiveServer::IsServingAllowed(true, false));
+	// Neither a future default flip nor an operator opt-in can enable archive
+	// serving on mainnet.
+	REQUIRE_FALSE(PibdArchiveServer::IsServingAllowed(true, true));
+	REQUIRE_FALSE(PibdArchiveServer::ENABLED_BY_DEFAULT);
+}
+
+TEST_CASE("PibdArchiveServer::SpaceProbeFailureFailsClosed")
+{
+	// Low-disk fail-closed: when the free-space probe itself cannot run (missing
+	// directory or inaccessible volume), extraction must be refused instead of
+	// being assumed to have space.
+	const fs::path missing = fs::temp_directory_path() / "g09-space-probe-missing-dir";
+	std::error_code error;
+	fs::remove_all(missing, error);
+	REQUIRE_FALSE(fs::exists(missing));
+	REQUIRE_FALSE(PibdArchiveServer::HasSpaceFor(missing, 0));
+}
+
 // G-09 task-10: persistent archives must be validated as complete containers
 // and published atomically. A partial staging file or a partial final file is
 // never considered ready, and publication replaces the final path only after the

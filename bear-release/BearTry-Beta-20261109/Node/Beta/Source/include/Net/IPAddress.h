@@ -70,14 +70,13 @@ public:
     {
         asio::io_context context;
         asio::ip::tcp::resolver resolver(context);
-        asio::ip::tcp::resolver::query query(domainName, "domain");
         asio::error_code errorCode;
-        asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, errorCode);
+        auto results = resolver.resolve(domainName, "domain", errorCode);
 
         std::vector<IPAddress> addresses;
         if (!errorCode)
         {
-            std::for_each(iter, {}, [&addresses](auto& it)
+            std::for_each(results.begin(), results.end(), [&addresses](auto& it)
                 {
                     try
                     {
@@ -184,10 +183,11 @@ namespace std
     {
         size_t operator()(const IPAddress& address) const
         {
-            asio::ip::address_v4 v4 = address.IsV4() ?
-                address.GetAddress().to_v4() :
-                address.GetAddress().to_v6().to_v4();
-            return v4.to_uint();
+            if (address.IsV4())
+            {
+                return address.GetAddress().to_v4().to_uint();
+            }
+            return std::hash<std::string>{}(address.GetAddress().to_string());
         }
     };
 }

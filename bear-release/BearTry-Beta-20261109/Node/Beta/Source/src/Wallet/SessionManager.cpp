@@ -194,7 +194,10 @@ void SessionManager::Logout(const SessionToken& token)
 	{
 		const auto& session = RequireSession(token);
 		std::string username = session.m_wallet.Read()->GetUsername();
-		m_pForeignController->StopListener(iter->second->m_wallet.Read()->GetUsername());
+		// F-20: use the username already loaded above. Re-locking the session's
+		// wallet here can block while another thread holds the wallet lock and
+		// was observed to hang logout indefinitely.
+		m_pForeignController->StopListener(username);
 		if (!m_pForeignController->IsListening(username)) {
 			m_pWalletDB->CloseWallet(username);
 		}

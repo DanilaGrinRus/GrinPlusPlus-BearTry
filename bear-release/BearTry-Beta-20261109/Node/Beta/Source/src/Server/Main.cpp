@@ -8,6 +8,7 @@
 #include <Core/Context.h>
 #include <Core/Global.h>
 #include <Wallet/WalletManager.h>
+#include <Wallet/NodeClient.h>
 #include <Core/Config.h>
 #include <Common/Logger.h>
 #include <Common/Util/ThreadUtil.h>
@@ -71,18 +72,31 @@ int main(int argc, char* argv[])
 		IO::MakeHeadless();
 	}
 
-	ConfigPtr pConfig = Initialize(opt.config_path, opt.environment);
-	
+	ConfigPtr pConfig = nullptr;
 	try
 	{
+		pConfig = Initialize(opt.config_path, opt.environment);
 		Run(pConfig, opt);
 	}
-	catch (std::exception& e)
+	catch (const NodeUnavailableException& e)
+	{
+		// Remote/shared-node startup or an unreachable node: a clean, actionable
+		// error instead of an uncaught exception terminating the process.
+		LOG_ERROR_F("Node unavailable: {}", e.what());
+		LoggerAPI::Flush();
+		IO::Err("Node unavailable (is the node running and reachable?)", e);
+		// Startup failed before the global context/background services are in a
+		// consistent state; running static destructors here caused an access
+		// violation after main() returned (W1.5). Exit immediately with the
+		// deterministic code; no wallet state was created.
+		std::_Exit(2);
+	}
+	catch (const std::exception& e)
 	{
 		LOG_ERROR_F("Exception thrown: {}", e.what());
 		LoggerAPI::Flush();
 		IO::Err("Exception thrown", e);
-		throw;
+		std::_Exit(1);
 	}
 
 	LoggerAPI::Flush();
@@ -190,13 +204,29 @@ void Run(const ConfigPtr& pConfig, const Options& options)
 
 	std::unique_ptr<WalletDaemon> pWallet = nullptr;
 	if (options.include_wallet) {
-		pWallet = WalletDaemon::Create(
-			pContext->GetConfig(),
-			Global::GetTorProcess(),
-			pNodeClient
-		);
+		try
+		{
+			pWallet = WalletDaemon::Create(
+				pContext->GetConfig(),
+				Global::GetTorProcess(),
+				pNodeClient
+			);
+			IO::Out("Wallet Daemon started.");
+		}
+		catch (const std::exception& e)
+		{
+			// Wallet init happens after the node is fully started. Unwinding
+			// Run() here can block in node/P2P teardown (observed: owner port
+			// conflict at wallet bind). Exit immediately with a deterministic
+			// code; the node database uses normal crash recovery on next start.
+			LOG_ERROR_F("Failed to start wallet daemon: {}", e.what());
+			LoggerAPI::Flush();
+			IO::Err("Failed to start wallet daemon", e);
+			std::_Exit(1);
+		}
+	} else {
+		IO::Out("Wallet Daemon disabled (--no-wallet).");
 	}
-	IO::Out("Wallet Daemon started.");
 
 	system_clock::time_point startTime = system_clock::now();
 	while (true) {

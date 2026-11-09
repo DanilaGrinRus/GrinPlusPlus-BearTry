@@ -180,7 +180,10 @@ bool StateSyncer::IsStateSyncDue(const SyncStatus& syncStatus) const
 
 	if (status == ESyncStatus::TXHASHSET_SYNC_FAILED)
 	{
-		LOG_WARNING("TxHashSet sync failed.");
+		// Transition warning: once per failed-request epoch, not every 10 ms.
+		if (m_logGate.ShouldLogSyncFailed()) {
+			LOG_WARNING("TxHashSet sync failed.");
+		}
 		return true;
 	}
 
@@ -205,7 +208,9 @@ bool StateSyncer::IsStateSyncDue(const SyncStatus& syncStatus) const
 	// If TxHashSet download timed out, request it from another peer.
 	if ((m_timeRequested + std::chrono::minutes(120)) < std::chrono::system_clock::now())
 	{
-		LOG_WARNING("Download timed out (120 minutes).");
+		if (m_logGate.ShouldLogDownloadTimeout()) {
+			LOG_WARNING("Download timed out (120 minutes).");
+		}
 		return true;
 	}
 
@@ -217,14 +222,20 @@ bool StateSyncer::IsStateSyncDue(const SyncStatus& syncStatus) const
 		const uint64_t downloaded = syncStatus.GetDownloaded();
 		if (downloaded == 0)
 		{
-			LOG_WARNING("120 seconds elapsed and download still not started.");
+			if (m_logGate.ShouldLogNoProgress()) {
+				LOG_WARNING("120 seconds elapsed and download still not started.");
+			}
 			return true;
 		}
 	}
 
 	if (m_pPeer != nullptr && !m_pConnectionManager.lock()->IsConnected(m_pPeer->GetIPAddress()))
 	{
-		LOG_WARNING("Sync peer no longer connected.");
+		// The sync peer is gone, but the 30 s re-request guard can keep this
+		// condition true for many iterations; log the transition once per epoch.
+		if (m_logGate.ShouldLogPeerLost()) {
+			LOG_WARNING("Sync peer no longer connected.");
+		}
 		return true;
 	}
 
@@ -276,6 +287,9 @@ bool StateSyncer::RequestState(SyncStatus& syncStatus)
 		{
 			m_timeRequested = std::chrono::system_clock::now();
 			m_requestedHeight = requestedHeight;
+			// A request was actually sent: start a new log epoch so the next
+			// transition (peer lost / failed / no progress) is reported again.
+			m_logGate.OnRequestSent();
 		}
 	}
 

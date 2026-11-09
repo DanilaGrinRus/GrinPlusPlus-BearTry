@@ -301,6 +301,63 @@ namespace
 		return secure;
 	}
 
+	bool RepairSecretAcl(const fs::path& path, std::string& error)
+	{
+		HANDLE hFile = CreateFileW(
+			path.c_str(),
+			READ_CONTROL | WRITE_DAC | WRITE_OWNER,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			nullptr,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+			nullptr);
+		if (hFile == INVALID_HANDLE_VALUE) {
+			error = "cannot open secret for ACL repair";
+			return false;
+		}
+
+		BY_HANDLE_FILE_INFORMATION info;
+		if (!GetFileInformationByHandle(hFile, &info) ||
+			(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) != 0) {
+			error = "secret is not a regular file";
+			CloseHandle(hFile);
+			return false;
+		}
+
+		std::vector<BYTE> sdBytes;
+		if (!BuildSecretSecurityDescriptor(sdBytes, error)) {
+			CloseHandle(hFile);
+			return false;
+		}
+
+		PSID pOwner = nullptr;
+		PACL pDacl = nullptr;
+		BOOL daclPresent = FALSE;
+		BOOL daclDefaulted = FALSE;
+		PSECURITY_DESCRIPTOR pSd = reinterpret_cast<PSECURITY_DESCRIPTOR>(sdBytes.data());
+		if (!GetSecurityDescriptorOwner(pSd, &pOwner, &daclDefaulted) ||
+			!GetSecurityDescriptorDacl(pSd, &daclPresent, &pDacl, &daclDefaulted) ||
+			!daclPresent || pDacl == nullptr) {
+			error = "cannot build secure secret DACL";
+			CloseHandle(hFile);
+			return false;
+		}
+
+		const DWORD status = SetSecurityInfo(
+			hFile,
+			SE_FILE_OBJECT,
+			OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+			pOwner,
+			nullptr,
+			pDacl,
+			nullptr);
+		CloseHandle(hFile);
+		if (status != ERROR_SUCCESS) {
+			error = "SetSecurityInfo failed: " + std::to_string(status);
+			return false;
+		}
+		return true;
+	}
 	FileReadResult ReadExistingSecret(const fs::path& path, std::string& token, std::string& error)
 	{
 		HANDLE hFile = CreateFileW(
@@ -426,6 +483,63 @@ namespace
 		return FileReadResult::ReadOk;
 	}
 #else
+	bool RepairSecretAcl(const fs::path& path, std::string& error)
+	{
+		HANDLE hFile = CreateFileW(
+			path.c_str(),
+			READ_CONTROL | WRITE_DAC | WRITE_OWNER,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			nullptr,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+			nullptr);
+		if (hFile == INVALID_HANDLE_VALUE) {
+			error = "cannot open secret for ACL repair";
+			return false;
+		}
+
+		BY_HANDLE_FILE_INFORMATION info;
+		if (!GetFileInformationByHandle(hFile, &info) ||
+			(info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) != 0) {
+			error = "secret is not a regular file";
+			CloseHandle(hFile);
+			return false;
+		}
+
+		std::vector<BYTE> sdBytes;
+		if (!BuildSecretSecurityDescriptor(sdBytes, error)) {
+			CloseHandle(hFile);
+			return false;
+		}
+
+		PSID pOwner = nullptr;
+		PACL pDacl = nullptr;
+		BOOL daclPresent = FALSE;
+		BOOL daclDefaulted = FALSE;
+		PSECURITY_DESCRIPTOR pSd = reinterpret_cast<PSECURITY_DESCRIPTOR>(sdBytes.data());
+		if (!GetSecurityDescriptorOwner(pSd, &pOwner, &daclDefaulted) ||
+			!GetSecurityDescriptorDacl(pSd, &daclPresent, &pDacl, &daclDefaulted) ||
+			!daclPresent || pDacl == nullptr) {
+			error = "cannot build secure secret DACL";
+			CloseHandle(hFile);
+			return false;
+		}
+
+		const DWORD status = SetSecurityInfo(
+			hFile,
+			SE_FILE_OBJECT,
+			OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+			pOwner,
+			nullptr,
+			pDacl,
+			nullptr);
+		CloseHandle(hFile);
+		if (status != ERROR_SUCCESS) {
+			error = "SetSecurityInfo failed: " + std::to_string(status);
+			return false;
+		}
+		return true;
+	}
 	FileReadResult ReadExistingSecret(const fs::path& path, std::string& token, std::string& error)
 	{
 		const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
@@ -553,7 +667,18 @@ namespace
 			return true;
 		}
 		if (existingResult == FileReadResult::ReadError) {
-			// Never replace a malformed/insecure secret: fail closed instead.
+			// Repair only the ACL of an existing regular file; never replace its token.
+			std::string repairError;
+			if (!RepairSecretAcl(path, repairError)) {
+				error = "secret is not securely readable and ACL repair failed: " + repairError;
+				return false;
+			}
+			std::string repaired;
+			const FileReadResult repairedResult = ReadExistingSecret(path, repaired, error);
+			if (repairedResult == FileReadResult::ReadOk) {
+				token = repaired;
+				return true;
+			}
 			return false;
 		}
 
@@ -718,6 +843,21 @@ namespace ApiAccess
 			return false;
 		}
 
+		const std::optional<std::string> host = HTTPUtil::GetHeaderValue(conn, "Host");
+		if (!host.has_value() || !IsAllowedHost(host.value(), serverPort)) {
+			return false;
+		}
+
+		const std::optional<std::string> origin = HTTPUtil::GetHeaderValue(conn, "Origin");
+		if (origin.has_value() && !IsAllowedOrigin(origin.value(), serverPort)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	bool CheckLocalRequest(mg_connection* conn, const uint16_t serverPort)
+	{
 		const std::optional<std::string> host = HTTPUtil::GetHeaderValue(conn, "Host");
 		if (!host.has_value() || !IsAllowedHost(host.value(), serverPort)) {
 			return false;

@@ -21,5 +21,13 @@ public:
 	static bool CreateDirectories(const fs::path& directory) noexcept;
 	static std::vector<GrinStr> GetSubDirectories(const fs::path& filePath, const bool includeHidden);
 
+	//
+	// Restricts an existing file/directory DACL to the current owner, SYSTEM and
+	// Administrators (Windows). Removes inherited ACEs. Best-effort: returns
+	// false on failure; callers log and decide whether to fail closed.
+	// No-op on non-Windows builds at this stage.
+	//
+	static bool HardenPermissions(const fs::path& path) noexcept;
+
 	static fs::path GetHomeDirectory();
 };

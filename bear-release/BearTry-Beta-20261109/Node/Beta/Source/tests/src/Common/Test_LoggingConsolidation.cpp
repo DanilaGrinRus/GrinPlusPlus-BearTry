@@ -52,7 +52,7 @@ TEST_CASE("Logging consolidation keeps Node.log and only errors/sync beside it",
 	// Restart reopens the same files and appends; no duplicate logger-name crash.
 	LoggerAPI::Initialize(dir, "INFO");
 	LoggerAPI::InitializeNodeDiagnostics(dir, "INFO");
-	LOG_INFO_F("consolidated after restart");
+	LOG_INFO("consolidated after restart");
 	LoggerAPI::Flush();
 	LoggerAPI::Shutdown();
 	REQUIRE(readFile(dir / "Node.log").find("consolidated after restart") != std::string::npos);

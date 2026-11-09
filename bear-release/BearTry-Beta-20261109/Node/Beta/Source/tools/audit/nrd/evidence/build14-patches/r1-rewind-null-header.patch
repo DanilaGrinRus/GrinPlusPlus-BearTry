@@ -1,0 +1,69 @@
+diff --git a/src/PMMR/TxHashSetImpl.cpp b/src/PMMR/TxHashSetImpl.cpp
+index 461d978..a77c0ad 100644
+--- a/src/PMMR/TxHashSetImpl.cpp
++++ b/src/PMMR/TxHashSetImpl.cpp
+@@ -716,7 +716,17 @@ void TxHashSet::Rewind(std::shared_ptr<IBlockDB> pBlockDB, const BlockHeader& he
+ 			leavesToAdd.push_back(iter->second.GetLeafIndex().Get());
+ 		}
+ 
+-		m_pBlockHeader = pBlockDB->GetBlockHeader(m_pBlockHeader->GetPreviousHash());
++		const Hash previousHash = m_pBlockHeader->GetPreviousHash();
++		const BlockHeaderPtr pPreviousBlockHeader = pBlockDB->GetBlockHeader(previousHash);
++		if (pPreviousBlockHeader == nullptr) {
++			LOG_ERROR_F(
++				"Cannot rewind TxHashSet: previous header {} for block {} is missing",
++				previousHash, m_pBlockHeader->GetHash());
++			throw TXHASHSET_EXCEPTION_F(
++				"Missing previous header {} while rewinding block {}",
++				previousHash, m_pBlockHeader->GetHash());
++		}
++		m_pBlockHeader = pPreviousBlockHeader;
+ 	}
+ 
+ 	m_pKernelMMR->Rewind(header.GetNumKernels());
+diff --git a/tests/src/PMMR/CMakeLists.txt b/tests/src/PMMR/CMakeLists.txt
+index c48a4d4..a873a7d 100644
+--- a/tests/src/PMMR/CMakeLists.txt
++++ b/tests/src/PMMR/CMakeLists.txt
+@@ -32,6 +32,7 @@ list_append_parent(
+     "Test_NrdFalseBan.cpp"
+     "Test_NrdBatchSafety.cpp"
+     "Test_NrdKernelRange.cpp"
++    "Test_RewindFailClosed.cpp"
+     "Test_KernelLookup.cpp"
+     "Test_TxHashSetStaging.cpp"
+     "LeafSet/Test_LeafSet.cpp"
+diff --git a/tests/src/PMMR/Test_RewindFailClosed.cpp b/tests/src/PMMR/Test_RewindFailClosed.cpp
+new file mode 100644
+index 0000000..a229afd
+--- /dev/null
++++ b/tests/src/PMMR/Test_RewindFailClosed.cpp
+@@ -0,0 +1,28 @@
++#include <catch.hpp>
++
++#include "Test_NrdSupport.h"
++
++using namespace NrdTest;
++
++namespace
++{
++	std::vector<TransactionKernel> Kernels(std::initializer_list<TransactionKernel> kernels)
++	{
++		return std::vector<TransactionKernel>(kernels);
++	}
++}
++
++// F11: a missing previous header during Rewind must fail closed with a typed
++// exception, not dereference a null BlockHeaderPtr.
++TEST_CASE("Rewind fails closed when the previous header is missing")
++{
++	ChainBuilder builder(ChainBuilder::MakeTempRoot("rewind-missing-prev"));
++	REQUIRE(builder.ApplyBlock(Kernels({})));
++
++	const Hash previousHash = builder.Tip()->GetPreviousHash();
++	builder.BlockDB()->RemoveBlockHeader(previousHash);
++
++	REQUIRE_THROWS_AS(
++		builder.TxHashSetRef().Rewind(builder.BlockDB(), *builder.GenesisHeader()),
++		TxHashSetException);
++}

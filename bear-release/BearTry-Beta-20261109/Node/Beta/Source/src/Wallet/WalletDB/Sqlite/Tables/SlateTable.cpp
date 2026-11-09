@@ -1,4 +1,5 @@
 #include "SlateTable.h"
+#include "../../WalletEncryptionUtil.h"
 #include "../SqliteDB.h"
 #include "../Schema.h"
 
@@ -11,7 +12,7 @@
 
 void SlateTable::CreateTable(SqliteDB& database)
 {
-	std::string table_creation_cmd = "create table slate(slate_id TEXT NOT NULL, stage TEXT NOT NULL, iv BLOB NOT NULL, slate BLOB NOT NULL, armored_slatepack TEXT);";
+	std::string table_creation_cmd = "create table slate(slate_id TEXT NOT NULL, stage TEXT NOT NULL, iv BLOB NOT NULL, slate BLOB NOT NULL, armored_slatepack TEXT, enc_format INTEGER NOT NULL DEFAULT 0);";
 	// TODO: Add indices
 	database.Execute(table_creation_cmd);
 }
@@ -25,18 +26,18 @@ void SlateTable::UpdateSchema(SqliteDB& database, const int previousVersion)
 			if (!database.TableHasColumn("slate", "armored_slatepack")) {
 				database.Execute("ALTER TABLE slate ADD armored_slatepack TEXT;");
 			}
-			return;
+		} else {
+			CreateTable(database);
 		}
-
-		CreateTable(database);
 	} else if (previousVersion < 3) {
 		// Some builds stamped a v4-shaped database as version 2 (N-08). In that
 		// case the armored_slatepack column already exists and a copy through
 		// "new_slate" would silently drop its values. Never lose the column.
 		if (database.TableHasColumn("slate", "armored_slatepack")) {
 			WALLET_INFO("Slate table already contains armored_slatepack; skipping v2->v3 migration");
-			return;
 		}
+		else
+		{
 
 		WALLET_INFO("Migrating Slate Table to new schema");
 
@@ -77,6 +78,14 @@ void SlateTable::UpdateSchema(SqliteDB& database, const int previousVersion)
 		// Rename "new_slate" table to "slate"
 		const std::string rename_table_cmd = "ALTER TABLE new_slate RENAME TO slate";
 		database.Execute(rename_table_cmd);
+		}
+	}
+
+	// v5 (W-06): row-bound authenticated slate records. Existing rows keep the
+	// legacy AES-CBC blob (enc_format=0) and remain readable; new writes use
+	// format 2 with AAD=slate_id+stage.
+	if (previousVersion < 5 && database.TableExists("slate") && !database.TableHasColumn("slate", "enc_format")) {
+		database.Execute("ALTER TABLE slate ADD COLUMN enc_format INTEGER NOT NULL DEFAULT 0;");
 	}
 }
 
@@ -87,19 +96,79 @@ void SlateTable::SaveSlate(
 	const std::string& armored_slatepack)
 {
 	// TODO: Update if it already exists?
-	std::string insert_slate_cmd = "insert into slate values(?, ?, ?, ?, ?)";
+	std::string insert_slate_cmd = "insert into slate(slate_id, stage, iv, slate, armored_slatepack, enc_format) values(?, ?, ?, ?, ?, ?)";
 
-	CBigInteger<16> iv(CSPRNG::GenerateRandomBytes(16).data());
-	std::vector<uint8_t> encrypted = Encrypt(masterSeed, iv, slate);
+	const std::string slateIdStr = uuids::to_string(slate.slateId);
+	const std::string stageStr = slate.stage.ToString();
+	const std::string dataType = "SLATE:" + slateIdStr + ":" + stageStr;
+	const std::string associatedDataStr = slateIdStr + ":" + stageStr;
+	const std::vector<uint8_t> associatedData(associatedDataStr.begin(), associatedDataStr.end());
+
+	Serializer serializer;
+	slate.Serialize(serializer);
+	// W-06 format 2: slate data is bound to its slate id/stage.
+	const std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(
+		masterSeed, dataType, associatedData, serializer.GetSecureBytes()
+	);
+
+	// The IV is carried inside the format-2 blob; keep a zero placeholder for the
+	// legacy column so the schema stays compatible.
+	CBigInteger<16> zeroIv;
 
 	std::vector<SqliteDB::IParameter::UPtr> parameters;
-	parameters.push_back(TextParameter::New(uuids::to_string(slate.slateId)));
-	parameters.push_back(TextParameter::New(slate.stage.ToString()));
-	parameters.push_back(BlobParameter::New(iv.GetData()));
+	parameters.push_back(TextParameter::New(slateIdStr));
+	parameters.push_back(TextParameter::New(stageStr));
+	parameters.push_back(BlobParameter::New(zeroIv.GetData()));
 	parameters.push_back(BlobParameter::New(encrypted));
 	parameters.push_back(armored_slatepack.empty() ? NullParameter::New() : TextParameter::New(armored_slatepack));
+	parameters.push_back(IntParameter::New(1));
 	
 	database.Update(insert_slate_cmd, parameters);
+}
+
+void SlateTable::MigrateLegacyRows(SqliteDB& database, const SecureVector& masterSeed)
+{
+	auto pStatement = database.Query("select slate_id, stage from slate where enc_format=0");
+	std::vector<std::pair<std::string, std::string>> legacyRows;
+	while (pStatement->Step()) {
+		legacyRows.emplace_back(pStatement->GetColumnString(0), pStatement->GetColumnString(1));
+	}
+	pStatement->Finalize();
+
+	for (const auto& row : legacyRows) {
+		const auto slateIdOpt = uuids::uuid::from_string(row.first);
+		if (!slateIdOpt.has_value()) {
+			WALLET_WARNING_F("Skipping legacy slate with invalid id: {}", row.first);
+			continue;
+		}
+
+		const uuids::uuid slateId = slateIdOpt.value();
+		const SlateStage stage = SlateStage::FromString(row.second);
+		auto pSlate = SlateTable::LoadSlate(database, masterSeed, slateId, stage);
+		if (pSlate == nullptr) {
+			continue;
+		}
+
+		Serializer serializer;
+		pSlate->Serialize(serializer);
+		const std::string dataType = "SLATE:" + row.first + ":" + row.second;
+		const std::string associatedDataStr = row.first + ":" + row.second;
+		const std::vector<uint8_t> associatedData(associatedDataStr.begin(), associatedDataStr.end());
+		const std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(
+			masterSeed, dataType, associatedData, serializer.GetSecureBytes()
+		);
+
+		CBigInteger<16> zeroIv;
+		std::vector<SqliteDB::IParameter::UPtr> parameters;
+		parameters.push_back(BlobParameter::New(zeroIv.GetData()));
+		parameters.push_back(BlobParameter::New(encrypted));
+		parameters.push_back(TextParameter::New(row.first));
+		parameters.push_back(TextParameter::New(row.second));
+		database.Update(
+			"update slate set iv=?, slate=?, enc_format=1 where slate_id=? and stage=?",
+			parameters
+		);
+	}
 }
 
 std::unique_ptr<Slate> SlateTable::LoadSlate(
@@ -108,7 +177,7 @@ std::unique_ptr<Slate> SlateTable::LoadSlate(
 	const uuids::uuid& slateId,
 	const SlateStage& stage)
 {
-	std::string get_slate_query = StringUtil::Format("SELECT iv, slate FROM slate WHERE slate_id='{}' and stage='{}'", uuids::to_string(slateId), stage.ToString());
+	std::string get_slate_query = StringUtil::Format("SELECT iv, slate, enc_format FROM slate WHERE slate_id='{}' and stage='{}'", uuids::to_string(slateId), stage.ToString());
 	auto pStatement = database.Query(get_slate_query);
 
 	if (!pStatement->Step()) {
@@ -125,10 +194,21 @@ std::unique_ptr<Slate> SlateTable::LoadSlate(
 	}
 
 	CBigInteger<16> iv(std::move(iv_bytes));
+	const int encFormat = pStatement->GetColumnInt(2);
 
 	try
 	{
 		std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(1);
+		if (encFormat == 1) {
+			const std::string slateIdStr = uuids::to_string(slateId);
+			const std::string stageStr = stage.ToString();
+			const std::string dataType = "SLATE:" + slateIdStr + ":" + stageStr;
+			const std::string associatedDataStr = slateIdStr + ":" + stageStr;
+			const std::vector<uint8_t> associatedData(associatedDataStr.begin(), associatedDataStr.end());
+			const SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, dataType, associatedData, encrypted);
+			ByteBuffer byteBuffer(std::vector<uint8_t>{ decrypted.begin(), decrypted.end() });
+			return std::make_unique<Slate>(Slate::Deserialize(byteBuffer));
+		}
 
 		return std::make_unique<Slate>(Decrypt(masterSeed, slateId, iv, encrypted));
 	}
@@ -144,7 +224,7 @@ std::pair<std::unique_ptr<Slate>, std::string> SlateTable::LoadLatestSlate(
 	const SecureVector& masterSeed,
 	const uuids::uuid& slateId)
 {
-	std::string get_slate_query = StringUtil::Format("SELECT stage, iv, slate, armored_slatepack FROM slate WHERE slate_id='{}'", uuids::to_string(slateId));
+	std::string get_slate_query = StringUtil::Format("SELECT stage, iv, slate, armored_slatepack, enc_format FROM slate WHERE slate_id='{}'", uuids::to_string(slateId));
 	auto pStatement = database.Query(get_slate_query);
 
 	SlateStage highest_stage = ESlateStage::NONE;
@@ -175,7 +255,19 @@ std::pair<std::unique_ptr<Slate>, std::string> SlateTable::LoadLatestSlate(
 				armored_slatepack = pStatement->GetColumnString(3);
 			}
 
-			latest.first = std::make_unique<Slate>(Decrypt(masterSeed, slateId, iv, encrypted));
+			const int encFormat = pStatement->GetColumnInt(4);
+			if (encFormat == 1) {
+				const std::string slateIdStr = uuids::to_string(slateId);
+				const std::string stageStr = stage.ToString();
+				const std::string dataType = "SLATE:" + slateIdStr + ":" + stageStr;
+				const std::string associatedDataStr = slateIdStr + ":" + stageStr;
+				const std::vector<uint8_t> associatedData(associatedDataStr.begin(), associatedDataStr.end());
+				const SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, dataType, associatedData, encrypted);
+				ByteBuffer byteBuffer(std::vector<uint8_t>{ decrypted.begin(), decrypted.end() });
+				latest.first = std::make_unique<Slate>(Slate::Deserialize(byteBuffer));
+			} else {
+				latest.first = std::make_unique<Slate>(Decrypt(masterSeed, slateId, iv, encrypted));
+			}
 			latest.second = armored_slatepack;
 
 			highest_stage = stage;

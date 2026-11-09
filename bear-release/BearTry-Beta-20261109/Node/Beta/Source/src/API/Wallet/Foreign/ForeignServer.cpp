@@ -14,8 +14,11 @@ ForeignServer::UPtr ForeignServer::Create(
     const SessionToken& token,
     const int currentAddressIndex)
 {
+    // T3/A-07: the foreign wallet API has no authentication. Bind it to loopback
+    // only; Tor's hidden-service listener reaches the same local port, while LAN
+    // peers can no longer send receive_tx/finalize_tx/build_coinbase.
     RPCServerPtr pServer = RPCServer::Create(
-        EServerType::PUBLIC,
+        EServerType::LOCAL,
         std::nullopt,
         "/v2/foreign",
         LoggerAPI::LogFile::WALLET

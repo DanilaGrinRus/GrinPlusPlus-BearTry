@@ -439,6 +439,15 @@ public:
 #endif
 	}
 
+	// Pure serving policy gate. Archive serving is a capability advertisement to
+	// peers, so mainnet must stay disabled even if some future default or an
+	// operator opt-in resolves to true. Kept pure (no Global access) so the
+	// refusal is pinned by a unit test and cannot silently regress.
+	static bool IsServingAllowed(const bool optIn, const bool isMainnet) noexcept
+	{
+		return optIn && !isMainnet;
+	}
+
 	// Saturated free-space requirement for one extraction. Returns
 	// numeric_limits<uint64_t>::max() when the required amount would overflow.
 	static uint64_t ComputeRequiredSpace(const uint64_t archiveBytes) noexcept

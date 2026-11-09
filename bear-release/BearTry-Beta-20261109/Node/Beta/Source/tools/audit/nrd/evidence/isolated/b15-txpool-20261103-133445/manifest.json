@@ -1,0 +1,283 @@
+{
+  "schema": "gpp-line3-test-run/v1",
+  "run_id": "b15-txpool-20261103-133445",
+  "status": "PASS",
+  "no_tests_ran": false,
+  "fail_on_no_tests": false,
+  "created_utc": "2026-11-03T06:34:48.3411470Z",
+  "repo": "C:\\DHW\\Gplus\\src\\grinplusplus",
+  "git_head": "75a09d63bb625197367c38a28baf28880bcbc358",
+  "git_status_porcelain": [
+    "M docs/modernization/AUDIT_DELTA.de.md",
+    " M docs/modernization/AUDIT_DELTA.en.md",
+    " M docs/modernization/AUDIT_DELTA.ru.md",
+    " M docs/modernization/CI_REPRO.md",
+    " M docs/modernization/G09_ORDINARY_LIVE_PASS_2026-11-03.md",
+    " M docs/modernization/GAP_MATRIX.md",
+    " M docs/modernization/SANITIZERS.md",
+    " M docs/modernization/THREE_LINE_STATUS.md",
+    " M evidence/line3/EVIDENCE_LINE3.md",
+    " M evidence/line3/task10-11-archive-recovery-manifest-20261103.json",
+    " M src/P2P/Sync/StateSyncer.cpp",
+    " M src/P2P/Sync/StateSyncer.h",
+    " M src/PMMR/TxHashSetImpl.cpp",
+    " M src/TxPool/TransactionPoolImpl.cpp",
+    " M src/TxPool/TransactionPoolImpl.h",
+    " M tests/src/PMMR/CMakeLists.txt",
+    " M tests/src/PMMR/Test_PibdServing.cpp",
+    "?? evidence/line3/b14-advert-01/",
+    "?? evidence/line3/b14-archivepub-01/",
+    "?? evidence/line3/b14-boundary-01/",
+    "?? evidence/line3/b14-d2-01/",
+    "?? evidence/line3/b14-dup-01/",
+    "?? evidence/line3/b14-f13-01/",
+    "?? evidence/line3/b14-full-01/",
+    "?? evidence/line3/b14-getkernel-01/",
+    "?? evidence/line3/b14-kernidx-01/",
+    "?? evidence/line3/b14-nrd-01/",
+    "?? evidence/line3/b14-pibdarchive-01/",
+    "?? evidence/line3/b14-preflight-01/",
+    "?? evidence/line3/b14-rewindf11-01/",
+    "?? evidence/line3/b14-schema-01/",
+    "?? evidence/line3/b14-spent-01/",
+    "?? evidence/line3/build-14-freeze-snapshot-final.json",
+    "?? evidence/line3/build13-7b-full-20261103/",
+    "?? evidence/line3/build13-7b-full-audit-20261103.json",
+    "?? evidence/line3/build13-7b-full-audit-20261103.md",
+    "?? evidence/line3/build13-7b-live-audit-plan-20261103.json",
+    "?? evidence/line3/build13-7b-live-audit-plan-20261103.md",
+    "?? evidence/line3/build14-audit-result-20261103.json",
+    "?? evidence/line3/build14-audit-result-20261103.md",
+    "?? evidence/line3/build14-failclosed-preauth-20261103.json",
+    "?? evidence/line3/build14-failclosed-preauth-20261103.md",
+    "?? evidence/line3/build14-independent-audit-plan-20261103.json",
+    "?? evidence/line3/build14-independent-audit-plan-20261103.md",
+    "?? tests/src/PMMR/Test_RewindFailClosed.cpp",
+    "?? tests/src/PMMR/Test_TxPoolNrdPolicy.cpp",
+    "?? tools/audit/nrd/evidence/backlog-bodyless-kill-d2-design-20261103.md",
+    "?? tools/audit/nrd/evidence/build14-patches/",
+    "?? tools/audit/nrd/evidence/isolated/b14-archivepub-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-f13-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-full-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-pibdarchive-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-preflight-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-rewind-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b14-txpool-20261103-132315/",
+    "?? tools/audit/nrd/evidence/isolated/b15-f13-20261103-133445/",
+    "?? tools/audit/nrd/evidence/isolated/b15-rewind-20261103-133445/",
+    "?? tools/audit/nrd/evidence/kernel-index-legacy-cleanup-audit-20261103.md",
+    "?? tools/audit/nrd/evidence/rewind-preflight-fail-closed-audit-20261103.md"
+  ],
+  "git_diff_stat": "warning: in the working copy of 'docs/modernization/CI_REPRO.md', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'docs/modernization/G09_ORDINARY_LIVE_PASS_2026-11-03.md', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'docs/modernization/SANITIZERS.md', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'evidence/line3/EVIDENCE_LINE3.md', LF will be replaced by CRLF the next time Git touches it\r\n docs/modernization/AUDIT_DELTA.de.md               |  13 +++\r\n docs/modernization/AUDIT_DELTA.en.md               |  13 +++\r\n docs/modernization/AUDIT_DELTA.ru.md               |  13 +++\r\n docs/modernization/CI_REPRO.md                     |   3 +-\r\n .../G09_ORDINARY_LIVE_PASS_2026-11-03.md           |  19 +++\r\n docs/modernization/GAP_MATRIX.md                   |   2 +-\r\n docs/modernization/SANITIZERS.md                   |  12 +-\r\n docs/modernization/THREE_LINE_STATUS.md            | 107 ++++++++++++++++-\r\n evidence/line3/EVIDENCE_LINE3.md                   | 130 +++++++++++++++++++++\r\n ...sk10-11-archive-recovery-manifest-20261103.json |  20 +++-\r\n src/P2P/Sync/StateSyncer.cpp                       |  65 ++++++++++-\r\n src/P2P/Sync/StateSyncer.h                         |   7 ++\r\n src/PMMR/TxHashSetImpl.cpp                         |  12 +-\r\n src/TxPool/TransactionPoolImpl.cpp                 |  34 ++++++\r\n src/TxPool/TransactionPoolImpl.h                   |  17 +++\r\n tests/src/PMMR/CMakeLists.txt                      |   2 +\r\n tests/src/PMMR/Test_PibdServing.cpp                |  33 +++++-\r\n 17 files changed, 489 insertions(+), 13 deletions(-)",
+  "source_hashes": {
+    "tests/src/TestMain.cpp": "6BAC17446DE696518FD364220569185F43769B813F59A25372037FBC53D8527B",
+    "tests/src/PMMR/CMakeLists.txt": "EFBD1E637020FA17BE0E062F3E6224AD810CDA51471502D9291089642B11916F",
+    "tests/src/PMMR/Test_ZipFile.cpp": "B9BE2B4AA86EDC7DEE478BC230C186066B0255F1F3E1B5728E4656E757D55B75",
+    "include/P2P/Capabilities.h": "FD3997F591512A83E23DBEC2CFF3DFAC5D247E470D87E2000690F85AAD97665E",
+    "src/PMMR/Zip/ZipFile.cpp": "0097B38DF25439C7EBA6EEA3C8260C246C79BC0F600D57A3099CCFC08A0026C3",
+    "include/PMMR/NrdRules.h": "0F63E0CDEF08EAD92A39F9321D92A40019B3AFAC68E65BA28DCE0618C1262A2C",
+    "include/PMMR/KernelIndex.h": "419A037C83F6D3B689950E6EE4D18A64A4690DB13B0CE0A9C04CE89AD1BCDDBA",
+    "src/PMMR/KernelIndex.cpp": "AD0350E991830DCEB062FE3737267E96665B372C8F62DC15363D6434B8B3D4DE",
+    "tests/src/PMMR/Test_NrdRules.cpp": "E5E720584BDBE8AC2A35008C986FE52ED8DCABDBEFAD25BA1C225ABB81267503",
+    "tests/src/PMMR/Test_NrdDifferential.cpp": "5026F63ACB93A884232CB651CCAE116BA76FF87C475AF72FD380A9C26D5831FE",
+    "tests/src/PMMR/Test_NrdIndexRebuild.cpp": "4C47A0B0290F11BC03B3971AE9BDE30DAD71D2A476598BF608D91B2186A9A94E",
+    "tests/src/PMMR/Test_NrdSupport.h": "1AC6059F8958D78EDC18B0564AEFCA47B800C1DCAD9CF881B81823E6F7082B84"
+  },
+  "host": {
+    "os": "Microsoft Windows NT 10.0.26300.0",
+    "pwsh": "7.6.9",
+    "architecture": "AMD64",
+    "user_profile": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home",
+    "utc_offset_min": 420
+  },
+  "binary": {
+    "source_path": "C:\\DHW\\Gplus\\src\\grinplusplus\\bin\\Release\\Release\\Tests.exe",
+    "source_sha256": "920F000F38958DA545ED3BC57DB796A0062CB5EF6E304E7DB354DAD065E6227D",
+    "copy_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\bin\\Tests.exe",
+    "copy_sha256": "920F000F38958DA545ED3BC57DB796A0062CB5EF6E304E7DB354DAD065E6227D",
+    "copy_sha256_after": "920F000F38958DA545ED3BC57DB796A0062CB5EF6E304E7DB354DAD065E6227D",
+    "copy_unchanged": true,
+    "bytes": 9495552,
+    "pe_timestamp": {
+      "raw_hex": "0x6AE9806A",
+      "utc": "2026-11-03T06:34:18.0000000Z"
+    },
+    "pe_timestamp_copy": {
+      "raw_hex": "0x6AE9806A",
+      "utc": "2026-11-03T06:34:18.0000000Z"
+    },
+    "copied_asan_runtime": []
+  },
+  "isolation": {
+    "mode": "PerRun",
+    "run_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445",
+    "cwd": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\cwd",
+    "home_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\home",
+    "tmp_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\tmp",
+    "env": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\home",
+      "USERPROFILE": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\home",
+      "HOME": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\home",
+      "TMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\tmp",
+      "TEMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\tmp",
+      "TMPDIR": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\tmp"
+    },
+    "env_before": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home",
+      "USERPROFILE": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home",
+      "HOME": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home",
+      "TMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\tmp",
+      "TEMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\tmp",
+      "TMPDIR": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\tmp"
+    },
+    "expected_test_data_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\home\\.GrinPP\\AUTOMATED_TESTING",
+    "test_data_dir_created": true,
+    "test_log_dir_created": true,
+    "cwd_tree": null,
+    "home_tree_sample": [
+      {
+        "rel": ".GrinPP",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Node.log",
+        "dir": false,
+        "bytes": 90
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Wallet.log",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\CHAIN",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\DB",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\kernel",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\output",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\rangeproof",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR\\.torrc",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\WALLET",
+        "dir": true,
+        "bytes": 1
+      }
+    ],
+    "home_tree_entries": 15,
+    "user_profile_before": {
+      "path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 14,
+      "total_bytes": 3597,
+      "latest_write_utc": "2026-11-03T06:34:47.4613304Z",
+      "listing_sha256": "ccfb9c1f4d1e53c9dec0c43d99864f58301301a80b80db8f226e042a297c4c2b"
+    },
+    "user_profile_after": {
+      "path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-f13-20261103-133445\\home\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 14,
+      "total_bytes": 3597,
+      "latest_write_utc": "2026-11-03T06:34:47.4613304Z",
+      "listing_sha256": "ccfb9c1f4d1e53c9dec0c43d99864f58301301a80b80db8f226e042a297c4c2b"
+    },
+    "user_profile_unchanged": true,
+    "reparse_point_check": "passed",
+    "disposable_base": "C:\\DHW\\.tmp\\line2-nrd\\iso"
+  },
+  "command": {
+    "exe": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\bin\\Tests.exe",
+    "args": "\"TxPool NRD policy*\"",
+    "test_args": [
+      "TxPool NRD policy*"
+    ],
+    "raw_exe_args": "",
+    "fail_on_no_tests": false,
+    "working_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\cwd",
+    "instances": 1,
+    "timeout_sec": 900,
+    "started_utc": "2026-11-03T06:34:47.9368777Z",
+    "finished_utc": "2026-11-03T06:34:48.2675878Z",
+    "wall_sec": 0.331
+  },
+  "instances": [
+    {
+      "index": 1,
+      "pid": 10524,
+      "started_utc": "2026-11-03T06:34:48.1571984Z",
+      "duration_sec": 0.113,
+      "exit_code": {
+        "decimal": 0,
+        "hex": "0x00000000"
+      },
+      "status": "PASS",
+      "no_tests_ran": false,
+      "stdout_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\out\\instance-1.stdout.log",
+      "stdout_sha256": "E5CB1FA03972A638184ABCD7E491708D898CD83AC41A83B18D93327F2C4D90CD",
+      "stdout_bytes": 205,
+      "stderr_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\b15-txpool-20261103-133445\\out\\instance-1.stderr.log",
+      "stderr_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "stderr_bytes": 0,
+      "summary_lines": [
+        "Test Runtime Initialized.",
+        "Running Tests...",
+        "All tests passed (8 assertions in 1 test case)"
+      ]
+    }
+  ],
+  "windows_application_events": null,
+  "notes": [
+    "Non-instrumented build: no sanitizer. Evidence covers test-run isolation and runtime behavior only.",
+    "stdout redirected to a file is block-buffered; an empty log does not prove the process died before printing.",
+    "Windows Application Error events are matched by the unique copy path inside this run directory."
+  ]
+}

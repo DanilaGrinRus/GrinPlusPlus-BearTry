@@ -29,7 +29,9 @@ TestListener::~TestListener()
     m_pAcceptor.reset();
     std::cout << "Stopping ASIO context..." << std::endl;
     m_pAsioContext->stop();
-    m_pAsioContext->run(ec);
+    m_pAsioContext->restart();
+    m_pAsioContext->run();
+    m_tasks = 0;
     std::cout << "ASIO Context stopped!" << std::endl;
 
     while (true) {

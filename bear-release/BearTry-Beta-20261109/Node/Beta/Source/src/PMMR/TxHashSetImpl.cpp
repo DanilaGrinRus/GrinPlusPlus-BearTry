@@ -491,7 +491,7 @@ void TxHashSet::RebuildRecentKernelIndexInternal(
 		if (cutoff > 0) {
 			BlockHeaderPtr pPrevious = pBlockDB->GetBlockHeader(pHeader->GetPreviousHash());
 			if (pPrevious == nullptr || pPrevious->GetHeight() + 1 != cutoff) {
-				LOG_WARNING_F("Could not rebuild NRD index: header before cutoff is missing");
+				LOG_WARNING("Could not rebuild NRD index: header before cutoff is missing");
 				return;
 			}
 			previousKernelCount = pPrevious->GetNumKernels();

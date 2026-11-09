@@ -98,7 +98,7 @@ public:
 	asio::ip::tcp::endpoint GetEndpoint() const
 	{
 		return asio::ip::tcp::endpoint{
-			asio::ip::address_v4::from_string(m_ipAddress.Format()),
+			asio::ip::make_address_v4(m_ipAddress.Format()),
 			m_port
 		};
 	}

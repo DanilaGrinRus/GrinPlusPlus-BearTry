@@ -19,4 +19,5 @@ list_append_parent(
     "Test_OutputRestorer.cpp"
     "Test_WalletRefresherReorg.cpp"
     "Test_NodeClientRpc.cpp"
+    "Test_WalletEncryption.cpp"
 )

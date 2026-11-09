@@ -70,11 +70,31 @@ CreateWalletResponse WalletManager::InitializeNewWallet(
 
 	WALLET_INFO_F("Wallet created with username: {}", criteria.GetUsername());
 
-	SessionToken token = m_sessionManager.Write()->Login(
-		pTorProcess,
-		criteria.GetUsername(),
-		walletSeed
-	);
+	// W-10 residual: create_wallet must not leave a wallet behind when the
+	// implicit login fails (e.g. Tor/listener failure). The caller never received
+	// the seed words, so the wallet would otherwise be unusable and a retry would
+	// fail with "already exists". Best-effort rollback; if the session was
+	// partially established the store refuses deletion and we keep the original
+	// error instead of masking it.
+	SessionToken token = [&]() {
+		try {
+			return m_sessionManager.Write()->Login(
+				pTorProcess,
+				criteria.GetUsername(),
+				walletSeed
+			);
+		}
+		catch (...) {
+			try {
+				m_pWalletStore->DeleteWallet(criteria.GetUsername());
+				WALLET_WARNING_F("Rolled back wallet after failed implicit login: {}", criteria.GetUsername());
+			}
+			catch (const std::exception& e) {
+				WALLET_ERROR_F("Failed to roll back wallet after failed implicit login: {}", e.what());
+			}
+			throw;
+		}
+	}();
 
 	auto pWallet = m_sessionManager.Read()->GetWallet(token).Read();
 	return CreateWalletResponse(
@@ -111,7 +131,21 @@ LoginResponse WalletManager::RestoreFromSeed(
 		m_pWalletStore->CreateWallet(criteria.GetUsername(), encryptedSeed);
 
 		WALLET_INFO_F("Wallet restored for username: {}", criteria.GetUsername());
-		SessionToken token = m_sessionManager.Write()->Login(pTorProcess, criteria.GetUsername(), entropy);
+		SessionToken token = [&]() {
+			try {
+				return m_sessionManager.Write()->Login(pTorProcess, criteria.GetUsername(), entropy);
+			}
+			catch (...) {
+				try {
+					m_pWalletStore->DeleteWallet(criteria.GetUsername());
+					WALLET_WARNING_F("Rolled back restored wallet after failed implicit login: {}", criteria.GetUsername());
+				}
+				catch (const std::exception& e) {
+					WALLET_ERROR_F("Failed to roll back restored wallet after failed implicit login: {}", e.what());
+				}
+				throw;
+			}
+		}();
 
 		auto pWallet = m_sessionManager.Read()->GetWallet(token).Read();
 		return LoginResponse(
@@ -231,6 +265,8 @@ LoginResponse WalletManager::Login(
 			const SecureVector masterSeed = m_sessionManager.Read()->GetSeed(token);
 			const std::vector<WalletTx> walletTxs = pWallet->GetDatabase().Read()->GetTransactions(masterSeed);
 			size_t pendingBroadcasts = 0;
+			size_t reposted = 0;
+			size_t repostFailed = 0;
 			for (const WalletTx& walletTx : walletTxs)
 			{
 				if (walletTx.GetType() == EWalletTxType::SENDING_FINALIZED
@@ -238,15 +274,45 @@ LoginResponse WalletManager::Login(
 					&& !walletTx.GetConfirmationTime().has_value())
 				{
 					++pendingBroadcasts;
+
+					if (!walletTx.GetTransaction().has_value())
+					{
+						++repostFailed;
+						continue;
+					}
+
+					try
+					{
+						PostMethodDTO postMethod(EPostMethod::FLUFF, std::nullopt);
+						if (PostTransaction(walletTx.GetTransaction().value(), postMethod, pTorProcess))
+						{
+							++reposted;
+						}
+						else
+						{
+							++repostFailed;
+						}
+					}
+					catch (const std::exception& e)
+					{
+						++repostFailed;
+						WALLET_WARNING_F(
+							"Auto-repost at login failed for a finalized transaction: {}",
+							e.what()
+						);
+					}
 				}
 			}
 
 			if (pendingBroadcasts > 0)
 			{
 				WALLET_WARNING_F(
-					"{} finalized transaction(s) have an unknown broadcast state (crash/restart?); "
-					"they can be retried with repost_tx and inspected with get_tx_status.",
-					pendingBroadcasts
+					"{} finalized transaction(s) had an unknown broadcast state (crash/restart?); "
+					"auto-repost attempted at login: {} succeeded, {} failed. "
+					"Failures can be retried with repost_tx and inspected with get_tx_status.",
+					pendingBroadcasts,
+					reposted,
+					repostFailed
 				);
 			}
 		}
@@ -463,7 +529,20 @@ bool WalletManager::PostTransaction(
 
 	const EPoolType poolType = (method == EPostMethod::FLUFF) ? EPoolType::MEMPOOL : EPoolType::STEMPOOL;
 
-	const bool posted = m_pNodeClient->PostTransaction(std::make_shared<Transaction>(transaction), poolType);
+	bool posted = false;
+	try
+	{
+		posted = m_pNodeClient->PostTransaction(std::make_shared<Transaction>(transaction), poolType);
+	}
+	catch (const std::exception& e)
+	{
+		// A transport/node failure must not escape as an uncaught exception:
+		// finalize/repost need to keep the wallet state consistent and return a
+		// coded error that the caller can retry.
+		WALLET_ERROR_F("Node error while posting transaction: {}", e.what());
+		posted = false;
+	}
+
 	if (!posted)
 	{
 		WALLET_ERROR("Node rejected the transaction or did not accept it into the pool.");

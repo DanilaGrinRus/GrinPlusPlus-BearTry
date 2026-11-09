@@ -42,6 +42,11 @@ namespace ApiAccess
 	// Checks the request credentials for the given level.
 	bool Check(mg_connection* conn, Level level, uint16_t serverPort);
 
+	// Validates only the browser-facing request boundary (loopback Host and, when
+	// present, a loopback Origin). Used by the wallet owner API, which has no
+	// .api_secret but must reject DNS-rebinding / cross-origin browser requests.
+	bool CheckLocalRequest(mg_connection* conn, uint16_t serverPort);
+
 	// --- Testable helpers (no mg_connection dependency) ---
 
 	// Constant-time comparison of two hex tokens (case-insensitive).

@@ -1,23 +1,30 @@
 {
-  "status": "RECONSTRUCTED — NOT EXACT B565",
-  "reconstructed_at": "2026-11-09T15:25:00+07:00",
-  "base": "gp3-independent/source (2026-11-06 snapshot)",
+  "status": "RECOVERED SOURCE — buildable, not byte-identical to B565",
+  "recovered_at": "2026-11-09T16:05:00+07:00",
+  "base": "gs://grin-beta-archive-62316-20261108/vps-beta/linux/source-vcpkg.tar.gz",
+  "base_sha256": "634cce1dd40459e1cc5728600c5916d81a2ce11aa73a5ac44d7e57e9f23c4eba",
   "binary": "B565612BCA31D9EFE4117FC37FD2C7680ED8B84D9830E47591EFA3C28BA3D64D",
   "binary_source_exact": false,
-  "included": [
-    "GP-1 InboundAdmission",
-    "GP-2 accept re-arm",
-    "GP-3 handshake deadline/type/length",
-    "P2P archive request/close fixes present in gp3-independent",
-    "task-72 ratefix (PeerRatePolicy/Connection from C:\\DHW\\ratefix-*)"
+  "task72_patch": {
+    "path": "evidence/.../p2p-agent-patches/task-72-rate-limit.patch",
+    "sha256": "C4E042F1C52D4BAFD62606D2EAF63912092354BF20F517FDFE5F94BA6ADA0AC1",
+    "applied": true,
+    "note": "Exact patch from agent bundle, not compact rewrite."
+  },
+  "write_torrc_content": "added locally (absent in recovered source)",
+  "build": {
+    "verified": true,
+    "generator": "Visual Studio 17 2022 x64 Release",
+    "result": "GrinNode.vcxproj -> ...\\Source\\bin\\Release\\Release\\GrinNode.exe",
+    "rebuilt_sha256": "6CA016A27B57DA4C2F1E8941C74B800118CB6F9671C1C5E3F14BE06C3FE377A8",
+    "rebuilt_size": 8471552,
+    "matches_b565": false,
+    "delta": "size +9216 bytes vs B565"
+  },
+  "unproven": [
+    "exact WriteTorrcContent implementation used by B565",
+    "exact source-build state at B565",
+    "loopback patch alone is not sufficient for byte-identical B565"
   ],
-  "missing_vs_B565": [
-    "wallet format-1 EtM / row-bound AEAD migration",
-    "Tor atomic temp/rename fix",
-    "API secret ACL repair",
-    "task-66 log gate",
-    "task-67 status reset"
-  ],
-  "build_verified": false,
-  "note": "Best-effort source reconstruction. Not the exact build input of B565; binary remains authoritative."
+  "note": "Source builds and runs, but exact B565 binary SHA still not reproduced."
 }

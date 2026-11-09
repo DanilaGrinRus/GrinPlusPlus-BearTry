@@ -44,6 +44,7 @@ std::unique_ptr<Seeder> Seeder::Create(
     const IBlockChain::Ptr& pBlockChain,
     std::shared_ptr<Pipeline> pPipeline,
     SyncStatusConstPtr pSyncStatus,
+    const Config& config,
     std::shared_ptr<PibdSync> pPibdSync,
     std::shared_ptr<PihdClient> pPihdClient)
 {
@@ -51,11 +52,12 @@ std::unique_ptr<Seeder> Seeder::Create(
     // server. Disabled by default; an isolated test may opt in for this process
     // only via GRINPP_PIBD_ARCHIVE_SERVING=1 (see
     // docs/modernization/G09_ARCHIVE_SERVING.md). Never opt in on mainnet.
-    bool pibdArchiveServing = PibdArchiveServer::ResolveServingOptIn(
+    const bool pibdArchiveOptIn = PibdArchiveServer::ResolveServingOptIn(
         PibdArchiveServer::ENABLED_BY_DEFAULT);
-    if (pibdArchiveServing && Global::IsMainnet()) {
+    const bool pibdArchiveServing = PibdArchiveServer::IsServingAllowed(
+        pibdArchiveOptIn, Global::IsMainnet());
+    if (pibdArchiveOptIn && !pibdArchiveServing) {
         LOG_ERROR("PIBD archive serving refused on MAINNET; staying disabled.");
-        pibdArchiveServing = false;
     }
     LOG_INFO_F(
         "PIBD archive serving: {} ({})",
@@ -77,7 +79,8 @@ std::unique_ptr<Seeder> Seeder::Create(
         peerManager,
         pBlockChain,
         pMessageProcessor,
-        pSyncStatus
+        pSyncStatus,
+        config
     ));
 
     pSeeder->m_asioThread = std::thread(Thread_AsioContext, std::ref(*pSeeder.get()));
@@ -93,8 +96,7 @@ void Seeder::Thread_AsioContext(Seeder& seeder)
     seeder.StartListener();
 
     while (!seeder.m_terminate) {
-        asio::error_code ec;
-        seeder.m_pAsioContext->run(ec);
+        try { seeder.m_pAsioContext->run(); } catch (...) { }
     }
 }
 
@@ -111,8 +113,8 @@ void Seeder::Thread_Seed(Seeder& seeder)
     auto lastNoPeerLog = std::chrono::system_clock::now() - std::chrono::seconds(60);
     uint32_t seedBackoffSeconds = 5;
 
-    const size_t minimumConnections = (size_t)(std::max)(0, Global::GetConfig().GetMinPeers());
-    const size_t maximumConnections = (size_t)(std::max)(0, Global::GetConfig().GetMaxPeers());
+    const size_t minimumConnections = (size_t)(std::max)(0, seeder.m_config.GetMinPeers());
+    const size_t maximumConnections = (size_t)(std::max)(0, seeder.m_config.GetMaxPeers());
     const size_t targetConnections = SeederPolicy::TargetOutbound(minimumConnections, maximumConnections);
     LOG_INFO_F("Peer target: {} outbound (MIN_PEERS={}, MAX_PEERS={})", targetConnections, minimumConnections, maximumConnections);
     while (!seeder.m_terminate && Global::IsRunning()) {
@@ -157,13 +159,17 @@ void Seeder::Thread_Seed(Seeder& seeder)
 void Seeder::StartListener()
 {
     try {
+        const uint16_t p2pPort = m_config.GetP2PPort();
+        LOG_INFO_F("Starting P2P listener on 0.0.0.0:{}", p2pPort);
         m_pAcceptor = std::make_shared<asio::ip::tcp::acceptor>(
             *m_pAsioContext,
-            asio::ip::tcp::endpoint(asio::ip::tcp::v4(), Global::GetConfig().GetP2PPort())
+            asio::ip::tcp::endpoint(asio::ip::tcp::v4(), p2pPort)
         );
+        LOG_INFO_F("P2P acceptor bound on port {}", m_pAcceptor->local_endpoint().port());
 
         m_pSocket = std::make_shared<asio::ip::tcp::socket>(*m_pAsioContext);
         m_pAcceptor->async_accept(*m_pSocket, std::bind(&Seeder::Accept, this, std::placeholders::_1));
+        LOG_INFO("P2P listener armed for async_accept");
     }
     catch (std::exception& e) {
         LOG_ERROR_F("Listener failed with error: {}", e.what());
@@ -172,49 +178,74 @@ void Seeder::StartListener()
 
 void Seeder::Accept(const asio::error_code& ec)
 {
-    std::unique_lock<std::mutex> lock(m_mutex);
-
-    if (!ec && m_connectionManager.GetNumberOfActiveConnections() < Global::GetConfig().GetMaxPeers()) {
-        SocketPtr pSocket(new Socket(SocketAddress::FromEndpoint(m_pSocket->remote_endpoint()), m_pAsioContext, m_pSocket));
-        pSocket->SetOpen(true);
-
-        if (Global::GetConfig().IsPeerBlocked(pSocket->GetIPAddress())) {
-            LOG_TRACE_F("peer is blocked: {}",  pSocket->GetIPAddress());
-        } else if (!Global::GetConfig().IsPeerAllowed(pSocket->GetIPAddress())) {
-            LOG_TRACE_F("peer is not allowed: {}",  pSocket->GetIPAddress());
-        } else {
-            PeerPtr pPeer = m_peerManager.Write()->GetPeer(pSocket->GetIPAddress());
-            const std::string peerIp = pSocket->GetIPAddress().Format();
-            if (!pPeer->IsBanned() && m_inboundAdmission->TryAcquire(peerIp)) {
-                try {
-                    auto pConnection = std::make_shared<Connection>(
-                        pSocket,
-                        m_nextId++,
-                        m_connectionManager,
-                        ConnectedPeer(pPeer, EDirection::INBOUND, pSocket->GetPort()),
-                        m_pSyncStatus,
-                        m_pMessageProcessor
-                    );
-                    const std::shared_ptr<P2P::InboundAdmission> admission = m_inboundAdmission;
-                    pConnection->SetHandshakeCallback(
-                        [admission, peerIp]() { admission->Release(peerIp); });
-                    pConnection->Connect();
-                }
-                catch (const std::exception& e) {
-                    m_inboundAdmission->Release(peerIp);
-                    LOG_ERROR_F("Failed to start inbound handshake from {}: {}", peerIp, e.what());
-                }
-            }
-        }
-    } else {
-        asio::error_code ignoreError;
-        m_pSocket->close(ignoreError);
+    // The acceptor must be re-armed before any work on the accepted socket.
+    // If connection setup below throws or returns early, the listening socket
+    // must still be accepting the next peer. Re-arming after processing was a
+    // permanent-inbound-loss bug.
+    std::shared_ptr<asio::ip::tcp::socket> pAcceptedSocket = m_pSocket;
+    if (m_pAcceptor != nullptr) {
+        m_pSocket = std::make_shared<asio::ip::tcp::socket>(*m_pAsioContext);
+        m_pAcceptor->async_accept(*m_pSocket, std::bind(&Seeder::Accept, this, std::placeholders::_1));
     }
 
-    // Re-arm the listener on every path. A rejected or failed inbound peer must
-    // never stop the accept loop permanently.
-    m_pSocket = std::make_shared<asio::ip::tcp::socket>(*m_pAsioContext);
-    m_pAcceptor->async_accept(*m_pSocket, std::bind(&Seeder::Accept, this, std::placeholders::_1));
+    if (ec || pAcceptedSocket == nullptr) {
+        return;
+    }
+
+    try {
+        std::unique_lock<std::mutex> lock(m_mutex);
+
+        if (m_connectionManager.GetNumberOfActiveConnections() < m_config.GetMaxPeers()) {
+            SocketPtr pSocket(new Socket(SocketAddress::FromEndpoint(pAcceptedSocket->remote_endpoint()), m_pAsioContext, pAcceptedSocket));
+            pSocket->SetOpen(true);
+
+            if (const_cast<Config&>(m_config).IsPeerBlocked(pSocket->GetIPAddress())) {
+                LOG_TRACE_F("peer is blocked: {}",  pSocket->GetIPAddress());
+            } else if (!const_cast<Config&>(m_config).IsPeerAllowed(pSocket->GetIPAddress())) {
+                LOG_TRACE_F("peer is not allowed: {}",  pSocket->GetIPAddress());
+            } else {
+                PeerPtr pPeer = m_peerManager.Write()->GetPeer(pSocket->GetIPAddress());
+                const std::string peerIp = pSocket->GetIPAddress().Format();
+                if (pPeer != nullptr && !pPeer->IsBanned()) {
+                    const std::shared_ptr<P2P::InboundAdmission> admission = m_inboundAdmission;
+                    if (admission == nullptr || !admission->TryAcquire(peerIp)) {
+                        // Bound pre-handshake connections independently of MAX_PEERS.
+                        LOG_DEBUG_F("Inbound admission limit reached for {}", peerIp);
+                        asio::error_code ignoreError;
+                        pAcceptedSocket->close(ignoreError);
+                        return;
+                    }
+
+                    try {
+                        auto pConnection = std::make_shared<Connection>(
+                            pSocket,
+                            m_nextId++,
+                            m_connectionManager,
+                            ConnectedPeer(pPeer, EDirection::INBOUND, pSocket->GetPort()),
+                            m_pSyncStatus,
+                            m_pMessageProcessor
+                        );
+                        pConnection->SetHandshakeCallback(
+                            [admission, peerIp]() { admission->Release(peerIp); });
+                        pConnection->Connect();
+                    }
+                    catch (const std::exception& e) {
+                        // Connect() did not take ownership of the admission slot.
+                        admission->Release(peerIp);
+                        LOG_ERROR_F("Failed to start inbound handshake from {}: {}", peerIp, e.what());
+                    }
+                }
+            }
+        } else {
+            asio::error_code ignoreError;
+            pAcceptedSocket->close(ignoreError);
+        }
+    }
+    catch (const std::exception& e) {
+        LOG_ERROR_F("Inbound accept processing failed: {}", e.what());
+        asio::error_code ignoreError;
+        pAcceptedSocket->close(ignoreError);
+    }
 }
 
 bool Seeder::SeedNewConnection()
@@ -226,7 +257,7 @@ bool Seeder::SeedNewConnection()
         ConnectedPeer connectedPeer(
             pPeer,
             EDirection::OUTBOUND,
-            Global::GetConfig().GetPeerPort()
+            m_config.GetPeerPort()
         );
         SocketPtr pSocket(new Socket(
             connectedPeer.GetSocketAddress(),
@@ -234,23 +265,23 @@ bool Seeder::SeedNewConnection()
             std::make_shared<asio::ip::tcp::socket>(*m_pAsioContext)
         ));
         
-        const auto& blockedOutbound = Global::GetConfig().GetBlockedOutboundPeers();
+        const auto& blockedOutbound = m_config.GetBlockedOutboundPeers();
         if (std::find(blockedOutbound.begin(), blockedOutbound.end(), pSocket->GetIPAddress()) != blockedOutbound.end()) {
             LOG_TRACE_F("peer is blocked for outbound: {}", pSocket->GetIPAddress());
             return false;
         }
 
-        if (Global::GetConfig().IsPeerBlocked(pSocket->GetIPAddress())) {
+        if (const_cast<Config&>(m_config).IsPeerBlocked(pSocket->GetIPAddress())) {
             LOG_TRACE_F("peer is blocked: {}", pSocket->GetIPAddress());
             return false;
         }
 
-        if (!Global::GetConfig().IsPeerAllowed(pSocket->GetIPAddress())) {
+        if (!const_cast<Config&>(m_config).IsPeerAllowed(pSocket->GetIPAddress())) {
             LOG_TRACE_F("peer is not allowed: {}", pSocket->GetIPAddress());        
             return false;
         }
 
-        if (!Global::GetConfig().IsPeerPreferred(pSocket->GetIPAddress())) {
+        if (!const_cast<Config&>(m_config).IsPeerPreferred(pSocket->GetIPAddress())) {
             LOG_TRACE_F("peer is not in preferred pool of peers: {}", pSocket->GetIPAddress());        
             return false;
         }

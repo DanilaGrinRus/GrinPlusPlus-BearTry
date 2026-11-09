@@ -1,0 +1,49 @@
+diff --git a/src/P2P/Sync/StateSyncer.cpp b/src/P2P/Sync/StateSyncer.cpp
+index 6193e59..abc19b8 100644
+--- a/src/P2P/Sync/StateSyncer.cpp
++++ b/src/P2P/Sync/StateSyncer.cpp
+@@ -52,6 +52,30 @@ namespace
+ 		fs::remove(RecoveryFailedMarker(), error);
+ 	}
+ 
++
++	// A recovery attempt that cannot persist its bound marker would retry on every
++	// restart forever. Probe the marker location before attempting an expensive
++	// snapshot/rewind; refuse the attempt if the bound cannot be recorded.
++	bool IsRecoveryMarkerWritable()
++	{
++		const fs::path marker = RecoveryFailedMarker();
++		std::error_code error;
++		fs::create_directories(marker.parent_path(), error);
++		if (error) {
++			return false;
++		}
++
++		const fs::path probe = marker.string() + ".write_probe";
++		{
++			std::ofstream out(probe, std::ios::trunc);
++			if (!out.good()) {
++				return false;
++			}
++		}
++		fs::remove(probe, error);
++		return true;
++	}
++
+ 	void RecordRecoveryFailure(const Hash& horizonHash, const std::string& error)
+ 	{
+ 		try {
+@@ -412,6 +436,13 @@ void StateSyncer::TryRecoverArchive()
+ 			return;
+ 		}
+ 
++		if (!IsRecoveryMarkerWritable()) {
++			LOG_WARNING(
++				"TxHashSet archive recovery skipped: failure marker is not writable, "
++				"so the retry bound cannot be persisted.");
++			return;
++		}
++
+ 		LOG_INFO_F("Recovering the missing TxHashSet archive at height {}.", pHeader->GetHeight());
+ 		std::string error;
+ 		if (!ArchivePibdState(horizonHash, &error)) {

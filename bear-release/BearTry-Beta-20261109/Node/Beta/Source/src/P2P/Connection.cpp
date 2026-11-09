@@ -240,21 +240,6 @@ void Connection::HandleReceivedBody(MessageHeader msg_header, const asio::error_
             // received message so the incoming abuse rate policy sees actual traffic.
             m_pSocket->GetRateCounter().AddMessageReceived();
 
-            if (m_pSyncStatus != nullptr)
-            {
-                const ESyncStatus syncStatus = m_pSyncStatus->GetStatus();
-                const bool syncing = syncStatus == ESyncStatus::SYNCING_HEADERS ||
-                    syncStatus == ESyncStatus::SYNCING_BLOCKS;
-                if (syncing && (type == MessageTypes::Block ||
-                    type == MessageTypes::Headers ||
-                    type == MessageTypes::Header ||
-                    type == MessageTypes::HeaderSegment ||
-                    type == MessageTypes::CompactBlockMsg))
-                {
-                    m_syncReceivedCounter.AddMessageReceived();
-                }
-            }
-
             auto pMessageProcessor = m_pMessageProcessor.lock();
             if (pMessageProcessor != nullptr) {
                 RawMessage message(std::move(msg_header), std::move(m_received));
@@ -298,15 +283,7 @@ void Connection::CheckPing()
     // ban it (the 3-hour ban of the sole 127.0.0.1 peer stopped block catch-up
     // on the task-70 no-fill control).
     const size_t receivedInLastMinute = m_pSocket->GetRateCounter().GetReceivedInLastMinute();
-    const size_t syncReceivedInLastMinute = m_syncReceivedCounter.GetReceivedInLastMinute();
-    const ESyncStatus syncStatus = m_pSyncStatus != nullptr ? m_pSyncStatus->GetStatus() : ESyncStatus::NOT_SYNCING;
-    const bool syncing = syncStatus == ESyncStatus::SYNCING_HEADERS ||
-        syncStatus == ESyncStatus::SYNCING_BLOCKS;
-    switch (PeerRatePolicy::RateLimitAction(
-        receivedInLastMinute,
-        syncReceivedInLastMinute,
-        GetIPAddress().IsLocalhost(),
-        syncing)) {
+    switch (PeerRatePolicy::RateLimitAction(receivedInLastMinute, GetIPAddress().IsLocalhost())) {
     case PeerRatePolicy::ERateLimitAction::Ban:
         LOG_WARNING_F(
             "Banning {} for exceeding rate limit ({}/min).",
@@ -314,17 +291,6 @@ void Connection::CheckPing()
             receivedInLastMinute);
         GetPeer()->Ban(EBanReason::Abusive);
         return;
-    case PeerRatePolicy::ERateLimitAction::IgnoreSyncBurst:
-        if (m_lastSyncRateLog + PeerRatePolicy::LOOPBACK_RATE_LOG_INTERVAL < system_clock::now()) {
-            m_lastSyncRateLog = system_clock::now();
-            LOG_WARNING_F(
-                "Sync peer {} exceeded generic rate limit ({}/min, sync={}/min); "
-                "not banning expected block/header responses.",
-                GetPeer(),
-                receivedInLastMinute,
-                syncReceivedInLastMinute);
-        }
-        break;
     case PeerRatePolicy::ERateLimitAction::IgnoreLoopback:
         if (m_lastLoopbackRateLog + PeerRatePolicy::LOOPBACK_RATE_LOG_INTERVAL < system_clock::now()) {
             m_lastLoopbackRateLog = system_clock::now();

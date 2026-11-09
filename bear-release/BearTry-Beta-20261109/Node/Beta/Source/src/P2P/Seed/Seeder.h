@@ -28,6 +28,7 @@ public:
 		const IBlockChain::Ptr& pBlockChain,
 		std::shared_ptr<Pipeline> pPipeline,
 		SyncStatusConstPtr pSyncStatus,
+		const Config& config,
 		std::shared_ptr<PibdSync> pPibdSync = nullptr,
 		std::shared_ptr<PihdClient> pPihdClient = nullptr
 	);
@@ -39,13 +40,15 @@ private:
 		Locked<PeerManager> peerManager,
 		const IBlockChain::Ptr& pBlockChain,
 		std::shared_ptr<MessageProcessor> pMessageProcessor,
-		SyncStatusConstPtr pSyncStatus
+		SyncStatusConstPtr pSyncStatus,
+		const Config& config
 	) : m_connectionManager(connectionManager),
+		m_config(config),
 		m_peerManager(peerManager),
 		m_pBlockChain(pBlockChain),
 		m_pMessageProcessor(pMessageProcessor),
 		m_pSyncStatus(pSyncStatus),
-		m_pAsioContext(std::make_shared<asio::io_service>()),
+		m_pAsioContext(std::make_shared<asio::io_context>()),
 		m_terminate(false) { }
 
 	static void Thread_AsioContext(Seeder& seeder);
@@ -60,6 +63,7 @@ private:
 	IBlockChain::Ptr m_pBlockChain;
 	std::shared_ptr<MessageProcessor> m_pMessageProcessor;
 	SyncStatusConstPtr m_pSyncStatus;
+	const Config& m_config;
 
 	std::atomic<bool> m_terminate = true;
 	// DNS discovery is retried when no candidate is found; a single attempt at
@@ -67,7 +71,7 @@ private:
 	std::chrono::system_clock::time_point m_lastDnsAttempt =
 		std::chrono::system_clock::time_point::min();
 
-	std::shared_ptr<asio::io_service> m_pAsioContext;
+	std::shared_ptr<asio::io_context> m_pAsioContext;
 	std::shared_ptr<asio::ip::tcp::acceptor> m_pAcceptor;
 	std::shared_ptr<asio::ip::tcp::socket> m_pSocket;
 

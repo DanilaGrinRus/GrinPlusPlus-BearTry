@@ -1,0 +1,223 @@
+{
+  "schema": "gpp-line3-test-run/v1",
+  "run_id": "nrd-paired-v5-c8c386-20261103-054716",
+  "status": "PASS",
+  "created_utc": "2026-11-02T22:47:17.8482092Z",
+  "repo": "C:\\DHW\\Gplus\\src\\grinplusplus",
+  "git_head": "cb510302f5bebc0d64c5d6a1c0571046a63593ef",
+  "git_status_porcelain": [
+    "M tools/audit/nrd/rust-oracle/Cargo.lock",
+    " M tools/audit/nrd/rust-oracle/Cargo.toml",
+    " M tools/audit/nrd/rust-oracle/src/main.rs",
+    " M tools/fuzz/build_linked_targets.ps1",
+    "?? evidence/line3/full-asan-20261103-054256/",
+    "?? tools/audit/nrd/evidence/rust-oracle-c8c386-v4.json",
+    "?? tools/audit/nrd/evidence/rust-oracle-c8c386-v5.json"
+  ],
+  "git_diff_stat": "warning: in the working copy of 'tools/audit/nrd/rust-oracle/Cargo.lock', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tools/audit/nrd/rust-oracle/Cargo.toml', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tools/audit/nrd/rust-oracle/src/main.rs', LF will be replaced by CRLF the next time Git touches it\r\nwarning: in the working copy of 'tools/fuzz/build_linked_targets.ps1', LF will be replaced by CRLF the next time Git touches it\r\n tools/audit/nrd/rust-oracle/Cargo.lock  |   1 +\r\n tools/audit/nrd/rust-oracle/Cargo.toml  |   1 +\r\n tools/audit/nrd/rust-oracle/src/main.rs | 223 ++++++++++++++++++++++++++++++--\r\n tools/fuzz/build_linked_targets.ps1     |   4 +\r\n 4 files changed, 220 insertions(+), 9 deletions(-)",
+  "source_hashes": {
+    "tests/src/TestMain.cpp": "6BAC17446DE696518FD364220569185F43769B813F59A25372037FBC53D8527B",
+    "tests/src/PMMR/CMakeLists.txt": "70F15A511498525B30D8BAD40BA29DA08C68484433F66F5B32E80D4B25E1EBA2",
+    "tests/src/PMMR/Test_ZipFile.cpp": "B9BE2B4AA86EDC7DEE478BC230C186066B0255F1F3E1B5728E4656E757D55B75",
+    "include/P2P/Capabilities.h": "FD3997F591512A83E23DBEC2CFF3DFAC5D247E470D87E2000690F85AAD97665E",
+    "src/PMMR/Zip/ZipFile.cpp": "0097B38DF25439C7EBA6EEA3C8260C246C79BC0F600D57A3099CCFC08A0026C3",
+    "include/PMMR/NrdRules.h": "0F63E0CDEF08EAD92A39F9321D92A40019B3AFAC68E65BA28DCE0618C1262A2C",
+    "include/PMMR/KernelIndex.h": "419A037C83F6D3B689950E6EE4D18A64A4690DB13B0CE0A9C04CE89AD1BCDDBA",
+    "src/PMMR/KernelIndex.cpp": "AD0350E991830DCEB062FE3737267E96665B372C8F62DC15363D6434B8B3D4DE",
+    "tests/src/PMMR/Test_NrdRules.cpp": "E5E720584BDBE8AC2A35008C986FE52ED8DCABDBEFAD25BA1C225ABB81267503",
+    "tests/src/PMMR/Test_NrdDifferential.cpp": "5026F63ACB93A884232CB651CCAE116BA76FF87C475AF72FD380A9C26D5831FE",
+    "tests/src/PMMR/Test_NrdIndexRebuild.cpp": "4C47A0B0290F11BC03B3971AE9BDE30DAD71D2A476598BF608D91B2186A9A94E",
+    "tests/src/PMMR/Test_NrdSupport.h": "0D0A9E408B55A13C159A6E89BE7274F3FC7FDFE82135D33FDB99F59673ABF577"
+  },
+  "host": {
+    "os": "Microsoft Windows NT 10.0.26300.0",
+    "pwsh": "7.6.9",
+    "architecture": "AMD64",
+    "user_profile": "C:\\Users\\nurli",
+    "utc_offset_min": 420
+  },
+  "binary": {
+    "source_path": "C:\\DHW\\Gplus\\src\\grinplusplus\\tools\\audit\\nrd\\evidence\\bin\\Tests-C8C386BE576A.exe",
+    "source_sha256": "C8C386BE576A62604404E0FA02E56EE9E8F06B50EA0B15AD109F36F5AFF5B7FE",
+    "copy_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\bin\\Tests.exe",
+    "copy_sha256": "C8C386BE576A62604404E0FA02E56EE9E8F06B50EA0B15AD109F36F5AFF5B7FE",
+    "copy_sha256_after": "C8C386BE576A62604404E0FA02E56EE9E8F06B50EA0B15AD109F36F5AFF5B7FE",
+    "copy_unchanged": true,
+    "bytes": 9241600,
+    "pe_timestamp": {
+      "raw_hex": "0x6AE90EE9",
+      "utc": "2026-11-02T22:30:01.0000000Z"
+    },
+    "pe_timestamp_copy": {
+      "raw_hex": "0x6AE90EE9",
+      "utc": "2026-11-02T22:30:01.0000000Z"
+    },
+    "copied_asan_runtime": []
+  },
+  "isolation": {
+    "mode": "PerRun",
+    "run_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716",
+    "cwd": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\cwd",
+    "home_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\home",
+    "tmp_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\tmp",
+    "env": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\home",
+      "USERPROFILE": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\home",
+      "HOME": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\home",
+      "TMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\tmp",
+      "TEMP": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\tmp",
+      "TMPDIR": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\tmp"
+    },
+    "env_before": {
+      "HOMEDRIVE": "C:",
+      "HOMEPATH": "\\Users\\nurli",
+      "USERPROFILE": "C:\\Users\\nurli",
+      "HOME": null,
+      "TMP": "C:\\Users\\nurli\\AppData\\Local\\Temp",
+      "TEMP": "C:\\Users\\nurli\\AppData\\Local\\Temp",
+      "TMPDIR": null
+    },
+    "expected_test_data_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\home\\.GrinPP\\AUTOMATED_TESTING",
+    "test_data_dir_created": true,
+    "test_log_dir_created": true,
+    "cwd_tree": null,
+    "home_tree_sample": [
+      {
+        "rel": ".GrinPP",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Node.log",
+        "dir": false,
+        "bytes": 28889
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\LOGS\\Wallet.log",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\CHAIN",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\DB",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\kernel",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\output",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\NODE\\TXHASHSET\\rangeproof",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR",
+        "dir": true,
+        "bytes": 1
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\TOR\\.torrc",
+        "dir": false,
+        "bytes": 0
+      },
+      {
+        "rel": ".GrinPP\\AUTOMATED_TESTING\\WALLET",
+        "dir": true,
+        "bytes": 1
+      }
+    ],
+    "home_tree_entries": 15,
+    "user_profile_before": {
+      "path": "C:\\Users\\nurli\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 17,
+      "total_bytes": 458535,
+      "latest_write_utc": "2026-11-02T14:43:40.7615748Z",
+      "listing_sha256": "889c1f5e0241fcb61cbd6a234cb00af02b5ee017da7f69b5f65b69289cefa6b6"
+    },
+    "user_profile_after": {
+      "path": "C:\\Users\\nurli\\.GrinPP",
+      "exists": true,
+      "recursive_entries": 17,
+      "total_bytes": 458535,
+      "latest_write_utc": "2026-11-02T14:43:40.7615748Z",
+      "listing_sha256": "889c1f5e0241fcb61cbd6a234cb00af02b5ee017da7f69b5f65b69289cefa6b6"
+    },
+    "user_profile_unchanged": true,
+    "reparse_point_check": "passed",
+    "disposable_base": "C:\\DHW\\.tmp\\line2-nrd\\iso"
+  },
+  "command": {
+    "exe": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\bin\\Tests.exe",
+    "args": "NrdDifferentialCasesMatchRustOracle",
+    "working_dir": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\cwd",
+    "instances": 1,
+    "timeout_sec": 900,
+    "started_utc": "2026-11-02T22:47:17.2377174Z",
+    "finished_utc": "2026-11-02T22:47:17.6707280Z",
+    "wall_sec": 0.432
+  },
+  "instances": [
+    {
+      "index": 1,
+      "pid": 8828,
+      "started_utc": "2026-11-02T22:47:17.4425709Z",
+      "duration_sec": 0.241,
+      "exit_code": {
+        "decimal": 0,
+        "hex": "0x00000000"
+      },
+      "status": "PASS",
+      "stdout_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\out\\instance-1.stdout.log",
+      "stdout_sha256": "CBF5F55A40196C3CEEC61547BA2E308DBE84B8854EDCAA46E991629DAA7FA35E",
+      "stdout_bytes": 399,
+      "stderr_path": "C:\\DHW\\.tmp\\line2-nrd\\iso\\nrd-paired-v5-c8c386-20261103-054716\\out\\instance-1.stderr.log",
+      "stderr_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "stderr_bytes": 0,
+      "summary_lines": [
+        "Test Runtime Initialized.",
+        "Running Tests...",
+        "All tests passed (332 assertions in 1 test case)"
+      ]
+    }
+  ],
+  "windows_application_events": null,
+  "notes": [
+    "Non-instrumented build: no sanitizer. Evidence covers test-run isolation and runtime behavior only.",
+    "stdout redirected to a file is block-buffered; an empty log does not prove the process died before printing.",
+    "Windows Application Error events are matched by the unique copy path inside this run directory."
+  ]
+}

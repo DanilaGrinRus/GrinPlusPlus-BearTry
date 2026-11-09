@@ -58,10 +58,15 @@ void OutputsTable::AddOutputs(SqliteDB& database, const SecureVector& masterSeed
 
 		Serializer serializer;
 		output.Serialize(serializer);
-		std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(masterSeed, "OUTPUT", serializer.GetSecureBytes());
+
+		// W-06: bind the row identity (commitment) as associated data so a row
+		// swapped with another output fails authentication.
+		const std::string commitmentHex = output.GetOutput().GetCommitment().ToHex();
+		const std::vector<uint8_t> associatedData(commitmentHex.begin(), commitmentHex.end());
+		std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(masterSeed, "OUTPUT", associatedData, serializer.GetSecureBytes());
 
 		std::vector<SqliteDB::IParameter::UPtr> parameters;
-		parameters.push_back(std::make_unique<TextParameter>(output.GetOutput().GetCommitment().ToHex()));
+		parameters.push_back(std::make_unique<TextParameter>(commitmentHex));
 		parameters.push_back(std::make_unique<IntParameter>((int)output.GetStatus()));
 		
 		if (output.GetWalletTxId().has_value()) {
@@ -84,14 +89,16 @@ std::vector<OutputDataEntity> OutputsTable::GetOutputs(SqliteDB& database, const
 std::vector<OutputDataEntity> OutputsTable::GetOutputs(SqliteDB& database, const SecureVector& masterSeed, const int /*version*/)
 {
 	// Prepare statement
-	std::string get_encrypted_query = "select encrypted from outputs";
+	std::string get_encrypted_query = "select commitment, encrypted from outputs";
 	auto pStatement = database.Query(get_encrypted_query);
 
 	std::vector<OutputDataEntity> outputs;
 	while (pStatement->Step())
 	{
-		std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(0);
-		SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "OUTPUT", encrypted);
+		const std::string commitmentHex = pStatement->GetColumnString(0);
+		const std::vector<uint8_t> associatedData(commitmentHex.begin(), commitmentHex.end());
+		std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(1);
+		SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "OUTPUT", associatedData, encrypted);
 		std::vector<uint8_t> decryptedUnsafe(decrypted.begin(), decrypted.end());
 
 		ByteBuffer byteBuffer(std::move(decryptedUnsafe));

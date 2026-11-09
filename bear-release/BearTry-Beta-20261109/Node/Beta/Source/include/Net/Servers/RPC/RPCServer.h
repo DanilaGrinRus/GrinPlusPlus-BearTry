@@ -4,7 +4,9 @@
 #include <Net/Servers/RPC/RPCMethod.h>
 #include <Net/Clients/RPC/RPC.h>
 #include <Net/Util/HTTPUtil.h>
+#include <Net/Servers/RPC/ApiAccess.h>
 #include <Core/Exceptions/APIException.h>
+#include <Core/Exceptions/ServiceUnavailableException.h>
 #include <unordered_map>
 #include <cassert>
 
@@ -61,6 +63,13 @@ public:
 
 	const ServerPtr& GetServer() const { return m_pServer; }
 
+	//
+	// W-06/T1: reject browser requests whose Host/Origin is not loopback
+	// (DNS rebinding, cross-origin pages). Intended for local wallet API servers
+	// that do not use the node .api_secret.
+	//
+	void SetRequireLoopbackRequest(const bool require) noexcept { m_requireLoopbackRequest = require; }
+
 private:
 	RPCServer(const ServerPtr& pServer, const LoggerAPI::LogFile& logFile)
 		: m_pServer(pServer), m_logFile(logFile) { }
@@ -93,7 +102,17 @@ private:
 			id = request.GetId();
 			try
 			{
-				const std::string& method = request.GetMethod();
+				if (instance.m_requireLoopbackRequest &&
+				!ApiAccess::CheckLocalRequest(pConnection, instance.m_pServer->GetPortNumber()))
+			{
+				RPC_LOG_ERROR_F(instance.m_logFile, "Rejected non-loopback Host/Origin request");
+				return request.BuildError(
+					RPC::ErrorCode::INVALID_REQUEST,
+					"Invalid Host/Origin"
+				);
+			}
+
+			const std::string& method = request.GetMethod();
 				auto iter = instance.m_methods.find(method);
 				if (iter != instance.m_methods.end())
 				{
@@ -174,6 +193,19 @@ private:
 				e.GetMsg()
 			);
 		}
+		catch (const ServiceUnavailableException& e)
+		{
+			// Wallet node-client errors (NodeUnavailable/Rejected/NotFound) are
+			// transient service failures, not malformed requests. Map them to the
+			// existing INTERNAL_ERROR (-32603) code; the structured NODE_* code is
+			// part of the final API decision package, not this stabilization stage.
+			RPC_LOG_ERROR_F(instance.m_logFile, "Service unavailable: {}", e.what());
+			return RPC::Response::BuildError(
+				id,
+				RPC::ErrorCode::INTERNAL_ERROR,
+				e.what()
+			);
+		}
 		catch (const Json::Exception& e)
 		{
 			// JsonCpp throws Json::LogicError from asString()/asBool() when the
@@ -198,6 +230,7 @@ private:
 	}
 
 	ServerPtr m_pServer;
+	bool m_requireLoopbackRequest = false;
 	std::unordered_map<std::string, std::shared_ptr<RPCMethod>> m_methods;
 	LoggerAPI::LogFile m_logFile;
 };
