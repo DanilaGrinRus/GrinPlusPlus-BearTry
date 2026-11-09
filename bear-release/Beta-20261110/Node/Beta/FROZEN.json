@@ -1,0 +1,61 @@
+{
+  "status": "FROZEN (rebuilt recovered source)",
+  "frozen_at": "2026-11-10T05:50:00+07:00",
+  "folder": "C:\\DHW\\Gplus\\Node\\Beta",
+  "mode": "Beta node-only (--mainnet --headless --no-wallet)",
+  "artifacts": [
+    {
+      "File": "GrinNode.exe",
+      "Length": 8476672,
+      "SHA256": "B52B6C5D84B25375463634F087E39CD65CF9BF2F3A1E4DB090E7AEAFEBB69C4A"
+    },
+    {
+      "File": "Tests.exe",
+      "Length": 11655168,
+      "SHA256": "96E80CBB9BF3C3C5382126A304BF0B628E4B38573E9B84CCAF602ECC471C6708"
+    },
+    {
+      "File": "GrinDbTool.exe",
+      "Length": 3891712,
+      "SHA256": "8C0113D2E11A3655DDE2372515974E6B7D832076CC5229C82706616B89F00656"
+    }
+  ],
+  "source": {
+    "status": "RECOVERED / ACCEPTED",
+    "archive": "source-vcpkg.tar.gz",
+    "archive_sha256": "634CCE1DD40459E1CC5728600C5916D81A2CE11AA73A5AC44D7E57E9F23C4EBA",
+    "linux_variant": "source-build.tar.gz",
+    "linux_variant_sha256": "FE1C2E53F00D94EB7DB661F0083F1B9147C9110BDA7EA316DA9669E97F161DB6",
+    "task72_patch_sha256": "C4E042F1C52D4BAFD62606D2EAF63912092354BF20F517FDFE5F94BA6ADA0AC1",
+    "tree_sha256": "203706B371B0896468ED590B078E0F265DBDAE17A72D4F7B180FDBB77BAED04E",
+    "files": 1548,
+    "buildable": true,
+    "binary_source_exact": true
+  },
+  "build": {
+    "source_build": true,
+    "grinnode_sha256": "B52B6C5D84B25375463634F087E39CD65CF9BF2F3A1E4DB090E7AEAFEBB69C4A",
+    "grinnode_size": 8476672,
+    "tests_sha256": "96E80CBB9BF3C3C5382126A304BF0B628E4B38573E9B84CCAF602ECC471C6708",
+    "tests_size": 11655168,
+    "grindbtool_note": "GrinDbTool.exe unchanged from previous freeze (8C0113D2...)"
+  },
+  "smoke": {
+    "status": "PASS",
+    "health": "ready",
+    "chain_type": "main"
+  },
+  "tests": {
+    "frozen_pair_full_suite": "PASS 468/468 cases; 19303/19306/19309 assertions",
+    "new_pair_full_suite": "PASS 471/471 cases; 19340/19343/19346 assertions",
+    "torconfig": "PASS 3 cases / 37 assertions",
+    "acl_live": "PASS (repair + fail-closed)"
+  },
+  "rc1": "C:\\DHW\\Gplus\\Node\\RC1",
+  "limitations": [
+    "public inbound/firewall not verified",
+    "wallet+node live not verified",
+    "Tor live bridge not verified",
+    "24h stability not included"
+  ]
+}
