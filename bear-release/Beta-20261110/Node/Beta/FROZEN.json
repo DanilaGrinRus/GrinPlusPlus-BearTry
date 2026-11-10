@@ -27,7 +27,7 @@
     "linux_variant": "source-build.tar.gz",
     "linux_variant_sha256": "FE1C2E53F00D94EB7DB661F0083F1B9147C9110BDA7EA316DA9669E97F161DB6",
     "task72_patch_sha256": "C4E042F1C52D4BAFD62606D2EAF63912092354BF20F517FDFE5F94BA6ADA0AC1",
-    "tree_sha256": "203706B371B0896468ED590B078E0F265DBDAE17A72D4F7B180FDBB77BAED04E",
+    "tree_sha256": "B698079BBA24BFEDCD8F33BA4ACDDA669820ABAA1D6FC189C12B05B26D2A3609",
     "files": 1548,
     "buildable": true,
     "binary_source_exact": true
@@ -57,5 +57,17 @@
     "wallet+node live not verified",
     "Tor live bridge not verified",
     "24h stability not included"
-  ]
+  ],
+  "linux": {
+    "grinnode_sha256": "078EF85D24B338CF6A18A058C9940B4BE4EABE55433C92C96C1EB2556AC5FC1A",
+    "tests_sha256": "729F42A62856A094CF1ECE3860F52F1442BF8DC0EE1DD5AF04B3182748924523",
+    "image_tar_sha256": "49737E188D95FEDEDD080F29C50E4AE3425F8F5B92774696B6266F4669FB15A0",
+    "image_id": "6f6049ce8e7f...",
+    "source_archive_sha256": "6BEA97B08EB9BA9D7F01DE8838490431E0DD0BF7EDE192642B307FF0807745FC",
+    "source_tree_sha256": "219C9D03952F83E4649EEF8986EC63BA2B8C9BF089E99E7423F02D3E685CA1A9",
+    "tests_full": "PASS 464/464 cases, 19282 assertions",
+    "auth": "PASS 8 assertions, 1 case",
+    "handshake": "PASS 14 assertions, 2 cases",
+    "mainnet_sync": "NOT VERIFIED"
+  }
 }

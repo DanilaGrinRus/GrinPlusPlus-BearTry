@@ -49,3 +49,8 @@ src/grinplusplus
 .toolchain
 reference
 ```
+
+## Linux
+
+- Node/Beta/Linux — Linux binary, Tests, image, full-suite log.
+- Tests: 464/464 PASS; auth/handshake PASS; TorConfig absent; mainnet sync NOT VERIFIED.

@@ -1,0 +1,70 @@
+{
+	"block_sync" : 
+	{
+		"bans_fraud_height" : 0,
+		"bans_invalid_data" : 0,
+		"cooldown_reassignments" : 0,
+		"reassignments" : 0,
+		"requests" : 0,
+		"retries" : 0,
+		"timeouts" : 0
+	},
+	"chain" : 
+	{
+		"hash" : "40adad0aec27797b48840aa9e00472015c21baea118ce7a2ff1a82c0f8f5bf82",
+		"height" : 0,
+		"previous_hash" : "0000000000000000000000000000000000000000000000000000000000000000",
+		"total_difficulty" : 17179869184
+	},
+	"chain_type" : "main",
+	"connections" : 0,
+	"db_last_repair" : 0,
+	"db_repaired" : 0,
+	"header_height" : 0,
+	"network" : 
+	{
+		"height" : 0,
+		"num_inbound" : 0,
+		"num_outbound" : 0,
+		"total_difficulty" : 0
+	},
+	"protocol_version" : 1000,
+	"rust" : 
+	{
+		"chain" : "main",
+		"connections" : 0,
+		"protocol_version" : 1000,
+		"sync_info" : 
+		{
+			"current_height" : 0,
+			"highest_height" : 0
+		},
+		"sync_status" : "header_sync",
+		"tip" : 
+		{
+			"height" : 0,
+			"last_block_pushed" : "40adad0aec27797b48840aa9e00472015c21baea118ce7a2ff1a82c0f8f5bf82",
+			"prev_block_to_last" : "0000000000000000000000000000000000000000000000000000000000000000",
+			"total_difficulty" : 17179869184
+		},
+		"user_agent" : "Grin++ 1.2.9"
+	},
+	"state" : 
+	{
+		"download_size" : 0,
+		"downloaded" : 0,
+		"processing_status" : 0,
+		"sync_failed" : false
+	},
+	"sync_status" : "SYNCING_HEADERS",
+	"sync_status_rust" : "header_sync",
+	"tip" : 
+	{
+		"height" : 0,
+		"last_block_pushed" : "40adad0aec27797b48840aa9e00472015c21baea118ce7a2ff1a82c0f8f5bf82",
+		"prev_block_to_last" : "0000000000000000000000000000000000000000000000000000000000000000",
+		"total_difficulty" : 17179869184
+	},
+	"user_agent" : "Grin++ 1.2.9",
+	"waiting_reason" : ""
+}
