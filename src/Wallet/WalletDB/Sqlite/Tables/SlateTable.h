@@ -38,6 +38,11 @@ public:
 		const std::string& slatepack_message
 	);
 
+	//
+	// W-06 sweep: upgrade legacy enc_format=0 rows to format 2 in place.
+	//
+	static void MigrateLegacyRows(SqliteDB& database, const SecureVector& masterSeed);
+
 private:
 	static std::vector<uint8_t> Encrypt(
 		const SecureVector& masterSeed,

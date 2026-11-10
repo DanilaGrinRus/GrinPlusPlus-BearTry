@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #include "BlockChainImpl.h"
 #include "BlockHydrator.h"
 #include "CompactBlockFactory.h"
@@ -13,6 +10,7 @@
 #include "CoinView.h"
 #include "ChainConsistency.h"
 #include "HeaderStateCheckpoint.h"
+#include <Core/Enums/Environment.h>
 #include <PMMR/KernelIndex.h>
 #include "DbCheckpoint.h"
 #include <BlockChain/DbRecovery.h>
@@ -23,6 +21,8 @@
 #include <Database/DbBackup.h>
 #include <Database/BlockDb.h>
 
+#include <Database/DbBackup.h>
+
 #include <Consensus.h>
 #include <GrinVersion.h>
 #include <Common/Logger.h>
@@ -30,6 +30,10 @@
 #include <Core/Global.h>
 #include <Core/Exceptions/BadDataException.h>
 #include <Core/Config.h>
+
+#ifdef _MSC_VER
+#pragma warning(disable: 4996) // getenv for the experimental anchor env
+#endif
 #include <PMMR/TxHashSet.h>
 #include "../PMMR/TxHashSetImpl.h"
 #include <filesystem.h>
@@ -109,8 +113,159 @@ BlockChain::StateWriteGuard::~StateWriteGuard()
 {
 	m_chain.m_stateSequence.fetch_add(1, std::memory_order_release);
 }
+void BlockChain::StartHeaderCheckpointUpdater()
+{
+	const HeaderCheckpoint::EMode mode = HeaderCheckpoint::ModeFromEnv();
+	if (mode != HeaderCheckpoint::EMode::Write && mode != HeaderCheckpoint::EMode::Fast) {
+		return;
+	}
+
+	HeaderCheckpointData checkpoint;
+	std::string error;
+	if (!HeaderCheckpoint::Read(HeaderCheckpoint::Path(Global::GetConfig()), checkpoint, error) ||
+		(checkpoint.Trust != HeaderCheckpointData::TRUST_EXTERNAL &&
+		 checkpoint.Trust != HeaderCheckpointData::TRUST_DERIVED)) {
+		// Legacy/local bootstrap trust (TRUST_BOOTSTRAP) is not an external
+		// anchor. Do not start the updater from it.
+		return;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		m_headerCheckpointStop = false;
+		m_headerCheckpointDirty = false;
+	}
+
+	m_headerCheckpointThread = std::thread([this]() {
+		while (true) {
+			std::unique_lock<std::mutex> lock(m_headerCheckpointMutex);
+			m_headerCheckpointCv.wait(lock, [this]() {
+				return m_headerCheckpointStop || m_headerCheckpointDirty;
+			});
+			if (m_headerCheckpointStop) {
+				break;
+			}
+
+			// Coalesce bursts of header batches. Only a quiet period starts the
+			// expensive full-state hash, so normal sync is not constantly
+			// interrupted by checkpoint work.
+			m_headerCheckpointDirty = false;
+			auto quietDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+			while (!m_headerCheckpointStop) {
+				if (m_headerCheckpointCv.wait_until(lock, quietDeadline, [this]() {
+						return m_headerCheckpointStop || m_headerCheckpointDirty;
+					})) {
+					if (m_headerCheckpointStop) {
+						break;
+					}
+					m_headerCheckpointDirty = false;
+					quietDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+					continue;
+				}
+				break;
+			}
+			if (m_headerCheckpointStop) {
+				break;
+			}
+			lock.unlock();
+
+			try {
+				auto pStateReader = m_pChainState->Read();
+				auto pChainReader = pStateReader->GetChainStore();
+				auto pDbReader = pStateReader->GetBlockDB();
+				auto pHeaderReader = pStateReader->GetHeaderMMR();
+				HeaderCheckpointMetrics metrics;
+				std::string refreshError;
+				LOG_INFO("event=diagnostic_refresh_enter");
+				if (HeaderCheckpoint::Refresh(
+						Global::GetConfig(),
+						*pDbReader,
+						*pHeaderReader,
+						*pChainReader->GetCandidateChain(),
+						*pChainReader->GetConfirmedChain(),
+						metrics,
+						refreshError)) {
+					LOG_INFO_F(
+						"event=header_checkpoint_refresh duration_ms={} bytes={} candidate={} trust_preserved=1",
+						metrics.DurationMs,
+						metrics.BytesRead,
+						metrics.CandidateEntries);
+				} else if (refreshError != "checkpoint is already current") {
+					LOG_DEBUG_F("event=header_checkpoint_refresh_skipped reason={}", refreshError);
+				}
+			} catch (const std::exception& e) {
+				LOG_WARNING_F("event=header_checkpoint_refresh_failed error={}", e.what());
+			}
+		}
+	});
+}
+
+void BlockChain::StopHeaderCheckpointUpdater()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		m_headerCheckpointStop = true;
+	}
+	m_headerCheckpointCv.notify_all();
+	if (m_headerCheckpointThread.joinable()) {
+		m_headerCheckpointThread.join();
+	}
+}
+
+void BlockChain::NotifyHeaderCheckpointChanged()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_headerCheckpointMutex);
+		if (m_headerCheckpointStop || !m_headerCheckpointThread.joinable()) {
+			return;
+		}
+		m_headerCheckpointDirty = true;
+	}
+	m_headerCheckpointCv.notify_all();
+}
+
 BlockChain::~BlockChain()
 {
+	StopHeaderCheckpointUpdater();
+
+	// Persist a checkpoint for the state reached by this process. This is done
+	// here rather than on every header batch so sync is never blocked by a
+	// 3M-header hash pass. A crash leaves the previous checkpoint untouched and
+	// the next startup performs full validation.
+	if (m_pChainState != nullptr &&
+		(HeaderCheckpoint::ModeFromEnv() == HeaderCheckpoint::EMode::Write ||
+		 HeaderCheckpoint::ModeFromEnv() == HeaderCheckpoint::EMode::Fast)) {
+		try {
+			auto pChainStateReader = m_pChainState->Read();
+			auto pChainReader = pChainStateReader->GetChainStore();
+			auto pDbReader = pChainStateReader->GetBlockDB();
+			auto pHeaderReader = pChainStateReader->GetHeaderMMR();
+
+			HeaderCheckpointMetrics metrics;
+			std::string error;
+			if (HeaderCheckpoint::Refresh(
+					Global::GetConfig(),
+					*pDbReader,
+					*pHeaderReader,
+					*pChainReader->GetCandidateChain(),
+					*pChainReader->GetConfirmedChain(),
+					metrics,
+					error)) {
+				LOG_INFO_F(
+					"event=header_checkpoint_refresh duration_ms={} bytes={} candidate={} aggregate={}",
+					metrics.DurationMs,
+					metrics.BytesRead,
+					metrics.CandidateEntries,
+					"updated"
+				);
+			} else {
+				LOG_INFO_F("event=header_checkpoint_refresh skipped reason={}", error);
+			}
+		} catch (const std::exception& e) {
+			LOG_WARNING_F("event=header_checkpoint_refresh failed error={}", e.what());
+		}
+	}
+
 	Global::SetCoinView(nullptr);
 	m_pChainState.reset();
 	m_pTransactionPool.reset();
@@ -380,8 +535,13 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		std::string checkpointError;
 		const bool checkpointRead = HeaderCheckpoint::Read(
 			HeaderCheckpoint::Path(config), storedCheckpoint, checkpointError);
-		if (checkpointRead && storedCheckpoint.Trust == HeaderCheckpointData::TRUST_NONE) {
-			LOG_WARNING_F("event=header_checkpoint_full_fallback reason=untrusted_checkpoint");
+		if (checkpointRead &&
+			(storedCheckpoint.Trust != HeaderCheckpointData::TRUST_EXTERNAL &&
+			 storedCheckpoint.Trust != HeaderCheckpointData::TRUST_DERIVED)) {
+			LOG_WARNING_F(
+				"event=header_checkpoint_full_fallback reason=untrusted_checkpoint trust={} trust_source={}",
+				(uint32_t)storedCheckpoint.Trust,
+				(uint32_t)storedCheckpoint.TrustSource);
 		} else if (checkpointRead) {
 			auto pChainReader = pChainStore->Read();
 			auto pDbReader = pDatabase->Read();
@@ -436,13 +596,37 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 						throw std::runtime_error("header checkpoint mismatch; refusing to start");
 					}
 				} else {
-					LOG_WARNING_F(
-						"event=header_checkpoint_full_fallback reason=metadata_changed expected_candidate={} actual_candidate={} expected_tip={} actual_tip={}",
-						storedCheckpoint.CandidateEntries,
-						currentMetadata.CandidateEntries,
-						storedCheckpoint.CandidateTip.ToHex(),
-						currentMetadata.CandidateTip.ToHex()
-					);
+					// A trusted checkpoint can be behind by a bounded, purely
+					// append-only suffix. Refresh validates the old prefix and the
+					// new header/MMR/confirmed links, then atomically writes the
+					// extended checkpoint. Reorgs, gaps, corruption and any other
+					// doubt still fall through to full validation.
+					HeaderCheckpointMetrics extensionMetrics;
+					std::string extensionError;
+					if (HeaderCheckpoint::Refresh(
+							config,
+							*pDbReader,
+							*pHeaderReader,
+							*pChainReader->GetCandidateChain(),
+							*pChainReader->GetConfirmedChain(),
+							extensionMetrics,
+							extensionError,
+							true)) {
+						headerCheckpointFastAccepted = true;
+						LOG_INFO_F(
+							"event=header_checkpoint_fast_extended duration_ms={} bytes={} threads={} candidate={} tip={}",
+							extensionMetrics.DurationMs,
+							extensionMetrics.BytesRead,
+							extensionMetrics.Threads,
+							currentMetadata.CandidateEntries,
+							currentMetadata.CandidateTip.ToHex());
+					} else {
+						LOG_WARNING_F(
+							"event=header_checkpoint_full_fallback reason=extension_failed expected_candidate={} actual_candidate={} error={}",
+							storedCheckpoint.CandidateEntries,
+							currentMetadata.CandidateEntries,
+							extensionError);
+					}
 				}
 			} else {
 				LOG_WARNING_F("event=header_checkpoint_full_fallback reason=metadata_unavailable error={}", checkpointError);
@@ -498,18 +682,20 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		const bool hasOldCheckpoint = HeaderCheckpoint::Read(
 			HeaderCheckpoint::Path(config), oldCheckpoint, readError);
 		const bool oldTrusted = hasOldCheckpoint &&
-			oldCheckpoint.Trust != HeaderCheckpointData::TRUST_NONE;
+			(oldCheckpoint.Trust == HeaderCheckpointData::TRUST_EXTERNAL ||
+			 oldCheckpoint.Trust == HeaderCheckpointData::TRUST_DERIVED);
 		const bool bootstrap = HeaderCheckpoint::BootstrapFromEnv();
 		const std::string trustAnchor = HeaderCheckpoint::TrustAnchorFromEnv();
+		const char* anchorManifestPath = std::getenv("GRINPP_HEADER_CKPT_TRUST_ANCHOR_MANIFEST");
 
 		if (!headerFullValidationRan) {
-			LOG_WARNING_F("event=header_checkpoint_not_written reason=no_full_validation");
+			LOG_WARNING("event=header_checkpoint_not_written reason=no_full_validation");
 		} else if (!oldTrusted && (!bootstrap || trustAnchor.empty())) {
 			// A first checkpoint must have an out-of-band trust anchor. A local
 			// full pass cannot prove fields that are not locally verifiable
 			// (output/range/kernel roots, offset, nonce), so BOOTSTRAP=1 alone
 			// must never create trust.
-			LOG_WARNING_F(
+			LOG_WARNING(
 				"event=header_checkpoint_not_written reason=trust_anchor_required; provide GRINPP_HEADER_CKPT_BOOTSTRAP=1 and GRINPP_HEADER_CKPT_TRUST_ANCHOR=<published aggregate>");
 		} else {
 			auto pChainReader = pChainStore->Read();
@@ -538,6 +724,23 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 			if (oldTrusted) {
 				generated.Trust = oldCheckpoint.Trust;
 				generated.TrustSource = oldCheckpoint.TrustSource;
+			} else if (anchorManifestPath != nullptr && *anchorManifestPath != '\0') {
+				HeaderCheckpointAnchor anchor;
+				const std::string network = Env::ToString(Global::GetEnv());
+				if (!HeaderCheckpoint::ParseAnchorManifest(anchorManifestPath, anchor, checkpointError)) {
+					writeAllowed = false;
+					LOG_WARNING_F(
+						"event=header_checkpoint_not_written reason=anchor_manifest_invalid error={}",
+						checkpointError);
+				} else if (!HeaderCheckpoint::AnchorMatches(anchor, generated, network, checkpointError)) {
+					writeAllowed = false;
+					LOG_WARNING_F(
+						"event=header_checkpoint_not_written reason=anchor_manifest_mismatch error={}",
+						checkpointError);
+				} else {
+					generated.Trust = HeaderCheckpointData::TRUST_EXTERNAL;
+					generated.TrustSource = HeaderCheckpointData::TRUST_EXTERNAL;
+				}
 			} else {
 				const std::string aggregate = generated.Aggregate.ToHex();
 				if (aggregate.size() != trustAnchor.size()) {
@@ -641,7 +844,7 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		// the backup cannot be written: never migrate the only copy (G-22).
 		// A fresh database (version 0) has nothing to preserve.
 		const fs::path backupPath =
-			DbBackup::BackupBeforeMigration(config.GetDatabasePath(), db_version);
+			DbBackup::BackupBeforeMigration(pDatabase, config.GetDatabasePath(), db_version);
 		if (backupPath.empty()) {
 			LOG_ERROR("Failed to back up the database before migration; aborting.");
 			throw std::runtime_error("Database backup failed");
@@ -710,8 +913,8 @@ std::shared_ptr<BlockChain> BlockChain::Create(
 		timing.Success();
 	}
 	coinViewGuard.Commit();
-
 	createTiming.Success();
+	pBlockChain->StartHeaderCheckpointUpdater();
 	return pBlockChain;
 }
 
@@ -753,6 +956,7 @@ EBlockChainStatus BlockChain::AddBlock(const FullBlock& block)
 		}
 		timing.Success();
 	}
+	if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
 	return status;
 }
 
@@ -1060,7 +1264,9 @@ EBlockChainStatus BlockChain::AddBlockHeader(BlockHeaderPtr pBlockHeader)
 {
 	try
 	{
-		return BlockHeaderProcessor(m_pChainState).ProcessSingleHeader(pBlockHeader);
+		const EBlockChainStatus status = BlockHeaderProcessor(m_pChainState).ProcessSingleHeader(pBlockHeader);
+		if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
+		return status;
 	}
 	catch (BadDataException& e)
 	{
@@ -1077,7 +1283,9 @@ EBlockChainStatus BlockChain::AddBlockHeaders(const std::vector<BlockHeaderPtr>&
 {
 	try
 	{
-		return BlockHeaderProcessor(m_pChainState).ProcessSyncHeaders(blockHeaders);
+		const EBlockChainStatus status = BlockHeaderProcessor(m_pChainState).ProcessSyncHeaders(blockHeaders);
+		if (status == EBlockChainStatus::SUCCESS || status == EBlockChainStatus::ORPHANED) NotifyHeaderCheckpointChanged();
+		return status;
 	}
 	catch (BadDataException& e)
 	{
@@ -1278,6 +1486,7 @@ namespace BlockChainAPI
 		return BlockChain::Create(config, pDatabase, pTxHashSetManager, pTransactionPool, pHeaderMMR);
 	}
 }
+
 
 
 

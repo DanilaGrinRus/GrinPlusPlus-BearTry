@@ -6,4 +6,5 @@ list_append_parent(
     "Test_AggSig.cpp"
     "Test_ChaChaPoly.cpp"
     "Test_ED25519.cpp"
+    "Test_SodiumRuntime.cpp"
 )

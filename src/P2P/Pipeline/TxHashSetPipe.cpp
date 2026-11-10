@@ -121,12 +121,19 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 	const auto clearDownloading = [&pipeline]() {
 		pipeline.m_pSyncStatus->SetTxHashSetDownloading(false);
 	};
+	// An abandoned/failed transfer must not leave the failed attempt's declared
+	// size visible in /v1/status (state.download_size stayed at 64 MiB with
+	// downloaded=0 after an interrupted transfer on the task-64 stand).
+	const auto clearTransferProgress = [&pipeline]() {
+		pipeline.m_pSyncStatus->ClearTxHashSetProgress();
+	};
 	bool transferComplete = false;
 
 	if (!TxHashSetLimits::IsPlausibleSize(zipped_size)) {
 		LOG_ERROR_F("Rejecting TxHashSet with implausible size {}.", zipped_size);
 		pipeline.m_processing = false;
 		pipeline.m_pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+		clearTransferProgress();
 		clearDownloading();
 		pConnection->BanPeer(EBanReason::BadTxHashSet);
 		return;
@@ -171,6 +178,7 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 				FileUtil::RemoveFile(txHashSetPath);
 				pipeline.m_processing = false;
 				pipeline.m_pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+				clearTransferProgress();
 				clearDownloading();
 				return;
 			}
@@ -188,6 +196,7 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 				FileUtil::RemoveFile(txHashSetPath);
 				pipeline.m_processing = false;
 				pipeline.m_pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+				clearTransferProgress();
 				clearDownloading();
 
 				return;
@@ -230,6 +239,7 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 				"TxHashSet processing failed with status {}; peer validity not proven, no ban.",
 				static_cast<int>(processStatus));
 			pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+			clearTransferProgress();
 		}
 		else
 		{
@@ -245,6 +255,7 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 			"local/ambiguous failure, no ban.",
 			*pConnection, zipped_size, e.what());
 		pipeline.m_pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+		clearTransferProgress();
 		clearDownloading();
 		FileUtil::RemoveFile(txHashSetPath);
 		if (!transferComplete) { pConnection->Disconnect(); }
@@ -256,6 +267,7 @@ void TxHashSetPipe::Thread_ProcessTxHashSet(
 			"local/ambiguous failure, no ban.",
 			*pConnection);
 		pipeline.m_pSyncStatus->UpdateStatus(ESyncStatus::TXHASHSET_SYNC_FAILED);
+		clearTransferProgress();
 		clearDownloading();
 		FileUtil::RemoveFile(txHashSetPath);
 		if (!transferComplete) { pConnection->Disconnect(); }

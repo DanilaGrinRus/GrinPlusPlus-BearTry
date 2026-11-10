@@ -145,6 +145,11 @@ void BlockDB::SetVersion(const uint8_t version)
 	m_pRocksDB->Put("default", DBEntry("VERSION", DBVersion(version)));
 }
 
+bool BlockDB::CreateCheckpoint(const fs::path& checkpointPath) const
+{
+	return m_pRocksDB->CreateCheckpoint(checkpointPath);
+}
+
 void BlockDB::MigrateBlocks()
 {
 	//std::vector<FullBlock> blocks;

@@ -37,6 +37,12 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
         LoggerAPI::LogFile::WALLET
     );
 
+    // T1 (DNS rebinding / cross-origin browser): the owner wallet API has no
+    // .api_secret (UI v1.2.8 compatibility), so reject non-loopback Host/Origin
+    // at the HTTP boundary. Local non-browser clients and the packaged UI keep
+    // working; arbitrary web pages cannot reach the wallet.
+    pServer->SetRequireLoopbackRequest(true);
+
     /*
         Request:
         {
@@ -55,7 +61,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "id": 1,
             "jsonrpc": "2.0",
             "result": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "wallet_seed": "agree muscle erase plunge grit effort provide electric social decide include whisper tunnel dizzy bean tumble play robot fire verify program solid weasel nuclear",
                 "listener_port": 1100,
                 "tor_address": ""
@@ -82,7 +88,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "id": 1,
             "jsonrpc": "2.0",
             "result": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "listener_port": 1100,
                 "tor_address": ""
             }
@@ -107,7 +113,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "id": 1,
             "jsonrpc": "2.0",
             "result": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "listener_port": 1100,
                 "tor_address": ""
             }
@@ -122,7 +128,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "logout",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk="
+                "session_token": "<session_token>"
             }
         }
 
@@ -193,7 +199,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "cancel_tx",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "tx_id": 123
             }
         }
@@ -216,7 +222,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "get_balance",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk="
+                "session_token": "<session_token>"
             }
         }
 
@@ -242,7 +248,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "list_txs",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "start_range_ms": 1567361400000,
                 "end_range_ms": 1575227400000,
                 "statuses": ["COINBASE","SENT","RECEIVED","SENT_CANCELED","RECEIVED_CANCELED","SENDING_NOT_FINALIZED","RECEIVING_IN_PROGRESS", "SENDING_FINALIZED"]
@@ -272,7 +278,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "repost_tx",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "tx_id": 123,
                 "method": "STEM"
             }
@@ -296,7 +302,7 @@ OwnerServer::UPtr OwnerServer::Create(const TorProcess::Ptr& pTorProcess, const 
             "method": "estimate_fee",
             "id": 1,
             "params": {
-                "session_token": "mFHve+/CFsPuQf1+Anp24+R1rLZCVBIyKF+fJEuxAappgT2WKMfpOiNwvRk=",
+                "session_token": "<session_token>",
                 "amount": 12345678,
                 "fee_base": "1000000",
                 "change_outputs": 1,

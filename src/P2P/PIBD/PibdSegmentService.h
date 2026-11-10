@@ -58,20 +58,20 @@ public:
 		GetOutputBitmap();
 		{
 			std::lock_guard<std::mutex> lock(s_bitmapCacheMutex);
-			if (s_bitmapCache.valid && s_bitmapCache.horizonHash == m_horizonHash &&
-				s_bitmapCache.size == size && s_bitmapCache.outputRoot == outputRoot &&
-				s_bitmapCache.hasRoot) {
-				return s_bitmapCache.bitmapRoot;
+			if (Cache().valid && Cache().horizonHash == m_horizonHash &&
+				Cache().size == size && Cache().outputRoot == outputRoot &&
+				Cache().hasRoot) {
+				return Cache().bitmapRoot;
 			}
 		}
 
 		const Hash bitmapRoot = BuildBitmapMmr().GetRoot();
 		{
 			std::lock_guard<std::mutex> lock(s_bitmapCacheMutex);
-			if (s_bitmapCache.valid && s_bitmapCache.horizonHash == m_horizonHash &&
-				s_bitmapCache.size == size && s_bitmapCache.outputRoot == outputRoot) {
-				s_bitmapCache.bitmapRoot = bitmapRoot;
-				s_bitmapCache.hasRoot = true;
+			if (Cache().valid && Cache().horizonHash == m_horizonHash &&
+				Cache().size == size && Cache().outputRoot == outputRoot) {
+				Cache().bitmapRoot = bitmapRoot;
+				Cache().hasRoot = true;
 			}
 		}
 		return bitmapRoot;
@@ -86,9 +86,9 @@ public:
 		const Hash outputRoot = m_pOutputPMMR->Root(size);
 		{
 			std::lock_guard<std::mutex> lock(s_bitmapCacheMutex);
-			if (s_bitmapCache.valid && s_bitmapCache.horizonHash == m_horizonHash &&
-				s_bitmapCache.size == size && s_bitmapCache.outputRoot == outputRoot) {
-				return s_bitmapCache.bitmap;
+			if (Cache().valid && Cache().horizonHash == m_horizonHash &&
+				Cache().size == size && Cache().outputRoot == outputRoot) {
+				return Cache().bitmap;
 			}
 		}
 
@@ -102,12 +102,12 @@ public:
 
 		{
 			std::lock_guard<std::mutex> lock(s_bitmapCacheMutex);
-			s_bitmapCache.horizonHash = m_horizonHash;
-			s_bitmapCache.size = size;
-			s_bitmapCache.outputRoot = outputRoot;
-			s_bitmapCache.bitmap = bitmap;
-			s_bitmapCache.hasRoot = false;
-			s_bitmapCache.valid = true;
+			Cache().horizonHash = m_horizonHash;
+			Cache().size = size;
+			Cache().outputRoot = outputRoot;
+			Cache().bitmap = bitmap;
+			Cache().hasRoot = false;
+			Cache().valid = true;
 		}
 		return bitmap;
 	}
@@ -252,7 +252,11 @@ private:
 	};
 
 	inline static std::mutex s_bitmapCacheMutex;
-	inline static BitmapCacheEntry s_bitmapCache;
+	static BitmapCacheEntry& Cache()
+	{
+		static BitmapCacheEntry s_bitmapCache;
+		return s_bitmapCache;
+	}
 
 	std::shared_ptr<OutputPMMR> m_pOutputPMMR;
 	std::shared_ptr<RangeProofPMMR> m_pRangeProofPMMR;

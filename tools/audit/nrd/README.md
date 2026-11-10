@@ -3,12 +3,6 @@
 This directory holds the machine-readable NRD (NoRecentDuplicate) differential
 cases, the Rust 5.5.2 oracle evidence and the C++ test entry points.
 
-> Publication note: the raw `evidence/**` dumps and the local
-> `rust-oracle/**` harness are not part of the public source tree (see
-> `OMITTED_LOCAL_TOOLS.md`). Paths under `evidence/` below refer to the private
-> preparation evidence set; the method, the case file and the C++ tests are
-> published and reproducible.
-
 ## What is compared
 
 Grin's NRD rules are enforced by:
@@ -103,7 +97,7 @@ comparison of actual Rust vs C++ expected metadata (11/11 agree) is in
 Build/run with a separate cargo target — never the project build:
 
 ```powershell
-$env:CARGO_TARGET_DIR = "$env:TEMP\grin55-target"
+$env:CARGO_TARGET_DIR = '<user-home>\AppData\Local\Temp\grin55-target'
 cargo build --release --manifest-path tools/audit/nrd/rust-oracle/Cargo.toml
 $env:GRINPP_NRD_CASES = '<repo>\tools\audit\nrd\cases\nrd_cases.json'
 $env:GRINPP_NRD_RUST_ORACLE_OUT = '<repo>\tools\audit\nrd\evidence\rust-oracle-<sha>.json'
@@ -148,8 +142,8 @@ report (both variables are read by the test process).
 Rust oracle (read-only, already executed; see `evidence/`):
 
 ```powershell
-$env:CARGO_TARGET_DIR = "$env:TEMP\grin55-target"
-cd "$env:TEMP\grin55-minpeers"
+$env:CARGO_TARGET_DIR = '<user-home>\AppData\Local\Temp\grin55-target'
+cd <user-home>\AppData\Local\Temp\grin55-minpeers
 cargo test --release -p grin_chain --test nrd_validation_rules
 cargo test --release -p grin_chain --test store_kernel_pos_index
 cargo test --release -p grin_core  --test block
@@ -161,9 +155,9 @@ cargo test --release -p grin_core  --lib nrd
 
 ## Reference provenance
 
-* Source tree used for the oracle run: the preparation-time temporary
-  `grin55-minpeers` checkout (not published).
-* Canonical reference tree: a private checkout of grin v5.5.2 (no `.git`).
+* Source tree used for the oracle run:
+  `<user-home>\AppData\Local\Temp\grin55-minpeers`.
+* Canonical reference tree: `<workspace>\reference\grin-5.5.2` (no `.git`).
 * `Cargo.toml` version: `5.5.2`.
 * Claimed commit: `dbaff34` — **NOT VERIFIED** from independent metadata; the
   reference tree carries no Grin git object database.

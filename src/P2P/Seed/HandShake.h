@@ -21,7 +21,7 @@ private:
 	void PerformInboundHandshake(const Socket::Ptr& pSocket, ConnectedPeer& connectedPeer) const;
 	void TransmitHandMessage(const Socket::Ptr& pSocket) const;
 	void TransmitShakeMessage(const Socket::Ptr& pSocket, const uint32_t protocolVersion) const;
-	std::unique_ptr<RawMessage> RetrieveMessage(const Socket::Ptr& pSocket, const Peer& peer) const;
+	std::unique_ptr<RawMessage> RetrieveMessage(const Socket::Ptr& pSocket, const Peer& peer, MessageTypes::EMessageType expectedType) const;
 
 	ConnectionManager& m_connectionManager;
 	SyncStatusConstPtr m_pSyncStatus;

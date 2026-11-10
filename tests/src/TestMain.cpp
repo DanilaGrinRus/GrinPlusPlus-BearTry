@@ -1,12 +1,15 @@
+#define _CRT_SECURE_NO_WARNINGS
 #define CATCH_CONFIG_RUNNER
 #include <catch.hpp>
 
 #include <Core/Global.h>
+#include <Crypto/SodiumRuntime.h>
 #include <Core/Context.h>
 
 #include <Common/Logger.h>
 #include <Common/Util/FileUtil.h>
 #include <iostream>
+#include <cstdlib>
 
 // Test runtime lifetime note (Line 3, ASan finding):
 // The previous version defined `static TestRuntime RUNTIME;` and relied on the
@@ -30,7 +33,9 @@ public:
         m_pConfig = Config::Default(Environment::AUTOMATED_TESTING);
         m_pContext = Context::Create(Environment::AUTOMATED_TESTING, m_pConfig);
         Global::Init(m_pContext);
-        LoggerAPI::Initialize(m_pConfig->GetLogDirectory(), m_pConfig->GetLogLevel());
+        const char* testLogLevel = std::getenv("GRINPP_TEST_LOG_LEVEL");
+        LoggerAPI::Initialize(m_pConfig->GetLogDirectory(),
+            testLogLevel != nullptr ? std::string(testLogLevel) : m_pConfig->GetLogLevel());
 
         std::cout
             << "Test Runtime Initialized." << std::endl
@@ -49,6 +54,12 @@ private:
 
 int main(int argc, char** argv)
 {
+    if (!SodiumRuntime::Initialize()) {
+        std::cerr << "Unable to initialize libsodium." << std::endl;
+        return 1;
+    }
     TestRuntime runtime; // destroyed before static destruction: Global statics still alive
     return Catch::Session().run(argc, argv);
 }
+
+

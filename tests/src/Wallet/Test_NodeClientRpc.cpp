@@ -169,6 +169,22 @@ TEST_CASE("RPCNodeClient: typed node errors instead of std::exception")
 	REQUIRE(found.height == 4242);
 }
 
+TEST_CASE("RPCNodeClient: push_transaction transport failure is typed (W1.2)")
+{
+	// A transport failure while posting must not escape as a raw RPCException
+	// (it would bypass the wallet lifecycle handling in finalize/repost).
+	auto throwingInvoker = [](const std::string&, const Json::Value*) -> RPC::Response
+	{
+		throw RPCException("RPCNodeClientTest", "connection refused", std::nullopt);
+	};
+
+	const auto pClient = RPCNodeClient::CreateWithTransport(throwingInvoker);
+	REQUIRE_THROWS_AS(
+		pClient->PostTransaction(std::make_shared<Transaction>(), EPoolType::MEMPOOL),
+		NodeUnavailableException
+	);
+}
+
 TEST_CASE("RPCNodeClient: GetTip reads height and hash from one get_tip call")
 {
 	std::string method;

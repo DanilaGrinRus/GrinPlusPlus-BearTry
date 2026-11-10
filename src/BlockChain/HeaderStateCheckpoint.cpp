@@ -7,6 +7,8 @@
 #include <Core/Models/BlockHeader.h>
 #include <Core/Models/FullBlock.h>
 #include <Core/Serialization/Serializer.h>
+#include <Core/Util/JsonUtil.h>
+#include <Common/Util/HexUtil.h>
 #include <Crypto/Hasher.h>
 #include <Database/BlockDb.h>
 #include "../PMMR/Common/MMRHashUtil.h"
@@ -288,6 +290,254 @@ namespace HeaderCheckpoint
 		return value == nullptr ? std::string() : std::string(value);
 	}
 
+#ifdef _WIN32
+	static uint32_t CountMaskBits(DWORD_PTR mask)
+	{
+		uint32_t count = 0;
+		while (mask != 0)
+		{
+			count += static_cast<uint32_t>(mask & 1);
+			mask >>= 1;
+		}
+		return count;
+	}
+#endif
+
+	static uint32_t ProcessAvailableCores()
+	{
+#ifdef _WIN32
+		DWORD_PTR processMask = 0;
+		DWORD_PTR systemMask = 0;
+		if (GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask))
+		{
+			const uint32_t count = CountMaskBits(processMask);
+			if (count > 0) return count;
+		}
+#endif
+		const unsigned hw = std::thread::hardware_concurrency();
+		return hw == 0 ? 1 : hw;
+	}
+
+	static uint64_t AvailableMemoryMb()
+	{
+#ifdef _WIN32
+		MEMORYSTATUSEX status{};
+		status.dwLength = sizeof(status);
+		if (GlobalMemoryStatusEx(&status))
+		{
+			return static_cast<uint64_t>(status.ullAvailPhys / (1024ULL * 1024ULL));
+		}
+#endif
+		return 0;
+	}
+
+	bool ExtensionEntryCountAllowed(uint64_t storedEntries, uint64_t currentEntries) noexcept
+	{
+		return currentEntries >= storedEntries && currentEntries - storedEntries <= 10000;
+	}
+
+	bool ExtensionMmrNodeMatches(
+		uint64_t expectedPosition,
+		uint64_t actualPosition,
+		const Hash& expected,
+		const Hash& actual
+	) noexcept
+	{
+		return expectedPosition == actualPosition && expected == actual;
+	}
+
+	uint32_t ChooseThreadCount(uint32_t availableCores, uint64_t availableMemoryMb)
+	{
+		uint32_t cores = (std::max)((uint32_t)1, availableCores);
+		// Leave one core for the node/P2P/UI when the machine has more than two.
+		uint32_t byCores = cores <= 2 ? cores : cores - 1;
+		byCores = (std::min)(byCores, (uint32_t)8);
+
+		uint32_t byMemory = 8;
+		if (availableMemoryMb > 0)
+		{
+			// Keep a 1 GiB reserve for the node and allow ~512 MiB per worker.
+			const uint64_t usable = availableMemoryMb > 1024 ? availableMemoryMb - 1024 : 0;
+			byMemory = static_cast<uint32_t>((std::min)((uint64_t)8, usable / 512));
+			byMemory = (std::max)((uint32_t)1, byMemory);
+		}
+
+		return (std::max)((uint32_t)1, (std::min)(byCores, byMemory));
+	}
+
+	uint32_t ResolveThreadCount()
+	{
+		const char* value = std::getenv("GRINPP_HEADER_CKPT_THREADS");
+		if (value == nullptr || *value == '\0' ||
+			std::string(value) == "auto" || std::string(value) == "0")
+		{
+			return ChooseThreadCount(ProcessAvailableCores(), AvailableMemoryMb());
+		}
+
+		try
+		{
+			const unsigned long requested = std::stoul(value);
+			if (requested >= 1)
+			{
+				return (uint32_t)(std::min)((unsigned long)32, requested);
+			}
+		}
+		catch (...)
+		{
+		}
+		return ChooseThreadCount(ProcessAvailableCores(), AvailableMemoryMb());
+	}
+
+
+	static bool ParseHashField(const Json::Value& root, const char* key, Hash& out, std::string& error)
+	{
+		const Json::Value value = root.get(key, Json::nullValue);
+		if (!value.isString())
+		{
+			error = std::string("anchor manifest field '") + key + "' is missing or not a string";
+			return false;
+		}
+		try
+		{
+			const std::vector<unsigned char> bytes = HexUtil::FromHex(value.asString());
+			if (bytes.size() != 32)
+			{
+				error = std::string("anchor manifest field '") + key + "' must be 32 bytes hex";
+				return false;
+			}
+			out = Hash(std::vector<unsigned char>(bytes));
+			return true;
+		}
+		catch (const std::exception&)
+		{
+			error = std::string("anchor manifest field '") + key + "' is not valid hex";
+			return false;
+		}
+	}
+
+	bool ParseAnchorManifest(
+		const fs::path& path,
+		HeaderCheckpointAnchor& out,
+		std::string& error)
+	{
+		out = HeaderCheckpointAnchor{};
+		std::vector<uint8_t> bytes;
+		if (!ReadFile(path, bytes, error))
+		{
+			return false;
+		}
+
+		Json::Value root;
+		try
+		{
+			root = JsonUtil::Parse(bytes);
+		}
+		catch (const std::exception& e)
+		{
+			error = std::string("cannot parse anchor manifest: ") + e.what();
+			return false;
+		}
+		if (!root.isObject())
+		{
+			error = "anchor manifest must be a JSON object";
+			return false;
+		}
+
+		// A signature field is not a proof here: this build does not verify it.
+		// Accepting it silently would turn an unverified blob into apparent trust.
+		if (root.isMember("signature"))
+		{
+			error = "anchor manifest signature is present, but signature verification is not implemented";
+			return false;
+		}
+
+		const Json::Value network = root.get("network", Json::nullValue);
+		if (!network.isString() || network.asString().empty())
+		{
+			error = "anchor manifest network is missing";
+			return false;
+		}
+		out.Network = network.asString();
+
+		const Json::Value source = root.get("source", Json::nullValue);
+		if (!source.isString() || source.asString().empty())
+		{
+			error = "anchor manifest source/provenance is missing";
+			return false;
+		}
+		out.Source = source.asString();
+
+		if (!ParseHashField(root, "genesis", out.GenesisHash, error)) return false;
+		if (!ParseHashField(root, "tip", out.CandidateTip, error)) return false;
+		if (!ParseHashField(root, "aggregate", out.Aggregate, error)) return false;
+
+		const Json::Value candidate = root.get("candidate_entries", Json::nullValue);
+		const Json::Value confirmed = root.get("confirmed_entries", Json::nullValue);
+		const Json::Value mmrNodes = root.get("mmr_nodes", Json::nullValue);
+		if (!candidate.isUInt64() || !confirmed.isUInt64() || !mmrNodes.isUInt64())
+		{
+			error = "anchor manifest counts must be unsigned integers";
+			return false;
+		}
+		out.CandidateEntries = candidate.asUInt64();
+		out.ConfirmedEntries = confirmed.asUInt64();
+		out.MmrNodes = mmrNodes.asUInt64();
+
+		const Json::Value height = root.get("candidate_height", Json::nullValue);
+		if (!height.isNull())
+		{
+			if (!height.isUInt64() || height.asUInt64() + 1 != out.CandidateEntries)
+			{
+				error = "anchor manifest candidate_height does not match candidate_entries";
+				return false;
+			}
+		}
+
+		if (out.CandidateEntries == 0 || out.ConfirmedEntries > out.CandidateEntries)
+		{
+			error = "anchor manifest counts are inconsistent";
+			return false;
+		}
+
+		return true;
+	}
+
+	bool AnchorMatches(
+		const HeaderCheckpointAnchor& anchor,
+		const HeaderCheckpointData& data,
+		const std::string& expectedNetwork,
+		std::string& error)
+	{
+		if (anchor.Network != expectedNetwork)
+		{
+			error = "anchor network mismatch: manifest=" + anchor.Network + " node=" + expectedNetwork;
+			return false;
+		}
+		if (anchor.GenesisHash != data.GenesisHash)
+		{
+			error = "anchor genesis mismatch";
+			return false;
+		}
+		if (anchor.CandidateEntries != data.CandidateEntries ||
+			anchor.ConfirmedEntries != data.ConfirmedEntries ||
+			anchor.MmrNodes != data.MmrNodes)
+		{
+			error = "anchor counts mismatch";
+			return false;
+		}
+		if (anchor.CandidateTip != data.CandidateTip)
+		{
+			error = "anchor candidate tip mismatch";
+			return false;
+		}
+		if (anchor.Aggregate != data.Aggregate)
+		{
+			error = "anchor aggregate mismatch";
+			return false;
+		}
+		return true;
+	}
+
 	fs::path Path(const Config& config)
 	{
 		return config.GetChainPath() / "header.ckpt";
@@ -416,10 +666,11 @@ namespace HeaderCheckpoint
 			return false;
 		}
 
-		const uint64_t threadCount = (std::max)((uint64_t)1,
-			(std::min)(GetEnvU64("GRINPP_HEADER_CKPT_THREADS", 1), (uint64_t)32));
+		const uint64_t configuredThreads = ResolveThreadCount();
+		// Extension verifies all MMR nodes; cap its parallel preparation at four.
+		const uint64_t threadCount = verifyMmrInternal ? (AvailableMemoryMb() == 0 ? uint64_t{1} : (std::min)(configuredThreads, uint64_t{4})) : configuredThreads;
 		const bool parallelHeaders =
-			!validateHeaders && !verifyMmrInternal && threadCount > 1 && out.CandidateEntries > 0;
+			!validateHeaders && threadCount > 1 && out.CandidateEntries > 0;
 		if (parallelHeaders) {
 			std::vector<uint8_t> candidateBytes;
 			if (!ReadFile(config.GetChainPath() / "candidate.chain", candidateBytes, error)) {
@@ -432,6 +683,8 @@ namespace HeaderCheckpoint
 
 			const uint64_t segmentCount = (out.CandidateEntries + segmentSize - 1) / segmentSize;
 			out.HeaderSegments.assign(static_cast<size_t>(segmentCount), Hash());
+			std::vector<Hash> expectedLeaves;
+			if (verifyMmrInternal) { try { expectedLeaves.resize(static_cast<size_t>(out.CandidateEntries)); } catch (const std::exception&) { error = "cannot allocate header MMR verification buffers"; return false; } }
 
 			std::atomic<uint64_t> nextSegment{ 0 };
 			std::atomic<uint64_t> headerBytesRead{ 0 };
@@ -444,6 +697,7 @@ namespace HeaderCheckpoint
 
 			auto worker = [&]()
 			{
+				try {
 				while (!failed.load()) {
 					const uint64_t segmentIndex = nextSegment.fetch_add(1);
 					if (segmentIndex >= segmentCount) {
@@ -470,6 +724,15 @@ namespace HeaderCheckpoint
 							return;
 						}
 
+						if (verifyMmrInternal) {
+							const auto pIndex = candidateChain.GetByHeight(height);
+							if (pIndex == nullptr || pIndex->GetHash() != chainHash) {
+								std::lock_guard<std::mutex> lock(errorMutex);
+								if (!failed.exchange(true)) workerError = "candidate chain entry mismatch at height " + std::to_string(height);
+								return;
+							}
+							expectedLeaves[static_cast<size_t>(height)] = HashLeaf(*pHeader, LeafIndex::At(height).GetPosition());
+						}
 						Serializer serializer;
 						const auto serializeStart = std::chrono::steady_clock::now();
 						pHeader->Serialize(serializer);
@@ -485,16 +748,29 @@ namespace HeaderCheckpoint
 
 					const auto hashStart = std::chrono::steady_clock::now();
 					out.HeaderSegments[static_cast<size_t>(segmentIndex)] = Hasher::SHA256(segment);
+					if (segmentIndex == 0 && std::getenv("GRINPP_DIAG_REFRESH_MARKER") != nullptr) { LOG_INFO("event=diagnostic_hash_inside first_segment_complete=1"); }
 					hashNs.fetch_add(static_cast<uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - hashStart).count()));
+				}
+				} catch (const std::exception& e) {
+					std::lock_guard<std::mutex> lock(errorMutex);
+					if (!failed.exchange(true)) workerError = std::string("header worker failed: ") + e.what();
+				} catch (...) {
+					std::lock_guard<std::mutex> lock(errorMutex);
+					if (!failed.exchange(true)) workerError = "header worker failed";
 				}
 			};
 
 			std::vector<std::thread> workers;
 			workers.reserve(static_cast<size_t>(threadCount));
-			for (uint64_t i = 0; i < threadCount; ++i) {
-				workers.emplace_back(worker);
+			try {
+				for (uint64_t i = 0; i < threadCount; ++i) workers.emplace_back(worker);
+			} catch (...) {
+				failed.store(true);
+				for (std::thread& thread : workers) if (thread.joinable()) thread.join();
+				error = "could not start header workers";
+				return false;
 			}
 			for (std::thread& thread : workers) {
 				thread.join();
@@ -503,6 +779,44 @@ namespace HeaderCheckpoint
 			if (failed.load()) {
 				error = workerError;
 				return false;
+			}
+			// Check every MMR leaf and parent in its original order. Parallel workers
+			// only prepare expected leaves and segment digests; no checks are skipped.
+			if (verifyMmrInternal) {
+				std::vector<Hash> peaks;
+				std::vector<uint64_t> peakHeights;
+				uint64_t computedNodes = 0;
+				for (uint64_t height = 0; height < out.CandidateEntries; ++height) {
+					const uint64_t position = LeafIndex::At(height).GetPosition();
+					Hash node = expectedLeaves[static_cast<size_t>(height)];
+					Hash storedLeaf;
+					if (!HashAt(mmr, position, storedLeaf) ||
+						!ExtensionMmrNodeMatches(computedNodes, position, node, storedLeaf)) {
+						error = "header MMR leaf mismatch at height " + std::to_string(height);
+						return false;
+					}
+					++computedNodes;
+					uint64_t nodePosition = position;
+					uint64_t nodeHeight = 0;
+					while (!peakHeights.empty() && peakHeights.back() == nodeHeight) {
+						const Hash left = peaks.back(); peaks.pop_back(); peakHeights.pop_back();
+						const uint64_t parentPosition = nodePosition + 1;
+						const Hash parent = MMRHashUtil::HashParentWithIndex(left, node, parentPosition);
+						Hash storedParent;
+						if (!HashAt(mmr, parentPosition, storedParent) ||
+							!ExtensionMmrNodeMatches(computedNodes, parentPosition, parent, storedParent)) {
+							error = "header MMR internal node mismatch at position " + std::to_string(parentPosition);
+							return false;
+						}
+						++computedNodes;
+						node = parent; nodePosition = parentPosition; ++nodeHeight;
+					}
+					peaks.push_back(node); peakHeights.push_back(nodeHeight);
+				}
+				if (computedNodes != out.MmrNodes) {
+					error = "header MMR internal node count mismatch";
+					return false;
+				}
 			}
 			metrics.BytesRead += headerBytesRead.load();
 			metrics.DbReadMs = dbNs.load() / 1000000;
@@ -636,6 +950,7 @@ namespace HeaderCheckpoint
 			if ((height + 1) % segmentSize == 0 || (height + 1) == out.CandidateEntries) {
 				const auto hashStart = std::chrono::steady_clock::now();
 				out.HeaderSegments.push_back(Hasher::SHA256(headerSegment));
+				if (height + 1 == segmentSize && std::getenv("GRINPP_DIAG_REFRESH_MARKER") != nullptr) { LOG_INFO("event=diagnostic_hash_inside first_segment_complete=1"); }
 				hashNs += static_cast<uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - hashStart).count());
@@ -964,7 +1279,8 @@ namespace HeaderCheckpoint
 		const Chain& candidateChain,
 		const Chain& confirmedChain,
 		HeaderCheckpointMetrics& metrics,
-		std::string& error)
+		std::string& error,
+		const bool verifyMmrInternal)
 	{
 		HeaderCheckpointData stored;
 		if (!Read(Path(config), stored, error)) {
@@ -1015,8 +1331,82 @@ namespace HeaderCheckpoint
 			}
 		}
 
+		// Bounded append-only extension. The old checkpoint is trusted and its
+		// old prefix is checked below by segment hashes. Validate the new header
+		// chain and MMR leaves before accepting it; anything unusual falls back
+		// to the existing full validation.
+		const uint64_t newCandidateEntries = before.CandidateEntries;
+		if (!ExtensionEntryCountAllowed(stored.CandidateEntries, newCandidateEntries)) {
+			error = "checkpoint is too far behind for bounded extension";
+			return false;
+		}
+		if (stored.CandidateEntries == 0 ||
+			headerMMR.Root(stored.CandidateEntries - 1) != stored.MmrRoot) {
+			error = "previous checkpoint MMR root does not match the current prefix";
+			return false;
+		}
+
+		std::vector<uint8_t> extensionMmr;
+		if (!ReadFile(config.GetChainPath() / "header_mmr.bin", extensionMmr, error) ||
+			extensionMmr.size() != before.MmrFileSize) {
+			error = "header_mmr.bin is unavailable or changed during extension";
+			return false;
+		}
+
+		Hash previousHash = stored.CandidateTip;
+		const BlockHeaderPtr pOldHeader = blockDB.GetBlockHeader(stored.CandidateTip);
+		if (pOldHeader == nullptr) {
+			error = "previous checkpoint header is missing";
+			return false;
+		}
+		BlockHeaderPtr previousHeader = pOldHeader;
+		for (uint64_t height = stored.CandidateEntries; height < newCandidateEntries; ++height) {
+			const auto pIndex = candidateChain.GetByHeight(height);
+			if (pIndex == nullptr) {
+				error = "extension candidate header index is missing at height " + std::to_string(height);
+				return false;
+			}
+			const Hash chainHash = pIndex->GetHash();
+			const BlockHeaderPtr pHeader = blockDB.GetBlockHeader(chainHash);
+			if (pHeader == nullptr ||
+				pHeader->GetHeight() != height ||
+				pHeader->GetHash() != chainHash ||
+				pHeader->GetPreviousHash() != previousHash) {
+				error = "extension header/hash/link mismatch at height " + std::to_string(height);
+				return false;
+			}
+			if (pHeader->GetVersion() != Consensus::GetHeaderVersion(height) ||
+				pHeader->GetTimestamp() > Consensus::GetMaxBlockTime(std::chrono::system_clock::now()) ||
+				pHeader->GetTimestamp() <= previousHeader->GetTimestamp() ||
+				pHeader->GetTotalDifficulty() <= previousHeader->GetTotalDifficulty()) {
+				error = "extension header fields are not monotonic at height " + std::to_string(height);
+				return false;
+			}
+
+			const uint64_t position = LeafIndex::At(height).GetPosition();
+			Hash storedLeaf;
+			if (!HashAt(extensionMmr, position, storedLeaf) ||
+				storedLeaf != HashLeaf(*pHeader, position)) {
+				error = "extension header MMR leaf mismatch at height " + std::to_string(height);
+				return false;
+			}
+
+			previousHash = chainHash;
+			previousHeader = pHeader;
+		}
+
+		for (uint64_t height = stored.ConfirmedEntries; height < before.ConfirmedEntries; ++height) {
+			const auto pConfirmed = confirmedChain.GetByHeight(height);
+			const auto pCandidate = candidateChain.GetByHeight(height);
+			if (pConfirmed == nullptr || pCandidate == nullptr ||
+				pConfirmed->GetHash() != pCandidate->GetHash()) {
+				error = "extension confirmed chain is not a candidate-chain prefix at height " + std::to_string(height);
+				return false;
+			}
+		}
+
 		HeaderCheckpointData generated;
-		if (!Compute(config, blockDB, headerMMR, candidateChain, confirmedChain, false, false, generated, metrics, error)) {
+		if (!Compute(config, blockDB, headerMMR, candidateChain, confirmedChain, false, verifyMmrInternal, generated, metrics, error)) {
 			return false;
 		}
 
@@ -1451,6 +1841,12 @@ namespace HeaderCheckpoint
 			return false;
 		}
 
+		if (out.Trust > HeaderCheckpointData::TRUST_DERIVED ||
+			out.TrustSource > HeaderCheckpointData::TRUST_DERIVED) {
+			error = "checkpoint has an invalid trust field";
+			return false;
+		}
+
 		if (out.SegmentSize == 0 || out.SegmentSize > 1000000) {
 			error = "invalid checkpoint segment size";
 			return false;
@@ -1565,3 +1961,4 @@ namespace HeaderCheckpoint
 		return out.str();
 	}
 }
+

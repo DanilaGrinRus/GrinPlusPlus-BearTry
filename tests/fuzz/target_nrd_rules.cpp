@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 // Fuzz target: production NRD rule functions (include/PMMR/NrdRules.h).
 //
 // This is the pure, header-only rule set used by the kernel index / block

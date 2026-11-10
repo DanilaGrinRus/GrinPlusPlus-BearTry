@@ -10,6 +10,9 @@
 #include <Wallet/WalletDB/WalletStoreException.h>
 #include <uuid.h>
 
+#include <cstdlib>
+#include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,6 +33,35 @@ namespace
 	std::string UniqueUsername()
 	{
 		return "db-test-" + uuids::to_string(uuids::uuid_system_generator()());
+	}
+
+	// task-63 low-disk hook: the driver mounts an own small VHD and points this
+	// variable at a directory on it. Normal runs never mount such a volume and
+	// skip the real-ENOSPC scenario.
+	std::optional<std::string> GetLowDiskRoot()
+	{
+#ifdef _WIN32
+		char* value = nullptr;
+		size_t length = 0;
+		if (_dupenv_s(&value, &length, "GRINPP_LOWDISK_ROOT") != 0 || value == nullptr) {
+			return std::nullopt;
+		}
+
+		std::string root(value);
+		std::free(value);
+		if (root.empty()) {
+			return std::nullopt;
+		}
+
+		return root;
+#else
+		const char* value = std::getenv("GRINPP_LOWDISK_ROOT");
+		if (value == nullptr || *value == '\0') {
+			return std::nullopt;
+		}
+
+		return std::string(value);
+#endif
 	}
 }
 
@@ -149,4 +181,77 @@ TEST_CASE("CreateWallet refuses a seed without a database and does not delete it
 	REQUIRE(FileUtil::Exists(seedFile));
 
 	FileUtil::RemoveFile(userDir);
+}
+
+//
+// task-63 low-disk: real ENOSPC on an own small VHD (mounted by the w63 PS
+// driver). The test fills the volume itself, so it must refuse to run on a
+// normal disk; without GRINPP_LOWDISK_ROOT it is skipped silently and the
+// regular suite is unaffected.
+//
+TEST_CASE("CreateWallet fails closed on a full volume (task-63 low-disk)")
+{
+	const std::optional<std::string> lowDiskRoot = GetLowDiskRoot();
+	if (!lowDiskRoot.has_value()) {
+		return;
+	}
+
+	const fs::path root(*lowDiskRoot);
+	std::error_code error;
+	fs::create_directories(root, error);
+	REQUIRE_FALSE(error);
+
+	// Safety: only a deliberately small test volume may be filled. This prevents
+	// an accidentally exported GRINPP_LOWDISK_ROOT=C:\... from filling a real disk.
+	const fs::space_info capacityInfo = fs::space(root, error);
+	REQUIRE_FALSE(error);
+	REQUIRE(capacityInfo.capacity <= (256ull * 1024ull * 1024ull));
+
+	const fs::path filler = root / "w63-enospc-filler.bin";
+	const uint64_t maximumFill = (uint64_t)capacityInfo.capacity;
+	{
+		std::ofstream stream(filler, std::ios::binary | std::ios::trunc);
+		REQUIRE(stream.good());
+		std::vector<char> chunk(1024 * 1024, 0x5A);
+		uint64_t written = 0;
+		while (stream.good() && written < maximumFill) {
+			stream.write(chunk.data(), (std::streamsize)chunk.size());
+			stream.flush();
+			written += chunk.size();
+		}
+	}
+	REQUIRE(FileUtil::Exists(filler));
+
+	const fs::space_info fullInfo = fs::space(root, error);
+	REQUIRE_FALSE(error);
+	REQUIRE(fullInfo.available < (4ull * 1024ull * 1024ull));
+
+	const ConfigPtr pConfig = Config::Default(Environment::AUTOMATED_TESTING);
+	const std::shared_ptr<SqliteStore> pStore = SqliteStore::Open(*pConfig);
+	const std::string username = UniqueUsername();
+	const fs::path userDir = pConfig->GetWalletPath() / username;
+
+	// A full volume must fail closed (any store/file error) and must never leave
+	// a wallet database that later looks successfully created.
+	bool failedClosed = false;
+	try {
+		pStore->CreateWallet(username, MakeTestSeed());
+	} catch (const std::exception&) {
+		failedClosed = true;
+	}
+	REQUIRE(failedClosed);
+	REQUIRE_FALSE(FileUtil::Exists(userDir / "wallet.db"));
+
+	// Free the volume again: the failed attempt must not leave the profile in a
+	// state that blocks a later successful create.
+	fs::remove(filler, error);
+	REQUIRE_FALSE(error);
+	fs::remove_all(userDir, error);
+	error.clear();
+
+	REQUIRE_NOTHROW(pStore->CreateWallet(username, MakeTestSeed()));
+	REQUIRE(FileUtil::Exists(userDir / "seed.json"));
+	REQUIRE(FileUtil::Exists(userDir / "wallet.db"));
+	pStore->CloseWallet(username);
+	pStore->DeleteWallet(username);
 }

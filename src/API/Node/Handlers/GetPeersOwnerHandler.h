@@ -28,7 +28,13 @@ public:
 		std::string addressFilter;
 		if (request.GetParams().has_value()) {
 			const Json::Value& params = request.GetParams().value();
-			if (params.isArray() && !params.empty() && !params[0].isNull()) {
+			if (!params.isArray()) {
+				return request.BuildError("INVALID_PARAMS", "Expected an address string or null.");
+			}
+			if (!params.empty() && !params[0].isNull()) {
+				if (!params[0].isString()) {
+					return request.BuildError("INVALID_PARAMS", "Expected an address string or null.");
+				}
 				addressFilter = params[0].asString();
 			}
 		}

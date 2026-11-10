@@ -1,0 +1,142 @@
+[
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "first-occurrence-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 1,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation (block_valid_9, first inclusion)"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "exact-boundary-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 2,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation (height 11, diff == relative_height)"
+  },
+  {
+    "actual_cpp_category" : "invalid_nrd_relative_height",
+    "expected_cpp_category" : "invalid_nrd_relative_height",
+    "id" : "one-before-boundary-invalid",
+    "index_complete" : true,
+    "index_entry_count" : 1,
+    "mode" : "rebuild",
+    "rust_category" : "NRDRelativeHeight",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation (height 10, diff == relative_height - 1)"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "relative-height-1-next-block-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 2,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation_relative_height_1"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "three-occurrences-boundary-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 3,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "pool/tests/nrd_kernel_relative_height.rs (multiple duplicated NRD kernels accepted while relative_height is met) + chain/tests/nrd_validation_rules.rs"
+  },
+  {
+    "actual_cpp_category" : "invalid_nrd_duplicate_in_block",
+    "expected_cpp_category" : "invalid_nrd_duplicate_in_block",
+    "id" : "duplicate-nrd-in-one-block-invalid",
+    "index_complete" : true,
+    "index_entry_count" : 0,
+    "mode" : "rebuild",
+    "rust_category" : "NRDRelativeHeight",
+    "rust_oracle" : "core/src/core/transaction.rs verify_no_nrd_duplicates; chain/tests/nrd_validation_rules.rs (block with both tx1 and tx2 invalid)"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "plain-excess-not-indexed",
+    "index_complete" : true,
+    "index_entry_count" : 1,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/src/txhashset/txhashset.rs apply_kernel_rules only indexes KernelFeatures::NoRecentDuplicate; core verify_no_nrd_duplicates filters NRD only"
+  },
+  {
+    "actual_cpp_category" : "accepted_non_nrd",
+    "expected_cpp_category" : "accepted_non_nrd",
+    "id" : "plain-repeat-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 0,
+    "mode" : "incremental",
+    "rust_category" : "accepted",
+    "rust_oracle" : "core/src/core/transaction.rs (NRD rules apply only to NoRecentDuplicate kernels); chain tests mine plain coinbase kernels freely"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "multi-kernel-mixed-block-attribution",
+    "index_complete" : true,
+    "index_entry_count" : 3,
+    "mode" : "rebuild",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs (multi-kernel blocks incl. coinbase) + chain/src/txhashset/txhashset.rs verify_kernel_pos_index header attribution"
+  },
+  {
+    "actual_cpp_category" : "missing_local_history",
+    "expected_cpp_category" : "missing_local_history",
+    "id" : "missing-local-history",
+    "index_complete" : false,
+    "index_entry_count" : 0,
+    "mode" : "no_index",
+    "rust_category" : "not_applicable_local_state",
+    "rust_oracle" : "Rust has no 'index missing' state: the index is rebuilt inside txhashset write/startup. Category is a local incompleteness guard, not invalid-peer evidence."
+  },
+  {
+    "actual_cpp_category" : "missing_local_history",
+    "expected_cpp_category" : "missing_local_history",
+    "id" : "rebuild-rejects-historical-violation",
+    "index_complete" : false,
+    "index_entry_count" : 0,
+    "mode" : "rebuild",
+    "rust_category" : "NRDRelativeHeight",
+    "rust_oracle" : "chain/src/txhashset/txhashset.rs verify_kernel_pos_index replays apply_kernel_rules (line ~602); a historical violation errors the rebuild, which fails txhashset write in chain.rs"
+  },
+  {
+    "actual_cpp_category" : "missing_local_history",
+    "expected_cpp_category" : "missing_local_history",
+    "id" : "rebuild-rejects-duplicate-history-block",
+    "index_complete" : false,
+    "index_entry_count" : 0,
+    "mode" : "rebuild",
+    "rust_category" : "NRDRelativeHeight",
+    "rust_oracle" : "chain/src/txhashset/txhashset.rs verify_kernel_pos_index: second kernel with same excess at the same height has diff 0 < relative_height"
+  },
+  {
+    "actual_cpp_category" : "invalid_nrd_relative_height",
+    "expected_cpp_category" : "invalid_nrd_relative_height",
+    "id" : "incremental-one-before-boundary-invalid",
+    "index_complete" : true,
+    "index_entry_count" : 1,
+    "mode" : "incremental",
+    "rust_category" : "NRDRelativeHeight",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation (height 10)"
+  },
+  {
+    "actual_cpp_category" : "accepted",
+    "expected_cpp_category" : "accepted",
+    "id" : "incremental-exact-boundary-accepted",
+    "index_complete" : true,
+    "index_entry_count" : 2,
+    "mode" : "incremental",
+    "rust_category" : "accepted",
+    "rust_oracle" : "chain/tests/nrd_validation_rules.rs process_block_nrd_validation (height 11)"
+  }
+]

@@ -30,7 +30,11 @@ void TransactionsTable::AddTransactions(SqliteDB& database, const SecureVector& 
 
 		Serializer serializer;
 		walletTx.Serialize(serializer);
-		std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(masterSeed, "WALLET_TX", serializer.GetSecureBytes());
+
+		// W-06: bind the row identity (wallet tx id) as associated data.
+		const std::string idString = std::to_string(walletTx.GetId());
+		const std::vector<uint8_t> associatedData(idString.begin(), idString.end());
+		std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(masterSeed, "WALLET_TX", associatedData, serializer.GetSecureBytes());
 
 		std::vector<SqliteDB::IParameter::UPtr> parameters;
 		parameters.push_back(IntParameter::New((int)walletTx.GetId()));
@@ -49,14 +53,16 @@ void TransactionsTable::AddTransactions(SqliteDB& database, const SecureVector& 
 
 std::vector<WalletTx> TransactionsTable::GetTransactions(SqliteDB& database, const SecureVector& masterSeed)
 {
-	std::string get_tx_query = "select encrypted from transactions";
+	std::string get_tx_query = "select id, encrypted from transactions";
 	auto pStatement = database.Query(get_tx_query);
 
 	std::vector<WalletTx> transactions;
 	while (pStatement->Step())
 	{
-		std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(0);
-		SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "WALLET_TX", encrypted);
+		const std::string idString = std::to_string(pStatement->GetColumnInt64(0));
+		const std::vector<uint8_t> associatedData(idString.begin(), idString.end());
+		std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(1);
+		SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "WALLET_TX", associatedData, encrypted);
 		std::vector<uint8_t> decryptedUnsafe(decrypted.data(), decrypted.data() + decrypted.size());
 
 		ByteBuffer byteBuffer(std::move(decryptedUnsafe));
@@ -78,8 +84,10 @@ std::unique_ptr<WalletTx> TransactionsTable::GetTransactionById(SqliteDB& databa
 		return nullptr;
 	}
 
+	const std::string idString = std::to_string(walletTxId);
+	const std::vector<uint8_t> associatedData(idString.begin(), idString.end());
 	std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(0);
-	SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "WALLET_TX", encrypted);
+	SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, "WALLET_TX", associatedData, encrypted);
 	std::vector<uint8_t> decryptedUnsafe(decrypted.data(), decrypted.data() + decrypted.size());
 
 	ByteBuffer byteBuffer(std::move(decryptedUnsafe));

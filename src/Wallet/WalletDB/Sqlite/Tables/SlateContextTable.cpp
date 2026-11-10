@@ -1,4 +1,5 @@
 #include "SlateContextTable.h"
+#include "../../WalletEncryptionUtil.h"
 
 #include <Common/Util/StringUtil.h>
 #include <Common/Logger.h>
@@ -8,7 +9,7 @@
 
 void SlateContextTable::CreateTable(SqliteDB& database)
 {
-	std::string table_creation_cmd = "create table slate_contexts(slate_id TEXT PRIMARY KEY, iv BLOB NOT NULL, enc_context BLOB NOT NULL);";
+	std::string table_creation_cmd = "create table slate_contexts(slate_id TEXT PRIMARY KEY, iv BLOB NOT NULL, enc_context BLOB NOT NULL, enc_format INTEGER NOT NULL DEFAULT 0);";
 	// TODO: Add indices
 	database.Execute(table_creation_cmd);
 }
@@ -23,6 +24,11 @@ void SlateContextTable::UpdateSchema(SqliteDB& database, const int previousVersi
 		database.Execute("DROP TABLE IF EXISTS slate_contexts;");
 		CreateTable(database);
 	}
+
+	// v5 (W-06): row-bound authenticated slate contexts.
+	if (previousVersion < 5 && database.TableExists("slate_contexts") && !database.TableHasColumn("slate_contexts", "enc_format")) {
+		database.Execute("ALTER TABLE slate_contexts ADD COLUMN enc_format INTEGER NOT NULL DEFAULT 0;");
+	}
 }
 
 void SlateContextTable::SaveSlateContext(
@@ -31,18 +37,67 @@ void SlateContextTable::SaveSlateContext(
 	const uuids::uuid& slateId,
 	const SlateContextEntity& slateContext)
 {
-	std::string insert_context_cmd = "insert into slate_contexts values(?, ?, ?)";
+	std::string insert_context_cmd = "insert into slate_contexts(slate_id, iv, enc_context, enc_format) values(?, ?, ?, ?)";
 
 	const std::string slateIdStr = uuids::to_string(slateId);
-	CBigInteger<16> iv(CSPRNG::GenerateRandomBytes(16).data());
-	std::vector<uint8_t> encrypted = Encrypt(masterSeed, slateId, iv, slateContext);
+	const std::string dataType = "SLATE_CTX:" + slateIdStr;
+	const std::vector<uint8_t> associatedData(slateIdStr.begin(), slateIdStr.end());
+
+	Serializer serializer;
+	slateContext.Serialize(serializer);
+	const std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(
+		masterSeed, dataType, associatedData, serializer.GetSecureBytes()
+	);
+	CBigInteger<16> zeroIv;
 
 	std::vector<SqliteDB::IParameter::UPtr> parameters;
 	parameters.push_back(TextParameter::New(slateIdStr));
-	parameters.push_back(BlobParameter::New(iv.GetData()));
+	parameters.push_back(BlobParameter::New(zeroIv.GetData()));
 	parameters.push_back(BlobParameter::New(encrypted));
+	parameters.push_back(IntParameter::New(1));
 
 	database.Update(insert_context_cmd, parameters);
+}
+
+void SlateContextTable::MigrateLegacyRows(SqliteDB& database, const SecureVector& masterSeed)
+{
+	auto pStatement = database.Query("select slate_id from slate_contexts where enc_format=0");
+	std::vector<std::string> legacyRows;
+	while (pStatement->Step()) {
+		legacyRows.push_back(pStatement->GetColumnString(0));
+	}
+	pStatement->Finalize();
+
+	for (const std::string& slateIdStr : legacyRows) {
+		const auto slateIdOpt = uuids::uuid::from_string(slateIdStr);
+		if (!slateIdOpt.has_value()) {
+			WALLET_WARNING_F("Skipping legacy slate context with invalid id: {}", slateIdStr);
+			continue;
+		}
+
+		auto pContext = SlateContextTable::LoadSlateContext(database, masterSeed, slateIdOpt.value());
+		if (pContext == nullptr) {
+			continue;
+		}
+
+		Serializer serializer;
+		pContext->Serialize(serializer);
+		const std::string dataType = "SLATE_CTX:" + slateIdStr;
+		const std::vector<uint8_t> associatedData(slateIdStr.begin(), slateIdStr.end());
+		const std::vector<uint8_t> encrypted = WalletEncryptionUtil::Encrypt(
+			masterSeed, dataType, associatedData, serializer.GetSecureBytes()
+		);
+
+		CBigInteger<16> zeroIv;
+		std::vector<SqliteDB::IParameter::UPtr> parameters;
+		parameters.push_back(BlobParameter::New(zeroIv.GetData()));
+		parameters.push_back(BlobParameter::New(encrypted));
+		parameters.push_back(TextParameter::New(slateIdStr));
+		database.Update(
+			"update slate_contexts set iv=?, enc_context=?, enc_format=1 where slate_id=?",
+			parameters
+		);
+	}
 }
 
 std::unique_ptr<SlateContextEntity> SlateContextTable::LoadSlateContext(
@@ -50,7 +105,7 @@ std::unique_ptr<SlateContextEntity> SlateContextTable::LoadSlateContext(
 	const SecureVector& masterSeed,
 	const uuids::uuid& slateId)
 {
-	std::string get_context_query = StringUtil::Format("SELECT iv, enc_context FROM slate_contexts WHERE slate_id='{}'", uuids::to_string(slateId));
+	std::string get_context_query = StringUtil::Format("SELECT iv, enc_context, enc_format FROM slate_contexts WHERE slate_id='{}'", uuids::to_string(slateId));
 	auto pStatement = database.Query(get_context_query);
 
 	if (!pStatement->Step()) {
@@ -68,6 +123,16 @@ std::unique_ptr<SlateContextEntity> SlateContextTable::LoadSlateContext(
 
 	CBigInteger<16> iv(std::move(iv_bytes));
 	std::vector<uint8_t> encrypted = pStatement->GetColumnBytes(1);
+	const int encFormat = pStatement->GetColumnInt(2);
+
+	if (encFormat == 1) {
+		const std::string slateIdStr = uuids::to_string(slateId);
+		const std::string dataType = "SLATE_CTX:" + slateIdStr;
+		const std::vector<uint8_t> associatedData(slateIdStr.begin(), slateIdStr.end());
+		const SecureVector decrypted = WalletEncryptionUtil::Decrypt(masterSeed, dataType, associatedData, encrypted);
+		ByteBuffer byteBuffer(std::vector<uint8_t>{ decrypted.begin(), decrypted.end() });
+		return std::make_unique<SlateContextEntity>(SlateContextEntity::Deserialize(byteBuffer));
+	}
 
 	return std::make_unique<SlateContextEntity>(Decrypt(masterSeed, slateId, iv, encrypted)); // TODO: Pass in keypath and pubkey?
 }

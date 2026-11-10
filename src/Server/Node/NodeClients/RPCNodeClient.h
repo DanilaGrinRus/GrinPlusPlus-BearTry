@@ -301,9 +301,23 @@ public:
 		params.append(pTransaction->ToJSON());
 		params.append(poolType == EPoolType::MEMPOOL);
 
-		auto response = Call("push_transaction", &params);
+		std::optional<RPC::Response> response;
+		try
+		{
+			response.emplace(Call("push_transaction", &params));
+		}
+		catch (const std::exception& e)
+		{
+			// Transport failure is a node-unavailable condition, not a normal
+			// rejection. Callers (WalletManager::Finalize/RepostTx) must see a
+			// typed exception so they can keep the wallet state consistent and
+			// the API returns a deterministic error.
+			throw NodeUnavailableException(
+				std::string("push_transaction transport failure: ") + e.what()
+			);
+		}
 
-		const PostTransactionOutcome outcome = ParsePostTransactionResponse(response);
+		const PostTransactionOutcome outcome = ParsePostTransactionResponse(response.value());
 		if (outcome.status != EPostTransactionStatus::POSTED)
 		{
 			LOG_ERROR_F("push_transaction was not accepted: {}", outcome.error);

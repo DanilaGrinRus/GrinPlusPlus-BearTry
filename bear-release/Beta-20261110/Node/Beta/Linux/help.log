@@ -1,0 +1,8 @@
+Usage: GrinPP [options]
+--help	Display this help message
+--floonet	Use floonet chain
+--automated-testing	Use AUTOMATED_TESTING chain (test-only)
+--headless	Run headless app with no console output
+--no-wallet	Run only a node, not a wallet
+--shared-node [host:port]	Uses the node at the given address and port (grinnode.live:80)
+--config-path [path_to_config]	Uses the config file at the path provided

@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <catch.hpp>
 
 #include <Core/Models/BlockHeader.h>
@@ -5,6 +6,10 @@
 #include <Core/Serialization/Serializer.h>
 #include <P2P/PIBD/PibdParams.h>
 #include <P2P/PIBD/PibdSegmentService.h>
+#include <PMMR/RangeProofBatchVerifier.h>
+#include <PMMR/TxHashSet.h>
+#include <PMMR/TxHashSetImpl.h>
+#include <P2P/SyncStatus.h>
 #include <PMMR/KernelMMR.h>
 #include <PMMR/OutputPMMR.h>
 #include <PMMR/RangeProofPMMR.h>
@@ -15,7 +20,8 @@
 
 TEST_CASE("PibdSegmentService::FullSweepPpCkpt", "[.]")
 {
-	const fs::path stateDir = "fixtures/pibd/full-sweep/state";
+	const char* envState = std::getenv("GRINPP_BENCH_STATE");
+	const fs::path stateDir = envState != nullptr ? fs::path(envState) : fs::path("fixtures/pibd/full-sweep/state");
 	const fs::path headerPath = "fixtures/pibd/full-sweep/header.bin";
 	if (!fs::exists(stateDir / "output/pmmr_hash.bin") || !fs::exists(headerPath)) {
 		FAIL("pp-ckpt/fixture absent; full PIBD sweep was not executed");
@@ -118,3 +124,44 @@ TEST_CASE("PibdSegmentService::FullSweepPpCkpt", "[.]")
 	CHECK(rangeProofFailures == 0);
 	CHECK(kernelFailures == 0);
 }
+
+TEST_CASE("FullRangeProofWorkerBenchmark", "[rangebench][.]")
+{
+	const char* envState = std::getenv("GRINPP_BENCH_STATE");
+	const fs::path stateDir = envState != nullptr ? fs::path(envState) : fs::path("fixtures/pibd/full-sweep/state");
+	auto outputs = OutputPMMR::Load(stateDir);
+	auto proofs = RangeProofPMMR::Load(stateDir);
+	TxHashSet state(nullptr, outputs, proofs, nullptr);
+	std::cout << "RANGEBENCH state output_mmr=" << outputs->GetSize() << std::endl;
+	uint64_t expectedProofs = 0;
+	auto run = [&](const char* label, const int workers) {
+		SyncStatus status;
+		RangeProofBatchVerifier::Stats stats;
+		const auto start = std::chrono::steady_clock::now();
+		const bool ok = workers == 1
+			? RangeProofBatchVerifier::VerifySequential(state, status, &stats)
+			: RangeProofBatchVerifier::VerifyParallel(state, status, workers, &stats);
+		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - start).count();
+		std::cout << "RANGEBENCH label=" << label << " workers=" << workers
+			<< " verified=" << stats.VerifiedProofs << " ms=" << ms
+			<< " ok=" << (ok ? 1 : 0) << std::endl;
+		REQUIRE(ok);
+		if (expectedProofs == 0) expectedProofs = stats.VerifiedProofs;
+		REQUIRE(stats.VerifiedProofs == expectedProofs);
+		REQUIRE(stats.SubmittedProofs == expectedProofs);
+	};
+	run("1", 1);
+	run("2", 2);
+	run("3", 3);
+	run("4", 4);
+	const auto autoSelection = RangeProofBatchVerifier::ConfiguredWorkerSelection();
+	run("auto", autoSelection.Workers);
+}
+
+
+
+
+
+
+

@@ -21,6 +21,7 @@ list_append_parent(
     "Test_PibdSync.cpp"
     "Test_Segment.cpp"
     "Test_SegmentGenerator.cpp"
+    "Test_PibdWireAudit.cpp"
     "Test_PruneList.cpp"
     "Test_PruneList_GetLeafShift.cpp"
     "Test_PruneList_GetShift.cpp"

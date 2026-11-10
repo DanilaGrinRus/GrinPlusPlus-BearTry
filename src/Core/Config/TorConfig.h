@@ -8,7 +8,12 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <iostream>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <chrono>
 #include <fstream>
 #include <iostream>
 
@@ -41,37 +46,73 @@ public:
 		return buffer.str();
 	}
 	
-	void AddObfs4TorBridge(std::string bridge) const noexcept
+	bool WriteTorrcContent(const std::string& content) const noexcept
 	{
-		if (bridge.empty()) return;
-		if (!IsObfs4ConfigPresent()) AddObfs4Config();
-		std::ofstream configFile(m_torrcPath, std::ios_base::app | std::ios_base::out);
-		configFile << "Bridge " << bridge << "\n";
+		const fs::path tempTorrc = CreateTempTorrcPath();
+		std::ofstream out(tempTorrc, std::ofstream::out | std::ofstream::trunc | std::ofstream::binary);
+		if (!out) {
+			return false;
+		}
+		out.write(content.data(), (std::streamsize)content.size());
+		out.close();
+		if (out.fail()) {
+			std::error_code removeEc;
+			fs::remove(tempTorrc, removeEc);
+			return false;
+		}
+		std::string error;
+		return ReplaceTorrc(tempTorrc, error);
+	}
+
+	bool AddObfs4TorBridge(std::string bridge) const noexcept
+	{
+		if (bridge.empty()) {
+			return true;
+		}
+
+		std::string error;
+		if (!IsObfs4ConfigPresent() && !AddObfs4Config(error)) {
+			return false;
+		}
+
+		std::vector<std::string> lines;
+		if (!ReadTorrcLines(lines, error)) {
+			return false;
+		}
+		lines.push_back("Bridge " + bridge);
+		return WriteTorrcLines(lines, error);
 	}
 
 	void ClearTorrcFile() const noexcept
 	{
-		std::ofstream ofs;
-		ofs.open(m_torrcPath, std::ofstream::out | std::ofstream::trunc);
-		ofs.close();
+		WriteTorrcContent("");
 	}
-	
+
 	bool DisableObfsBridges() const noexcept
 	{
-		if (IsObfs4ConfigPresent()) RemoveObfs4Config();
-		return IsObfs4ConfigPresent() == false;
+		if (!IsObfs4ConfigPresent()) {
+			return true;
+		}
+		std::string error;
+		return RemoveObfs4Config(error);
 	}
-	
+
 	bool EnableSnowflake() const noexcept
 	{
-		if (!IsSnowflakeConfigPresent()) AddSnowflakeConfig();
-		return IsSnowflakeConfigPresent();
+		if (IsSnowflakeConfigPresent()) {
+			return true;
+		}
+		std::string error;
+		return AddSnowflakeConfig(error);
 	}
-	
+
 	bool DisableSnowflake() const noexcept
 	{
-		if(IsSnowflakeConfigPresent()) RemoveSnowflakeConfig();
-		return IsSnowflakeConfigPresent() == false;
+		if (!IsSnowflakeConfigPresent()) {
+			return true;
+		}
+		std::string error;
+		return RemoveSnowflakeConfig(error);
 	}
 
 	bool IsTorBridgesEnabled() const noexcept
@@ -96,7 +137,7 @@ public:
 		bool enabled = false;
 		std::ifstream configFile(m_torrcPath);
 		std::string line;
-		while (std::getline(configFile, line)) 
+		while (std::getline(configFile, line))
 		{
 			if (line.find("ClientTransportPlugin obfs4 exec") != std::string::npos)
 			{
@@ -125,12 +166,13 @@ public:
 		return enabled;
 	}
 
-	void DisableTorBridges() const noexcept
+	bool DisableTorBridges() const noexcept
 	{
-		if (IsSnowflakeConfigPresent()) DisableSnowflake();
-		else DisableObfsBridges();
+		if (IsSnowflakeConfigPresent()) {
+			return DisableSnowflake();
+		}
+		return DisableObfsBridges();
 	}
-
 	std::vector<std::string> ListTorBridges() const noexcept
 	{
 		std::vector<std::string> bridges;
@@ -154,8 +196,8 @@ public:
 	{
 		m_socksPort = 3422;
 		m_controlPort = 3423;
-		m_password = "MyPassword";
-		m_hashedPassword = "16:906248AB51F939ED605CE9937D3B1FDE65DEB4098A889B2A07AC221D8F";
+		m_password = "";
+		m_hashedPassword = "";
 		m_torDataPath = torDataPath;
 		m_torrcPath = torDataPath / ".torrc";
 		fs::create_directories(torDataPath);
@@ -179,8 +221,8 @@ public:
 	TorConfig(const uint16_t socksPort, const uint16_t controlPort, const fs::path& torDataPath)
 		: m_socksPort(socksPort),
 		m_controlPort(controlPort),
-		m_password("MyPassword"),
-		m_hashedPassword("16:906248AB51F939ED605CE9937D3B1FDE65DEB4098A889B2A07AC221D8F"),
+		m_password(""),
+		m_hashedPassword(""),
 		m_torDataPath(torDataPath)
 	{
 
@@ -194,121 +236,205 @@ private:
 	fs::path m_torDataPath;
 	fs::path m_torrcPath;
 
-	void AddObfs4Config() const noexcept
+	bool ReadTorrcLines(std::vector<std::string>& lines, std::string& error) const noexcept
 	{
-		AddRequiredHeadersTorBridges(false);
-		return;
+		lines.clear();
+		std::ifstream configFile(m_torrcPath);
+		if (!configFile)
+		{
+			if (!fs::exists(m_torrcPath)) {
+				return true;
+			}
+			error = "failed to open torrc for reading";
+			return false;
+		}
+
+		std::string line;
+		while (std::getline(configFile, line)) {
+			lines.push_back(line);
+		}
+		if (configFile.bad()) {
+			error = "failed while reading torrc";
+			return false;
+		}
+		return true;
 	}
 
-	void AddSnowflakeConfig() const noexcept
+	static std::string TrimCopy(const std::string& value) noexcept
 	{
-		AddRequiredHeadersTorBridges(true);
-		return;
+		const size_t first = value.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos) {
+			return "";
+		}
+		const size_t last = value.find_last_not_of(" \t\r\n");
+		return value.substr(first, last - first + 1);
 	}
-	
-	void AddRequiredHeadersTorBridges(const bool snowflake) const noexcept
+
+	static bool StartsWith(const std::string& value, const char* prefix) noexcept
 	{
-		std::ifstream configFile(m_torrcPath);
-		std::string line;
-		
-		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
-		newConfigFile << "UseBridges 1" << "\n";
-		if (snowflake)
-		{
+		return value.rfind(prefix, 0) == 0;
+	}
+
+	static bool IsObfs4ManagedLine(const std::string& trimmed) noexcept
+	{
+		return StartsWith(trimmed, "ClientTransportPlugin obfs4")
+			|| StartsWith(trimmed, "Bridge obfs4");
+	}
+
+	static bool IsSnowflakeManagedLine(const std::string& trimmed) noexcept
+	{
+		return StartsWith(trimmed, "ClientTransportPlugin snowflake")
+			|| StartsWith(trimmed, "Bridge snowflake");
+	}
+
+	bool ReplaceTorrc(const fs::path& temp, std::string& error) const noexcept
+	{
+		std::error_code ec;
 #ifdef _WIN32
-			fs::path snowflakeDir = (m_torDataPath / "PluggableTransports" / "snowflake-client.exe");
+		if (!MoveFileExW(temp.wstring().c_str(), m_torrcPath.wstring().c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+			error = "atomic torrc replace failed";
+			std::error_code removeEc;
+			fs::remove(temp, removeEc);
+			return false;
+		}
 #else
-			fs::path snowflakeDir = (m_torDataPath / "PluggableTransports" / "snowflake-client");
+		fs::rename(temp, m_torrcPath, ec);
+		if (ec) {
+			error = "atomic torrc replace failed: " + ec.message();
+			fs::remove(temp, ec);
+			return false;
+		}
 #endif
-			newConfigFile << "ClientTransportPlugin snowflake exec " << snowflakeDir.u8string() << " ";
-			newConfigFile << "-url https://snowflake-broker.torproject.net.global.prod.fastly.net/ ";
-			newConfigFile << "-front cdn.sstatic.net ";
-			newConfigFile << "-ice stun:stun.l.google.com:19302,stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.sonetel.net:3478,stun:stun.stunprotocol.org:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.voys.nl:3478\n";
-			newConfigFile << "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72\n";
+		return true;
+	}
+
+	fs::path CreateTempTorrcPath() const noexcept
+	{
+		const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+		for (int attempt = 0; attempt < 32; ++attempt) {
+			fs::path candidate = m_torrcPath;
+			candidate += ".tmp." + std::to_string(stamp) + "." + std::to_string(attempt);
+			std::error_code ec;
+			if (!fs::exists(candidate, ec) && !fs::is_symlink(candidate, ec)) {
+				return candidate;
+			}
+		}
+		return m_torrcPath.string() + ".tmp";
+	}
+
+	bool WriteTorrcLines(const std::vector<std::string>& lines, std::string& error) const noexcept
+	{
+		const fs::path tempTorrc = CreateTempTorrcPath();
+		std::ofstream newConfigFile(tempTorrc, std::ofstream::out | std::ofstream::trunc);
+		if (!newConfigFile) {
+			error = "failed to open temporary torrc for writing";
+			return false;
+		}
+
+		for (const std::string& line : lines) {
+			newConfigFile << line << "\n";
+		}
+		newConfigFile.close();
+		if (newConfigFile.fail()) {
+			error = "failed to write temporary torrc";
+			std::error_code removeEc;
+			fs::remove(tempTorrc, removeEc);
+			return false;
+		}
+
+		return ReplaceTorrc(tempTorrc, error);
+	}
+
+	bool RewriteTorrc(bool snowflake, bool enable, std::string& error) const noexcept
+	{
+		std::vector<std::string> lines;
+		if (!ReadTorrcLines(lines, error)) {
+			return false;
+		}
+
+		std::vector<std::string> rewritten;
+		rewritten.reserve(lines.size() + 4);
+		for (const std::string& line : lines)
+		{
+			const std::string trimmed = TrimCopy(line);
+			if (StartsWith(trimmed, "UseBridges")) {
+				continue;
+			}
+
+			if (enable) {
+				if (IsObfs4ManagedLine(trimmed) || IsSnowflakeManagedLine(trimmed)) {
+					continue;
+				}
+			} else if (snowflake) {
+				if (IsSnowflakeManagedLine(trimmed)) {
+					continue;
+				}
+			} else {
+				if (IsObfs4ManagedLine(trimmed)) {
+					continue;
+				}
+			}
+
+			rewritten.push_back(line);
+		}
+
+		if (enable) {
+			rewritten.push_back("UseBridges 1");
+			if (snowflake) {
+#ifdef _WIN32
+				const fs::path snowflakeDir = (m_torDataPath / "PluggableTransports" / "snowflake-client.exe");
+#else
+				const fs::path snowflakeDir = (m_torDataPath / "PluggableTransports" / "snowflake-client");
+#endif
+				rewritten.push_back("ClientTransportPlugin snowflake exec " + snowflakeDir.u8string()
+					+ " -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.l.google.com:19302,stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.sonetel.net:3478,stun:stun.stunprotocol.org:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.voys.nl:3478");
+				rewritten.push_back("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72");
+			}
+			else {
+#ifdef _WIN32
+				const fs::path obfs4Dir = (m_torDataPath / "PluggableTransports" / "obfs4proxy.exe");
+#else
+				const fs::path obfs4Dir = (m_torDataPath / "PluggableTransports" / "obfs4proxy");
+#endif
+				rewritten.push_back("ClientTransportPlugin obfs4 exec " + obfs4Dir.u8string());
+			}
 		}
 		else
 		{
-#ifdef _WIN32
-			fs::path obfs4Dir = (m_torDataPath / "PluggableTransports" / "obfs4proxy.exe");
-#else
-			fs::path obfs4Dir = (m_torDataPath / "PluggableTransports" / "obfs4proxy");
-#endif
-			newConfigFile << "ClientTransportPlugin obfs4 exec " << obfs4Dir.u8string() << "\n";
+			bool needsUseBridges = false;
+			for (const std::string& line : rewritten) {
+				const std::string trimmed = TrimCopy(line);
+				if (StartsWith(trimmed, "ClientTransportPlugin") || StartsWith(trimmed, "Bridge ")) {
+					needsUseBridges = true;
+					break;
+				}
+			}
+			if (needsUseBridges) {
+				rewritten.push_back("UseBridges 1");
+			}
 		}
-		while (std::getline(configFile, line))
-		{
-			if (line.find("UseBridges 1") != std::string::npos ||
-				line.find("ClientTransportPlugin") == std::string::npos ||
-				line.find("Bridge") == std::string::npos) continue;
 
-			newConfigFile << line << "\n";
-		}
-		
-		newConfigFile.close();
-		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
-		
-		return;
+		return WriteTorrcLines(rewritten, error);
 	}
-	
-	void RemoveObfs4Config() const noexcept
+
+	bool AddObfs4Config(std::string& error) const noexcept
 	{
-		std::ifstream configFile(m_torrcPath);
-		std::string line;
-
-		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
-
-		while (std::getline(configFile, line))
-		{
-			if (line.find("UseBridges 1") != std::string::npos ||
-				line.find("ClientTransportPlugin obfs4") != std::string::npos ||
-				line.find("Bridge obfs4") != std::string::npos)
-			{
-				newConfigFile << "";
-			} else
-			{
-				newConfigFile << line << "\n";
-			}
-		}
-
-		newConfigFile.close();
-		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
-
-		return;
+		return RewriteTorrc(false, true, error);
 	}
-	
-	void RemoveSnowflakeConfig() const noexcept
+
+	bool AddSnowflakeConfig(std::string& error) const noexcept
 	{
-		std::ifstream configFile(m_torrcPath);
-		std::string line;
-		
-		std::ofstream newConfigFile;
-		newConfigFile.open("temp.torrc", std::ofstream::out | std::ofstream::trunc);
+		return RewriteTorrc(true, true, error);
+	}
 
-		while (std::getline(configFile, line))
-		{
-			if (line.find("UseBridges 1") != std::string::npos ||
-				line.find("ClientTransportPlugin snowflake") != std::string::npos || 
-				line.find("Bridge snowflake") != std::string::npos)
-			{
-				newConfigFile << "";
-			}
-			else
-			{
-				newConfigFile << line << "\n";
-			}
-		}
+	bool RemoveObfs4Config(std::string& error) const noexcept
+	{
+		return RewriteTorrc(false, false, error);
+	}
 
-		newConfigFile.close();
-		configFile.close();
-		remove(m_torrcPath);
-		rename("temp.torrc", m_torrcPath);
-
-		return;
+	bool RemoveSnowflakeConfig(std::string& error) const noexcept
+	{
+		return RewriteTorrc(true, false, error);
 	}
 };

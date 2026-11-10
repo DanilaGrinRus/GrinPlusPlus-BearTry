@@ -85,39 +85,35 @@ public:
 			}
 			catch (const TxBroadcastException& e)
 			{
-				// The slate IS finalized (and persisted) but the node/pool
-				// rejected the broadcast. Keep the legacy SENT status for UI
-				// compatibility, add explicit lifecycle/broadcast fields.
+				// F-03 fix: never report a legacy success status when the
+				// finalized transaction was not broadcast. The wallet state is
+				// SENDING_FINALIZED (coins locked, safe to repost), so return the
+				// coded error with lifecycle data, exactly like finalize does.
 				LOG_ERROR_F("Slate {} finalized but failed to broadcast: {}", slateId, e.GetBroadcastError());
-				return request.BuildResult(
-					SendResponse(
-						SendResponse::EStatus::SENT,
-						slate,
-						slatepack,
-						e.what(),
-						TxLifecycle::ToString(ETxLifecycleState::FINALIZED_NOT_BROADCAST),
-						TxLifecycle::ToString(EBroadcastResult::FAILED),
-						true,
-						e.GetSlateId()
-					).ToJSON()
+				Json::Value data;
+				data["type"] = "TX_BROADCAST_FAILED";
+				data["lifecycle"] = TxLifecycle::ToString(ETxLifecycleState::FINALIZED_NOT_BROADCAST);
+				data["broadcast"] = TxLifecycle::ToString(EBroadcastResult::FAILED);
+				data["finalized"] = true;
+				data["tx_slate_id"] = e.GetSlateId();
+				data["broadcast_error"] = e.GetBroadcastError();
+				return RPC::Response::BuildError(
+					request.GetId(),
+					RPC::Errors::TX_BROADCAST_FAILED.GetCode(),
+					e.what(),
+					data
 				);
 			}
 			catch (const std::exception& e)
 			{
 				// Finalization itself failed (or the receiver was unreachable):
 				// nothing was published and the wallet tx stays SENDING_STARTED.
+				// Return an error instead of a false legacy SENT success.
 				LOG_ERROR_F("Failed to finalize slate {}: {}", slateId, e.what());
-				return request.BuildResult(
-					SendResponse(
-						SendResponse::EStatus::SENT,
-						slate,
-						slatepack,
-						e.what(),
-						TxLifecycle::ToString(ETxLifecycleState::NOT_FINALIZED),
-						TxLifecycle::ToString(EBroadcastResult::UNKNOWN),
-						false,
-						slateId
-					).ToJSON()
+				return RPC::Response::BuildError(
+					request.GetId(),
+					RPC::ErrorCode::INTERNAL_ERROR,
+					e.what()
 				);
 			}
 		}

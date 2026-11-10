@@ -1,6 +1,8 @@
 #pragma once
 
 #include <Core/Config.h>
+#include <Crypto/SodiumRuntime.h>
+#include <stdexcept>
 #include <Net/Tor/TorProcess.h>
 #include <scheduler/Scheduler.h>
 #include <Common/Logger.h>
@@ -27,6 +29,9 @@ public:
     static Context::Ptr Create(const Environment env, const ConfigPtr& pConfig)
     {
         assert(pConfig != nullptr);
+        if (!SodiumRuntime::Initialize()) {
+            throw std::runtime_error("Unable to initialize libsodium");
+        }
 
         return std::make_shared<Context>(
             env,

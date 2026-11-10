@@ -2,6 +2,7 @@
 
 #include <Crypto/Models/Commitment.h>
 #include <Crypto/Models/Hash.h>
+#include <Core/Exceptions/ServiceUnavailableException.h>
 #include <Core/Models/BlockHeader.h>
 #include <Core/Models/OutputLocation.h>
 #include <Core/Models/Transaction.h>
@@ -29,11 +30,11 @@
 //     kernel is not on the canonical chain). It must never be collapsed into
 //     "unavailable".
 //
-class NodeException : public std::runtime_error
+class NodeException : public ServiceUnavailableException
 {
 public:
 	explicit NodeException(const std::string& message)
-		: std::runtime_error(message) { }
+		: ServiceUnavailableException(message) { }
 };
 
 class NodeUnavailableException : public NodeException

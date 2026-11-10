@@ -1,51 +1,89 @@
 #include <catch.hpp>
 
 #include <Database/DbBackup.h>
-
+#include <Database/Database.h>
+#include <Core/Config.h>
+#include <Core/Enums/Environment.h>
+#include <json/json.h>
 #include <filesystem.h>
-#include <fstream>
 
 namespace
 {
-	fs::path TempDatabasePath()
+	fs::path TempRoot(const std::string& tag)
 	{
 		static uint32_t counter = 0;
-		const fs::path dir = fs::temp_directory_path() /
-			("grinpp-dbbackup-" + std::to_string(++counter)) / "DB";
-		fs::create_directories(dir / "CHAIN");
-		return dir;
+		const fs::path root = fs::temp_directory_path() /
+			("grinpp-dbcheckpoint-" + tag + "-" + std::to_string(++counter));
+		std::error_code ec;
+		fs::remove_all(root, ec);
+		fs::create_directories(root, ec);
+		return root;
 	}
 
-	void WriteFile(const fs::path& path, const std::string& contents)
+	ConfigPtr MakeConfig(const fs::path& dataPath)
 	{
-		std::ofstream file(path, std::ios::binary | std::ios::trunc);
-		file << contents;
+		Json::Value json(Json::objectValue);
+		json["DATA_PATH"] = dataPath.string();
+		return Config::Load(json, Environment::AUTOMATED_TESTING);
 	}
 }
 
-TEST_CASE("DbBackup::CopiesRecursivelyAndSkipsLock")
+TEST_CASE("DbBackup::CheckpointOfOpenDatabaseReopensAtCommittedState")
 {
-	const fs::path dbPath = TempDatabasePath();
-	WriteFile(dbPath / "CURRENT", "current");
-	WriteFile(dbPath / "LOCK", "locked");
-	WriteFile(dbPath / "CHAIN" / "candidate.chain", "chain");
+	const fs::path root = TempRoot("reopen");
+	ConfigPtr pConfig = MakeConfig(root / "A");
 
-	const fs::path backup = DbBackup::BackupBeforeMigration(dbPath, 1);
+	IDatabasePtr pDatabase = DatabaseAPI::OpenDatabase(*pConfig);
+	pDatabase->GetBlockDB()->Write()->SetVersion(3);
+
+	// The source database stays open while the backup is taken.
+	const fs::path backup = DbBackup::BackupBeforeMigration(
+		pDatabase->GetBlockDB(),
+		pConfig->GetDatabasePath(),
+		3
+	);
 	REQUIRE(!backup.empty());
 	REQUIRE(fs::exists(backup));
 	REQUIRE(fs::exists(backup / "CURRENT"));
-	REQUIRE(fs::exists(backup / "CHAIN" / "candidate.chain"));
-	// The RocksDB lock is deliberately not copied.
-	REQUIRE(!fs::exists(backup / "LOCK"));
 
-	std::ifstream input(backup / "CHAIN" / "candidate.chain", std::ios::binary);
-	std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-	REQUIRE(contents == "chain");
+	// A committed write after the checkpoint must not appear in the snapshot.
+	pDatabase->GetBlockDB()->Write()->SetVersion(7);
+	pDatabase.reset();
+
+	// Reopen the checkpoint through the normal database path: a backup is only
+	// valid if it can be opened and serves every committed key as of the
+	// checkpoint.
+	ConfigPtr pReopenedConfig = MakeConfig(root / "B");
+	fs::create_directories(root / "B" / "NODE" / "DB");
+	fs::rename(backup, root / "B" / "NODE" / "DB" / "CHAIN");
+
+	IDatabasePtr pReopened = DatabaseAPI::OpenDatabase(*pReopenedConfig);
+	REQUIRE(pReopened->GetBlockDB()->Read()->GetVersion() == 3);
+	pReopened.reset();
+
+	std::error_code ec;
+	fs::remove_all(root, ec);
 }
 
-TEST_CASE("DbBackup::FailsForMissingDatabase")
+TEST_CASE("DbBackup::FailsClosedWithoutDatabaseOrIntoExistingDestination")
 {
-	const fs::path missing = fs::temp_directory_path() / "grinpp-dbbackup-missing" / "DB";
-	const fs::path backup = DbBackup::BackupBeforeMigration(missing, 1);
-	REQUIRE(backup.empty());
+	REQUIRE(DbBackup::BackupBeforeMigration(
+		nullptr,
+		fs::temp_directory_path() / "grinpp-dbcheckpoint-missing" / "DB",
+		1
+	).empty());
+
+	const fs::path root = TempRoot("fail");
+	ConfigPtr pConfig = MakeConfig(root / "A");
+	IDatabasePtr pDatabase = DatabaseAPI::OpenDatabase(*pConfig);
+	pDatabase->GetBlockDB()->Write()->SetVersion(1);
+
+	const fs::path existing = root / "existing-checkpoint";
+	fs::create_directories(existing);
+	REQUIRE(DbBackup::BackupTo(pDatabase->GetBlockDB(), existing).empty());
+	REQUIRE_FALSE(pDatabase->GetBlockDB()->Read()->CreateCheckpoint(existing));
+
+	pDatabase.reset();
+	std::error_code ec;
+	fs::remove_all(root, ec);
 }

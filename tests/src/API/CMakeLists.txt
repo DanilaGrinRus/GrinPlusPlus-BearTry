@@ -5,6 +5,7 @@ list_append_parent(
     "Test_UnspentPagination.cpp"
     "Test_GetKernelHandler.cpp"
     "Test_OwnerHandlerAccess.cpp"
+    "Test_NodeApiC463.cpp"
     "Wallet/Foreign/Test_CheckVersion.cpp"
     "Wallet/Owner/Test_CreateWallet.cpp"
     "Wallet/Owner/Test_EstimateFee.cpp"

@@ -11,6 +11,7 @@
 #include <rocksdb/slice.h>
 #include <rocksdb/options.h>
 #include <rocksdb/write_batch.h>
+#include <rocksdb/utilities/checkpoint.h>
 #include <rocksdb/utilities/optimistic_transaction_db.h>
 #include <rocksdb/utilities/transaction.h>
 #include <filesystem.h>
@@ -40,6 +41,35 @@ public:
 	}
 
 	bool IsTransactional() const noexcept { return m_pTransaction != nullptr; }
+
+	// Creates a RocksDB checkpoint (consistent point-in-time snapshot) of this
+	// open database. The destination must not exist; RocksDB hard-links the
+	// immutable SST files and captures the manifest/WAL state atomically, so a
+	// reader can open it while the source DB keeps taking writes.
+	// Returns false and logs on failure; there is no file-copy fallback.
+	bool CreateCheckpoint(const fs::path& checkpointPath) const
+	{
+		rocksdb::Checkpoint* pRawCheckpoint = nullptr;
+		const rocksdb::Status createStatus =
+			rocksdb::Checkpoint::Create(m_pTransactionDB->GetBaseDB(), &pRawCheckpoint);
+		std::unique_ptr<rocksdb::Checkpoint> pCheckpoint(pRawCheckpoint);
+		if (!createStatus.ok()) {
+			LOG_ERROR_F("RocksDB checkpoint creation failed: {}", createStatus.ToString());
+			return false;
+		}
+
+		const rocksdb::Status status = pCheckpoint->CreateCheckpoint(checkpointPath.u8string());
+		if (!status.ok()) {
+			LOG_ERROR_F(
+				"RocksDB checkpoint at {} failed: {}",
+				checkpointPath,
+				status.ToString()
+			);
+			return false;
+		}
+
+		return true;
+	}
 
 	std::unique_ptr<rocksdb::Iterator> GetIterator(const RocksDBTable& table) const
 	{

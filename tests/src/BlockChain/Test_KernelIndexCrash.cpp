@@ -40,7 +40,8 @@ public:
         : m_db(std::move(db)), m_marker(std::move(marker)), m_point(std::move(point)), m_metadata(std::move(metadata)), m_excesses(std::move(excesses)) {}
     uint8_t GetVersion() const final { throw std::logic_error("unexpected GetVersion"); }
     void SetVersion(const uint8_t) final { throw std::logic_error("unexpected SetVersion"); }
-    void MigrateBlocks() final { throw std::logic_error("unexpected MigrateBlocks"); }
+    bool CreateCheckpoint(const fs::path&) const final { return false; }
+		void MigrateBlocks() final { throw std::logic_error("unexpected MigrateBlocks"); }
     void Compact(const std::shared_ptr<const Chain>&) final { throw std::logic_error("unexpected Compact"); }
     BlockHeaderPtr GetBlockHeader(const Hash&) const final { throw std::logic_error("unexpected GetBlockHeader"); }
     void AddBlockHeader(BlockHeaderPtr) final { throw std::logic_error("unexpected AddBlockHeader"); }
@@ -223,3 +224,4 @@ TEST_CASE("KernelIndexCrashRecovery", "[.]")
         REQUIRE(location->GetBlockHeight() == entry.first);
     }
 }
+

@@ -1,0 +1,98 @@
+{
+  "audit": "spent-positions-block-3317930-final",
+  "date_local": "2026-11-03T10:58:00+07:00",
+  "task": "task-11",
+  "owner": "line2-nrd",
+  "status": "ROOT-CAUSED / FIXED / BUILD-13 VERIFIED",
+  "root_cause": {
+    "file": "include/Core/Models/SpentOutput.h",
+    "mechanism": "SpentOutputs::Deserialize used assert(byteBuffer.ReadU8() == 0). Under Release/NDEBUG the whole assert expression is compiled out, so the version byte was not consumed; ReadU16 then consumed 00 00 instead of 00 01, decoding every non-empty record as count 0.",
+    "evidence": "Build-11 fresh-copy SPENT_DIAG for block 3317930: rawPresent=true rawBytes=52 rawHex=0000010989ac92...32a0a8 mapEntries=0; preflight 1 input/0 mapped, 0 Rewind attempts."
+  },
+  "fix": {
+    "source_sha256": {
+      "include/Core/Models/SpentOutput.h": "D27A607D32F6CA587EF66D2086C5F6A10E6B8469A5EF3EAEAB803DEA5269E211",
+      "tests/src/Database/Test_SpentOutputs.cpp": "A80D1D9737C6B28227F042E7D31D1CF01F763357EFBE4A13459FBBE49C67C280",
+      "src/P2P/Sync/StateSyncer.cpp": "FDC5B4BB411ABFB3AC6FBCE8D2B038F09064D40DA205394EE5816A7BEA2613FE",
+      "src/P2P/ArchivePublication.h": "F1E437371E28B80B101B85ECD7FC19A58856CDDA4B3EE52F990B9B06D4A7401A"
+    },
+    "description": "Explicitly consume and validate the version byte in every build; throw DeserializationException for non-zero version. No side-effect assert remains. Line1 additionally fixed preflight boundary: target header only; body+spent required only for target+1..flushed.",
+    "tests": [
+      "SpentOutputs Release-mode deserialize consumes version byte: 1 case/6 assertions",
+      "BlockChain preflight requires every input in spent positions: 1/4",
+      "ArchivePublication preflight skips target body but fails rewound block gaps: 1/8"
+    ]
+  },
+  "build13": {
+    "tests_sha256": "001DF4BC31F194DCDDE83FE736B06EB6FD942666F2BEFF62FF1FB5F1BB8DB3A8",
+    "tests_bytes": 9465856,
+    "grinnode_sha256": "F39BDFE5A8DAB22BE969406874EDCEFD023770BE1A1BA6330D7506B2C2571201",
+    "grinnode_bytes": 7846912,
+    "tests_preserved": "tools/audit/nrd/evidence/bin/Tests-build13.exe",
+    "tests_sha_unchanged_after_runs": true,
+    "test_runs": {
+      "SpentOutputs Release-mode*": {"cases": 1, "assertions": 6, "status": "PASS"},
+      "BlockChain preflight requires*": {"cases": 1, "assertions": 4, "status": "PASS"},
+      "ArchivePublication preflight*": {"cases": 1, "assertions": 8, "status": "PASS"},
+      "P2P::ArchivePublication*": {"cases": 1, "assertions": 83, "status": "PASS"},
+      "PibdArchiveServer::*": {"cases": 8, "assertions": 187, "status": "PASS"}
+    }
+  },
+  "runtime_verification": {
+    "copy": "C:\\DHW\\.tmp\\task10-build11-live (reused fresh copy; original g09-live-02 read-only)",
+    "block_3317930": {
+      "hash": "30c524b8424f91e1b2b154112f19d77d4c0db6887d6a1cdc96ef2055e022bfcb",
+      "db_current": "MANIFEST-000469",
+      "spent_outputs_bytes": 52,
+      "spent_outputs_hex": "0000010989ac92c748aaf654f06fb9023746d3d34358b051dd2ac952bec39fecc62889670000000000689f8d000000000032a0a8",
+      "spent_outputs_count": 1,
+      "spent_outputs_commitment": "0989ac92c748aaf654f06fb9023746d3d34358b051dd2ac952bec39fecc6288967",
+      "spent_outputs_leaf_position": 6856589,
+      "spent_outputs_output_height": 3317928
+    },
+    "H3315600": {
+      "result": "PASS",
+      "spent_diag_mapEntries": 1,
+      "preflight_passed": true,
+      "snapshot": "flushed 3318655 -> requested 3315600",
+      "rewind_crossed_3317930": true,
+      "archive_bytes": 3118756420,
+      "archive_sha256": "DA23A1C721BE96BA215A70022B3C26DC262E3122E5BE41CDBDA560631F0E78F5",
+      "archive_entries": 17,
+      "failure_marker_absent": true,
+      "tip_roots_unchanged": true
+    },
+    "H3313440": {
+      "result": "PASS (build-13 target-body boundary fix)",
+      "target_hash": "84d7ac6763566ac67eaa8393688320c79a644321124d7ba94a1300f56af9ccea",
+      "spent_diag_mapEntries": 1,
+      "preflight_target_header_only_passed": true,
+      "snapshot": "flushed 3318655 -> requested 3313440",
+      "rewind_spent_failures": 0,
+      "archive_bytes": 3116449317,
+      "archive_sha256": "7FB230583BD697EA3FF3B58A073462144750E3D07DC02820FBE99649E39AB837",
+      "archive_entries": 17,
+      "archived_at": "2026-11-03T10:43:40.660+07:00",
+      "failure_marker_absent": true,
+      "tip_roots_unchanged": true
+    },
+    "restart": "Both archives unchanged; C++ FULLY_SYNCED inbound=1; Rust no_sync 3318655/2945348e conn=1; 0 PIBD segment requests; failure marker absent.",
+    "stale_dirs": "`.staging-3615bb625917` remains as a stale extraction directory from archive serving, never a final archive file; both final archives are complete 17-entry zips."
+  },
+  "original_fixture": {
+    "H3315600_archive_bytes": 3118746579,
+    "H3315600_archive_sha256": "13F9781E207F787F5F58367F9C98947D4A645D660E1CA23186AD55D9D064C530",
+    "modified": false
+  },
+  "classification": {
+    "production_bug": true,
+    "fixture_invalid": false,
+    "preflight_fail_closed_behavior": "Correctly refused recovery before Rewind; build-13 boundary fix keeps fail-closed for every rewound block.",
+    "remaining_open": "None for block 3317930/spent decode; broader automatic next-horizon regeneration and mainnet readiness remain separate limits."
+  },
+  "no_changes": {
+    "build_by_line2": false,
+    "commit": false,
+    "original_fixture_modified": false
+  }
+}

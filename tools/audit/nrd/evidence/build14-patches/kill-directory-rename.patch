@@ -1,0 +1,37 @@
+diff --git a/tests/src/BlockChain/Test_NrdKillHarness.cpp b/tests/src/BlockChain/Test_NrdKillHarness.cpp
+index d38a6fc..d681e07 100644
+--- a/tests/src/BlockChain/Test_NrdKillHarness.cpp
++++ b/tests/src/BlockChain/Test_NrdKillHarness.cpp
+@@ -119,22 +119,15 @@ TEST_CASE("RebuildKillRecovery", "[.]")
+ 		fs::create_directories(dataDir, error);
+ 		REQUIRE(!error);
+ 
+-		// Copy file-by-file. Directory-copy semantics differ for an existing
+-		// per-process data dir (created by the test runtime), which made the
+-		// single fs::copy of the whole backup fail.
+-		for (const auto& entry : fs::recursive_directory_iterator(backupDir, error)) {
+-			REQUIRE(!error);
+-			const fs::path relative = fs::relative(entry.path(), backupDir, error);
+-			REQUIRE(!error);
+-			const fs::path destination = dataDir / relative;
+-			if (entry.is_directory()) {
+-				fs::create_directories(destination, error);
+-			} else {
+-				fs::create_directories(destination.parent_path(), error);
+-				REQUIRE(!error);
+-				fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, error);
+-			}
+-			REQUIRE(!error);
++		// Restore the killed child's directory atomically by rename. The backup and
++		// the per-process data dir are on the same volume; this avoids per-file
++		// Windows copy failures and preserves WAL/LOCK bytes exactly.
++		fs::remove_all(dataDir, error);
++		REQUIRE(!error);
++
++		error.clear();\n\t\tfs::rename(backupDir, dataDir, error);
++		if (error) {
++			FAIL("failed to restore killed child data dir: " + error.message());
+ 		}
+ 	}
+ 
+

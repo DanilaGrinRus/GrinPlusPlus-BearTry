@@ -38,7 +38,8 @@ public:
 
 	uint8_t GetVersion() const final { throw std::logic_error("unexpected GetVersion"); }
 	void SetVersion(const uint8_t) final { throw std::logic_error("unexpected SetVersion"); }
-	void MigrateBlocks() final { throw std::logic_error("unexpected MigrateBlocks"); }
+	bool CreateCheckpoint(const fs::path&) const final { return false; }
+		void MigrateBlocks() final { throw std::logic_error("unexpected MigrateBlocks"); }
 	void Compact(const std::shared_ptr<const Chain>&) final { throw std::logic_error("unexpected Compact"); }
 	BlockHeaderPtr GetBlockHeader(const Hash&) const final { throw std::logic_error("unexpected GetBlockHeader"); }
 	void AddBlockHeader(BlockHeaderPtr) final { throw std::logic_error("unexpected AddBlockHeader"); }
@@ -324,6 +325,7 @@ TEST_CASE("KernelIndex write faults never publish a partial index", "[fault][.]"
 		REQUIRE(afterLocation->GetBlockHeight() == tipLocation->GetBlockHeight());
 	}
 }
+
 
 
 

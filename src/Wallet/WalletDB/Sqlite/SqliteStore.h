@@ -23,6 +23,11 @@ public:
 	void ChangePassword(const std::string& username, const EncryptedSeed& encryptedSeed) final;
 	EncryptedSeed LoadWalletSeed(const std::string& username) const final;
 
+	// W-06 sweep helpers (public for regression tests). Returns true when legacy
+	// format 0/1 rows were found / successfully upgraded to format 2.
+	static bool HasLegacyEncryption(SqliteDB& database);
+	static bool MigrateLegacyEncryption(SqliteDB& database, const SecureVector& masterSeed);
+
 private:
 	SqliteStore(const fs::path& walletDirectory) : m_walletDirectory(walletDirectory) { }
 

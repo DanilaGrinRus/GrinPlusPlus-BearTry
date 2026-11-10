@@ -10,6 +10,7 @@ list_append_parent(
     "Test_SeederPolicy.cpp"
     "Test_PeerUnban.cpp"
     "Test_ApiAccess.cpp"
+    "Test_HttpBodyLimit.cpp"
     "Test_RpcAuth.cpp"
     "Test_NodeStartupHealth.cpp"
     "Tor/Test_TorAddressParser.cpp"

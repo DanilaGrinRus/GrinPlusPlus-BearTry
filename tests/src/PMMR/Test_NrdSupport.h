@@ -142,6 +142,7 @@ namespace NrdTest
 	public:
 		uint8_t GetVersion() const final { return 3; }
 		void SetVersion(const uint8_t) final { }
+		bool CreateCheckpoint(const fs::path&) const final { return false; }
 		void MigrateBlocks() final { }
 		void Compact(const std::shared_ptr<const Chain>&) final { }
 
@@ -507,3 +508,4 @@ namespace NrdTest
 		return "unknown";
 	}
 }
+

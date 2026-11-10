@@ -20,6 +20,7 @@ public:
 	void StartNodeDiagnostics(const fs::path& directory, const spdlog::level::level_enum& level);
 	void SyncEvent(const std::string& text) noexcept;
 	void Log(const LoggerAPI::LogFile file, const spdlog::level::level_enum logLevel, const std::string& eventText);
+	bool WillLog(const LoggerAPI::LogFile file, const spdlog::level::level_enum level);
 	void Flush();
 	void SetThreadName(const std::string& thread_name);
 
@@ -34,7 +35,6 @@ private:
 
 	std::shared_ptr<spdlog::logger> m_pNodeLogger;
 	std::shared_ptr<spdlog::logger> m_pWalletLogger;
-	std::shared_ptr<spdlog::logger> m_pDiagnosticLogger;
 	std::shared_ptr<spdlog::logger> m_pErrorLogger;
 	std::shared_ptr<spdlog::logger> m_pSyncLogger;
 };
@@ -49,25 +49,23 @@ void Logger::StartNodeDiagnostics(const fs::path& directory, const spdlog::level
 {
 	fs::create_directories(directory);
 	try {
-		auto nodeSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-			StringUtil::ToWide((directory / "node-diagnostics.log").u8string()), 5 * 1024 * 1024, 5);
+		// Node.log is the single complete journal. Only errors and sync-stage
+		// summaries are written alongside it; the old node-diagnostics.log
+		// duplicate is deliberately not created anymore.
 		auto errorSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
 			StringUtil::ToWide((directory / "errors.log").u8string()), 5 * 1024 * 1024, 5);
 		auto syncSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
 			StringUtil::ToWide((directory / "sync-stages.log").u8string()), 1024 * 1024, 5);
-		auto node = spdlog::create_async("NODE_DIAGNOSTICS", nodeSink, 8192, spdlog::async_overflow_policy::block_retry, nullptr, std::chrono::seconds(5));
 		auto errors = spdlog::create_async("NODE_ERRORS", errorSink, 2048, spdlog::async_overflow_policy::block_retry, nullptr, std::chrono::seconds(5));
 		auto sync = spdlog::create_async("NODE_SYNC_STAGES", syncSink, 2048, spdlog::async_overflow_policy::block_retry, nullptr, std::chrono::seconds(5));
-		node->set_level(level);
+		(void)level;
 		errors->set_level(spdlog::level::err);
 		errors->flush_on(spdlog::level::err);
 		sync->set_level(spdlog::level::info);
 		sync->flush_on(spdlog::level::info);
-		m_pDiagnosticLogger = std::move(node);
 		m_pErrorLogger = std::move(errors);
 		m_pSyncLogger = std::move(sync);
 	} catch (...) {
-		spdlog::drop("NODE_DIAGNOSTICS");
 		spdlog::drop("NODE_ERRORS");
 		spdlog::drop("NODE_SYNC_STAGES");
 		throw;
@@ -116,14 +114,14 @@ void Logger::StartLogger(const fs::path& logDirectory, const spdlog::level::leve
 void Logger::StopLogger()
 {
 	Flush();
-	m_pDiagnosticLogger.reset();
 	m_pErrorLogger.reset();
 	m_pSyncLogger.reset();
-	spdlog::drop("NODE_DIAGNOSTICS");
 	spdlog::drop("NODE_ERRORS");
 	spdlog::drop("NODE_SYNC_STAGES");
 	m_pNodeLogger.reset();
 	m_pWalletLogger.reset();
+	spdlog::drop("NODE");
+	spdlog::drop("WALLET");
 }
 
 void Logger::Log(const LoggerAPI::LogFile file, const spdlog::level::level_enum logLevel, const std::string& eventText)
@@ -147,19 +145,21 @@ void Logger::Log(const LoggerAPI::LogFile file, const spdlog::level::level_enum 
 
 		pLogger->log(logLevel, eventTextClean);
 		try {
-			if (file == LoggerAPI::LogFile::NODE && m_pDiagnosticLogger != nullptr) {
-				m_pDiagnosticLogger->log(logLevel, eventTextClean);
-			}
 			if (file == LoggerAPI::LogFile::NODE && logLevel >= spdlog::level::err && m_pErrorLogger != nullptr) {
 				m_pErrorLogger->log(logLevel, eventTextClean);
 			}
-		} catch (...) { std::cerr << "Failed to write node diagnostic log" << std::endl; }
+		} catch (...) { std::cerr << "Failed to write node error log" << std::endl; }
 	}
+}
+
+bool Logger::WillLog(const LoggerAPI::LogFile file, const spdlog::level::level_enum level)
+{
+	auto pLogger = GetLogger(file);
+	return pLogger != nullptr && pLogger->should_log(level);
 }
 
 void Logger::Flush()
 {
-	if (m_pDiagnosticLogger != nullptr) m_pDiagnosticLogger->flush();
 	if (m_pErrorLogger != nullptr) m_pErrorLogger->flush();
 	if (m_pSyncLogger != nullptr) m_pSyncLogger->flush();
 	if (m_pNodeLogger != nullptr)
@@ -267,6 +267,20 @@ namespace LoggerAPI
 		Logger::GetInstance().SetThreadName(thread_name);
 	}
 
+	LOGGER_API bool WillLog(const LogFile file, const LogLevel level)
+	{
+		spdlog::level::level_enum spdLevel = spdlog::level::level_enum::info;
+		switch (level)
+		{
+			case LogLevel::TRACE: spdLevel = spdlog::level::level_enum::trace; break;
+			case LogLevel::DEBUG: spdLevel = spdlog::level::level_enum::debug; break;
+			case LogLevel::INFO: spdLevel = spdlog::level::level_enum::info; break;
+			case LogLevel::WARN: spdLevel = spdlog::level::level_enum::warn; break;
+			case LogLevel::ERR: spdLevel = spdlog::level::level_enum::err; break;
+		}
+		return Logger::GetInstance().WillLog(file, spdLevel);
+	}
+
 	LOGGER_API void LogTrace(const std::string& message)
 	{
 		Logger::GetInstance().Log(LogFile::NODE, spdlog::level::level_enum::trace, message);
@@ -328,3 +342,4 @@ namespace LoggerAPI
 		Logger::GetInstance().Log(file, spdlog::level::level_enum::err, formatted);
 	}
 }
+

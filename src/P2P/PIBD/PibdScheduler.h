@@ -43,11 +43,16 @@ public:
 		size_t MinSegmentsPerWindow = 1;
 	};
 
-	PibdScheduler(PibdDownload::Horizon horizon, const Clock::time_point now, Config config = Config())
+	PibdScheduler(PibdDownload::Horizon horizon, const Clock::time_point now, Config config)
 		: m_session(std::move(horizon)),
 		m_config(config),
 		m_lastProgress(now),
 		m_rateWindowStart(now)
+	{
+	}
+
+	PibdScheduler(PibdDownload::Horizon horizon, const Clock::time_point now)
+		: PibdScheduler(std::move(horizon), now, Config())
 	{
 	}
 

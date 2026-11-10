@@ -6,6 +6,7 @@
 #include <PMMR/TxHashSetManager.h>
 #include <Net/Clients/RPC/RPC.h>
 #include <Net/Servers/RPC/RPCMethod.h>
+#include <API/Wallet/Owner/Models/Errors.h>
 #include <json/json.h>
 #include <algorithm>
 #include <optional>

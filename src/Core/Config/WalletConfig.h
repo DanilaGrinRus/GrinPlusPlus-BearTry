@@ -29,6 +29,9 @@ public:
 
 		m_walletPath = dataPath / "WALLET";
 		FileUtil::CreateDirectories(m_walletPath);
+		// W2.3: wallet root holds seed/DB files; keep it owner-only (best-effort;
+		// per-user artifacts are hardened again on create/open).
+		FileUtil::HardenPermissions(m_walletPath);
 
 		m_minimumConfirmations = 10;
 		m_reuseAddress = 1;

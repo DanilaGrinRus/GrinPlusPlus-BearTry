@@ -35,7 +35,7 @@ void TorProcess::Thread_Initialize(TorProcess* pProcess)
 	{
 		try
 		{
-			std::unique_lock<std::mutex> lock(pProcess->m_mutex);
+			std::unique_lock<std::timed_mutex> lock(pProcess->m_mutex);
 			if (pProcess->m_pControl != nullptr) {
 				if (!pProcess->m_pControl->CheckHeartbeat()) {
 					LOG_WARNING("Tor heartbeat failed. Killing process and reinitializing.");
@@ -121,18 +121,18 @@ bool TorProcess::IsTorPresent()
 
 bool TorProcess::IsPortOpen(const uint16_t port)
 {
-    asio::io_service svc;
+    asio::io_context svc;
     asio::ip::tcp::acceptor a(svc);
 
     std::error_code ec;
-    a.open(asio::ip::tcp::v4(), ec) || a.bind(asio::ip::tcp::endpoint(asio::ip::address::from_string("127.0.0.1"), port), ec);
+    a.open(asio::ip::tcp::v4(), ec) || a.bind(asio::ip::tcp::endpoint(asio::ip::make_address("127.0.0.1"), port), ec);
 
     return ec != asio::error::address_in_use;
 }
 
 bool TorProcess::RetryInit()
 {
-	std::unique_lock<std::mutex> lock(m_mutex);
+	std::unique_lock<std::timed_mutex> lock(m_mutex);
 	m_pControl = nullptr;
 	return m_pControl == nullptr;
 }
@@ -144,7 +144,7 @@ TorAddress TorProcess::AddListener(const ed25519_secret_key_t& secretKey, const 
 	return TorAddressParser::FromPubKey(ED25519::CalculatePubKey(secretKey));
 }
 
-std::unique_ptr<TorAddress> TorProcess::AddListener(const std::unique_lock<std::mutex>&, const ed25519_secret_key_t& secretKey, const uint16_t portNumber)
+std::unique_ptr<TorAddress> TorProcess::AddListener(const std::unique_lock<std::timed_mutex>&, const ed25519_secret_key_t& secretKey, const uint16_t portNumber)
 {
 	try {
 		if (m_pControl != nullptr) {
@@ -169,7 +169,13 @@ std::unique_ptr<TorAddress> TorProcess::AddListener(const std::unique_lock<std::
 
 bool TorProcess::RemoveListener(const TorAddress& torAddress)
 {
-	std::unique_lock<std::mutex> lock(m_mutex);
+	// F-20: logout/destructor paths must not block forever if the Tor init thread
+	// holds m_mutex (e.g. Tor is absent or still bootstrapping).
+	std::unique_lock<std::timed_mutex> lock(m_mutex, std::defer_lock);
+	if (!lock.try_lock_for(std::chrono::seconds(2))) {
+		LOG_WARNING("Timed out waiting for Tor process lock during RemoveListener");
+		return false;
+	}
 
 	try
 	{
@@ -192,7 +198,7 @@ bool TorProcess::RemoveListener(const TorAddress& torAddress)
 
 std::shared_ptr<ITorConnection> TorProcess::Connect(const TorAddress& address)
 {
-	std::unique_lock<std::mutex> lock(m_mutex);
+	std::unique_lock<std::timed_mutex> lock(m_mutex);
 
 	try
 	{

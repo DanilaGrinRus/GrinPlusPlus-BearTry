@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #pragma once
 
 #include <Core/Enums/Environment.h>
@@ -103,9 +100,11 @@ public:
 	//
 	const fs::path& GetTorDataPath() const noexcept;
 	const fs::path& GetTorrcPath() const noexcept;
-	void AddObfs4TorBridge(const std::string bridge) noexcept;
+	bool AddObfs4TorBridge(const std::string bridge) noexcept;
 	void ClearTorrcFile() noexcept;
 	const std::string GetTorrcFileContent() const noexcept;
+	std::string ReadTorrcFile() const noexcept;
+	bool WriteTorrcContent(const std::string& content) noexcept;
 	uint16_t GetSocksPort() const noexcept;
 	uint16_t GetControlPort() const noexcept;
 	const std::string& GetControlPassword() const noexcept;
@@ -116,7 +115,7 @@ public:
 	bool IsObfs4Enabled() noexcept;
 	bool IsSnowflakeEnabled() noexcept;
 	bool DisableObfsBridges() noexcept;
-	void DisableTorBridges() noexcept;
+	bool DisableTorBridges() noexcept;
 	std::vector<std::string> GetTorBridgesList() noexcept;
 
 private:

@@ -1,7 +1,11 @@
 #include "TorControlClient.h"
 
 #include <Common/Util/ThreadUtil.h>
+#include <Common/Util/HexUtil.h>
 #include <Core/Global.h>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <regex>
 
 TorControlClient::UPtr TorControlClient::Connect(const uint16_t control_port, const std::string& password)
@@ -29,6 +33,61 @@ TorControlClient::UPtr TorControlClient::Connect(const uint16_t control_port, co
 
 		for (int i = 0; i < 30; i++) {
 			ThreadUtil::SleepFor(std::chrono::seconds(4));
+			if (pClient->IsBootstrapped()) {
+				return pClient;
+			}
+		}
+	}
+	catch (std::exception&) {
+		return nullptr;
+	}
+
+	return nullptr;
+}
+
+TorControlClient::UPtr TorControlClient::ConnectCookie(const uint16_t control_port, const std::filesystem::path& cookieFile)
+{
+	auto pClient = std::make_unique<TorControlClient>();
+	bool connected = false;
+	auto timeout = std::chrono::system_clock::now() + TOR_STARTUP_TIMEOUT;
+	while (Global::IsRunning() && !connected && std::chrono::system_clock::now() < timeout) {
+		connected = pClient->Connect(SocketAddress{ "127.0.0.1", control_port });
+		if (!connected) {
+			ThreadUtil::SleepFor(std::chrono::milliseconds(500));
+		}
+	}
+
+	if (!connected) {
+		LOG_WARNING_F("Failed to connect to control_port {} (cookie auth)", control_port);
+		return nullptr;
+	}
+
+	// Tor writes the 32-byte cookie once the control port is up. Wait briefly.
+	std::vector<uint8_t> cookie;
+	auto cookieDeadline = std::chrono::system_clock::now() + TOR_STARTUP_TIMEOUT;
+	while (Global::IsRunning() && std::chrono::system_clock::now() < cookieDeadline) {
+		std::ifstream cookieStream(cookieFile, std::ios::binary);
+		if (cookieStream) {
+			cookie.assign(std::istreambuf_iterator<char>(cookieStream), std::istreambuf_iterator<char>());
+			if (cookie.size() == 32) {
+				break;
+			}
+		}
+		ThreadUtil::SleepFor(std::chrono::milliseconds(250));
+	}
+
+	if (cookie.size() != 32) {
+		LOG_WARNING_F("Tor cookie file not ready: {}", cookieFile.u8string());
+		return nullptr;
+	}
+
+	try {
+		const std::string authCommand = "AUTHENTICATE " + HexUtil::ConvertToHex(cookie) + "\n";
+		pClient->Invoke(authCommand);
+		LOG_INFO("Tor control cookie authentication succeeded");
+
+		for (int i = 0; i < 30; i++) {
+			ThreadUtil::SleepFor(std::chrono::seconds(1));
 			if (pClient->IsBootstrapped()) {
 				return pClient;
 			}

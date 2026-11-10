@@ -16,6 +16,7 @@
 
 #include <system_error>
 #include <vector>
+#include <ctime>
 
 static const uint8_t ENCRYPTION_FORMAT = 0;
 
@@ -54,6 +55,15 @@ namespace
 
 		return true;
 	}
+
+	// W2.3: wallet artifacts must not inherit broad directory ACLs. Best-effort
+	// on open (existing profiles), but the result is logged for the security gate.
+	void HardenWalletPath(const fs::path& path)
+	{
+		if (!FileUtil::HardenPermissions(path)) {
+			WALLET_WARNING_F("Failed to harden wallet permissions for {}", path.u8string());
+		}
+	}
 }
 
 std::shared_ptr<SqliteStore> SqliteStore::Open(const Config& config)
@@ -61,6 +71,56 @@ std::shared_ptr<SqliteStore> SqliteStore::Open(const Config& config)
 	// SqliteStore owns a std::mutex, so it is neither copyable nor movable.
 	// Construct it in place instead of make_shared<T>(T(...)).
 	return std::shared_ptr<SqliteStore>(new SqliteStore(config.GetWalletPath()));
+}
+
+namespace
+{
+	int CountRows(SqliteDB& database, const std::string& sql)
+	{
+		auto pStatement = database.Query(sql);
+		if (!pStatement->Step()) {
+			return 0;
+		}
+		return pStatement->GetColumnInt(0);
+	}
+}
+
+bool SqliteStore::HasLegacyEncryption(SqliteDB& database)
+{
+	// Format byte 2 = row-bound authenticated format. Anything else is legacy.
+	const bool legacyOutputs = CountRows(
+		database,
+		"select count(*) from outputs where length(encrypted)>0 and substr(encrypted,1,1)<>X'02'"
+	) > 0;
+	const bool legacyTransactions = CountRows(
+		database,
+		"select count(*) from transactions where length(encrypted)>0 and substr(encrypted,1,1)<>X'02'"
+	) > 0;
+	const bool legacySlates = CountRows(database, "select count(*) from slate where enc_format=0") > 0;
+	const bool legacyContexts = CountRows(database, "select count(*) from slate_contexts where enc_format=0") > 0;
+	return legacyOutputs || legacyTransactions || legacySlates || legacyContexts;
+}
+
+bool SqliteStore::MigrateLegacyEncryption(SqliteDB& database, const SecureVector& masterSeed)
+{
+	if (!HasLegacyEncryption(database)) {
+		return false;
+	}
+
+	const auto outputs = OutputsTable::GetOutputs(database, masterSeed);
+	if (!outputs.empty()) {
+		OutputsTable::AddOutputs(database, masterSeed, outputs);
+	}
+
+	const auto transactions = TransactionsTable::GetTransactions(database, masterSeed);
+	if (!transactions.empty()) {
+		TransactionsTable::AddTransactions(database, masterSeed, transactions);
+	}
+
+	SlateTable::MigrateLegacyRows(database, masterSeed);
+	SlateContextTable::MigrateLegacyRows(database, masterSeed);
+
+	return true;
 }
 
 fs::path SqliteStore::GetDBFile(const std::string& username) const
@@ -103,6 +163,38 @@ Locked<IWalletDB> SqliteStore::OpenWallet(const std::string& username, const Sec
 		transaction.Commit();
 	} else if (version > LATEST_SCHEMA_VERSION) {
 		throw WALLET_STORE_EXCEPTION_F("Sqlite database has higher version ({}) than supported ({})", version, LATEST_SCHEMA_VERSION);
+	}
+
+	// Existing profiles may predate W2.3; tighten them on open as well.
+	const fs::path userDBPath = m_walletDirectory / username;
+	const fs::path seedFile = userDBPath / "seed.json";
+	HardenWalletPath(userDBPath);
+	HardenWalletPath(seedFile);
+	HardenWalletPath(dbFile);
+
+	// W-06 sweep: upgrade legacy format 0/1 rows to format 2. Back up the DB
+	// first; failures leave the wallet open (legacy rows stay readable) and are
+	// retried on the next open.
+	if (HasLegacyEncryption(*pDatabase)) {
+		const fs::path backup = dbFile.string() + ".pre-format2-" + std::to_string(std::time(nullptr)) + ".bak";
+		std::error_code ec;
+		fs::copy_file(dbFile, backup, ec);
+		if (ec) {
+			WALLET_WARNING_F("W-06 sweep postponed: failed to back up wallet.db ({}).", ec.message());
+		}
+		else {
+			HardenWalletPath(backup);
+			try {
+				SqliteTransaction transaction(pDatabase);
+				transaction.Begin();
+				SqliteStore::MigrateLegacyEncryption(*pDatabase, masterSeed);
+				transaction.Commit();
+				WALLET_INFO_F("W-06 sweep upgraded legacy wallet rows; backup: {}", backup.u8string());
+			}
+			catch (const std::exception& e) {
+				WALLET_ERROR_F("W-06 sweep failed; legacy rows preserved: {}", e.what());
+			}
+		}
 	}
 
 	Locked<IWalletDB> walletDB(std::shared_ptr<IWalletDB>(new WalletSqlite(m_walletDirectory, username, pDatabase)));
@@ -172,6 +264,7 @@ Locked<IWalletDB> SqliteStore::CreateWallet(const std::string& username, const E
 		WALLET_ERROR_F("Failed to create wallet directory for user: {}", username);
 		throw WALLET_STORE_EXCEPTION("Failed to create directory.");
 	}
+	HardenWalletPath(userDBPath);
 
 	bool seedWritten = false;
 	try
@@ -188,8 +281,10 @@ Locked<IWalletDB> SqliteStore::CreateWallet(const std::string& username, const E
 		if (!FileUtil::ReadFile(seedFile, seedBytesRead) || seedBytesRead != seedBytes) {
 			throw WALLET_STORE_EXCEPTION("Failed to verify seed.json after write.");
 		}
+		HardenWalletPath(seedFile);
 
 		SqliteDB::Ptr pDatabase = CreateWalletDB(username);
+		HardenWalletPath(walletDBFile);
 
 		Locked<IWalletDB> walletDB(std::shared_ptr<IWalletDB>(new WalletSqlite(m_walletDirectory, username, pDatabase)));
 		m_userDBs.insert(std::make_pair(username, walletDB));
@@ -248,12 +343,24 @@ void SqliteStore::DeleteWallet(const std::string& username)
 
 void SqliteStore::ChangePassword(const std::string& username, const EncryptedSeed& encryptedSeed)
 {
+	// W-10 residual: serialize password changes with the wallet DB registry and
+	// verify the written seed file. A concurrent open/login must not observe a
+	// half-written seed.json, and a failed write must not be reported as success.
+	std::lock_guard<std::mutex> lock(m_userDBsMutex);
+
 	const fs::path userDBPath = m_walletDirectory / username;
 	const fs::path seedFile = userDBPath / "seed.json";
 
 	const std::string seedJSON = encryptedSeed.ToJSON().toStyledString();
 	const std::vector<unsigned char> seedBytes(seedJSON.data(), seedJSON.data() + seedJSON.size());
 	FileUtil::SafeWriteToFile(seedFile, seedBytes);
+
+	const EncryptedSeed stored = LoadWalletSeed(username);
+	if (stored.ToJSON().toStyledString() != seedJSON) {
+		WALLET_ERROR_F("Password change read-back mismatch for user: {}", username);
+		throw WALLET_STORE_EXCEPTION("Password change read-back mismatch.");
+	}
+	HardenWalletPath(seedFile);
 }
 
 SqliteDB::Ptr SqliteStore::CreateWalletDB(const std::string& username)

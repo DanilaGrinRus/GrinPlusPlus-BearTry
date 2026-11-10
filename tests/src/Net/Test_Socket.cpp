@@ -13,7 +13,7 @@ TEST_CASE("Socket")
     TestListener::UPtr pListener = TestListener::Create(create_conn_fn, 45678);
     pListener->RunInThread();
 
-    asio::io_service io_service;
+    asio::io_context io_service;
     asio_socket_ptr pSocket = std::make_shared<asio::ip::tcp::socket>(io_service);
     pSocket->connect(SocketAddress::Parse("127.0.0.1:45678").GetEndpoint());
 

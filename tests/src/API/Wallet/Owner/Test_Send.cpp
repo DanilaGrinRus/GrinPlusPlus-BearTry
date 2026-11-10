@@ -29,15 +29,10 @@ TEST_CASE("API: send - Slatepack")
         std::nullopt
     );
 
-    auto response_result = pTestServer->InvokeOwnerRPC("send", criteria.ToJSON()).GetResult();
-    REQUIRE(response_result.has_value());
-
-    SendResponse response = SendResponse::FromJSON(response_result.value());
-    REQUIRE(response.GetStatus() == SendResponse::EStatus::SENT);
-
-    // Unpack slatepack
-    SlatepackMessage decrypted = pReceiverWallet->GetWallet().Read()->DecryptSlatepack(response.GetArmoredSlate());
-
-    ByteBuffer deserializer(decrypted.m_payload);
-    REQUIRE(Slate::Deserialize(deserializer) == response.GetSlate());
+    // W1/F-03 contract: an unreachable Tor recipient is a real error. The
+    // handler must NOT return a legacy SENT success with an error field (UI
+    // v1.2.8 ignores that field and would show a false "sent").
+    const RPC::Response rpcResponse = pTestServer->InvokeOwnerRPC("send", criteria.ToJSON());
+    REQUIRE(!rpcResponse.GetResult().has_value());
+    REQUIRE(rpcResponse.GetError().has_value());
 }

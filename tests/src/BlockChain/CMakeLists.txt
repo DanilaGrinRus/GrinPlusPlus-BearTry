@@ -5,6 +5,7 @@ list_append_parent(
     "Test_ReorgChain.cpp"
     "Test_ChainConsistency.cpp"
     "Test_DbCheckpoint.cpp"
+    "Test_HeaderCheckpoint.cpp"
     "Test_DbRecovery.cpp"
     "Test_KernelIndex.cpp"
     "Test_KernelIndexCrash.cpp"

@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #pragma once
 
 #include "../../PMMR/KernelMMR.h"
@@ -440,6 +437,15 @@ public:
 		const char* raw = std::getenv("GRINPP_PIBD_ARCHIVE_SERVING");
 		return raw != nullptr && IsTruthyOptInValue(std::string_view(raw));
 #endif
+	}
+
+	// Pure serving policy gate. Archive serving is a capability advertisement to
+	// peers, so mainnet must stay disabled even if some future default or an
+	// operator opt-in resolves to true. Kept pure (no Global access) so the
+	// refusal is pinned by a unit test and cannot silently regress.
+	static bool IsServingAllowed(const bool optIn, const bool isMainnet) noexcept
+	{
+		return optIn && !isMainnet;
 	}
 
 	// Saturated free-space requirement for one extraction. Returns

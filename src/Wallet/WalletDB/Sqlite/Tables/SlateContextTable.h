@@ -26,6 +26,11 @@ public:
 		const uuids::uuid& slateId
 	);
 
+	//
+	// W-06 sweep: upgrade legacy enc_format=0 rows to format 2 in place.
+	//
+	static void MigrateLegacyRows(SqliteDB& database, const SecureVector& masterSeed);
+
 private:
 	static std::vector<unsigned char> Encrypt(
 		const SecureVector& masterSeed,

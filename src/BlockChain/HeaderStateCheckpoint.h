@@ -75,8 +75,35 @@ struct HeaderCheckpointData
 	std::vector<Hash> ConfirmedSegments;
 };
 
+// Operator-published anchor manifest. This is provenance, not a signature:
+// Signature is deliberately rejected until real signature verification exists.
+struct HeaderCheckpointAnchor
+{
+	std::string Network;
+	std::string Source;
+	Hash GenesisHash;
+	uint64_t CandidateEntries = 0;
+	uint64_t ConfirmedEntries = 0;
+	uint64_t MmrNodes = 0;
+	Hash CandidateTip;
+	Hash Aggregate;
+};
+
 namespace HeaderCheckpoint
 {
+	bool ParseAnchorManifest(
+		const fs::path& path,
+		HeaderCheckpointAnchor& out,
+		std::string& error
+	);
+
+	bool AnchorMatches(
+		const HeaderCheckpointAnchor& anchor,
+		const HeaderCheckpointData& data,
+		const std::string& expectedNetwork,
+		std::string& error
+	);
+
 	enum class EMode
 	{
 		Off,
@@ -90,6 +117,20 @@ namespace HeaderCheckpoint
 	bool ForceFullFromEnv();
 	bool BootstrapFromEnv();
 	std::string TrustAnchorFromEnv();
+
+	// Thread policy for the parallel header-hash fast path.
+	// 0 / unset / "auto" means auto; 1..32 is a manual cap.
+	uint32_t ChooseThreadCount(uint32_t availableCores, uint64_t availableMemoryMb);
+	uint32_t ResolveThreadCount();
+
+	// Testable predicates used by bounded extension validation.
+	bool ExtensionEntryCountAllowed(uint64_t storedEntries, uint64_t currentEntries) noexcept;
+	bool ExtensionMmrNodeMatches(
+		uint64_t expectedPosition,
+		uint64_t actualPosition,
+		const Hash& expected,
+		const Hash& actual
+	) noexcept;
 
 	// Full local verification used for the ordinary startup path and before a
 	// trusted checkpoint is (re)written. This is stronger than the historical
@@ -115,7 +156,8 @@ namespace HeaderCheckpoint
 		const Chain& candidateChain,
 		const Chain& confirmedChain,
 		HeaderCheckpointMetrics& metrics,
-		std::string& error
+		std::string& error,
+		bool verifyMmrInternal = false
 	);
 
 	// Test-only deliberate DB field corruption. GRINPP_HEADER_CKPT_MUTATE is

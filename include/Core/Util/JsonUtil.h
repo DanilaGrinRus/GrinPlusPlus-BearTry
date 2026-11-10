@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <cctype>
 #include <limits>
 
 #include <Common/Util/HexUtil.h>
@@ -524,8 +525,126 @@ public:
 	}
 
 	// Parse
+	static bool HasSingleJsonValue(const std::string& input)
+	{
+		const std::size_t size = input.size();
+		std::size_t index = 0;
+		auto skipWhitespace = [&]() {
+			while (index < size && std::isspace(static_cast<unsigned char>(input[index])))
+			{
+				++index;
+			}
+		};
+
+		skipWhitespace();
+		if (index >= size)
+		{
+			return false;
+		}
+
+		const char first = input[index];
+		if (first == '{' || first == '[')
+		{
+			const char close = (first == '{') ? '}' : ']';
+			int depth = 0;
+			bool inString = false;
+			bool escaped = false;
+			for (; index < size; ++index)
+			{
+				const char c = input[index];
+				if (inString)
+				{
+					if (escaped)
+					{
+						escaped = false;
+					}
+					else if (c == '\\')
+					{
+						escaped = true;
+					}
+					else if (c == '"')
+					{
+						inString = false;
+					}
+					continue;
+				}
+
+				if (c == '"')
+				{
+					inString = true;
+				}
+				else if (c == first)
+				{
+					++depth;
+				}
+				else if (c == close)
+				{
+					--depth;
+					if (depth == 0)
+					{
+						++index;
+						break;
+					}
+				}
+			}
+
+			if (depth != 0 || inString)
+			{
+				return false;
+			}
+		}
+		else if (first == '"')
+		{
+			bool escaped = false;
+			bool closed = false;
+			++index;
+			for (; index < size; ++index)
+			{
+				const char c = input[index];
+				if (escaped)
+				{
+					escaped = false;
+				}
+				else if (c == '\\')
+				{
+					escaped = true;
+				}
+				else if (c == '"')
+				{
+					closed = true;
+					++index;
+					break;
+				}
+			}
+			if (!closed)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			const std::size_t start = index;
+			while (index < size && !std::isspace(static_cast<unsigned char>(input[index])))
+			{
+				++index;
+			}
+			if (index == start)
+			{
+				return false;
+			}
+		}
+
+		skipWhitespace();
+		return index == size;
+	}
+
 	static bool Parse(const std::string& input, Json::Value& outputJSON)
 	{
+		if (!HasSingleJsonValue(input))
+		{
+			return false;
+		}
+
 		std::string errors;
 		std::istringstream inputStream(input);
 		return Json::parseFromStream(Json::CharReaderBuilder(), inputStream, &outputJSON, &errors);

@@ -27,6 +27,9 @@ public:
 	uint8_t GetVersion() const final;
 	void SetVersion(const uint8_t version) final;
 
+	// Consistent point-in-time checkpoint of the open chain RocksDB.
+	bool CreateCheckpoint(const fs::path& checkpointPath) const;
+
 	void MigrateBlocks() final;
 	void Compact(const std::shared_ptr<const Chain>& pChain) final;
 

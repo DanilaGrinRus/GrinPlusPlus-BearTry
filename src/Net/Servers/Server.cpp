@@ -12,11 +12,14 @@ std::shared_ptr<Server> Server::Create(const EServerType type, const std::option
 	std::string listeningPort = StringUtil::Format("{}:{}", listenerAddr, port.value_or(0));
 
 	const char* pOptions[] = {
-		"num_threads", "10", // TODO: this could be a parameter or adjust it depending on the OS
+		// 10 workers were fully blocked by 12 partial headers for the old
+		// 120 s request timeout. 32 workers + a 10 s request timeout keep the
+		// local API responsive under partial-header/slow-body clients.
+		"num_threads", "32",
 		"listening_ports", listeningPort.c_str(),
 		"enable_keep_alive", "no",
 		"keep_alive_timeout_ms", "no",
-		"request_timeout_ms", "120000",
+		"request_timeout_ms", "10000",
 		NULL
 	};
 

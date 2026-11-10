@@ -178,10 +178,14 @@ public:
 	//
 	std::unique_ptr<OutputRange> GetOutputsByLeafIndex(const uint64_t startIndex, const uint64_t maxNumOutputs) const final
 	{
-		auto pTxHashSet = m_pTxHashSetManager->GetTxHashSet();
-		if (pTxHashSet == nullptr) {
+		// F-14: take the chain state lease (same lock order as node API handlers)
+		// so the TxHashSet cannot be closed/renamed by PIBD activation while the
+		// wallet is scanning. The lease is bounded by one wallet page scan.
+		const auto snapshot = m_pBlockChain->GetApiStateSnapshot();
+		if (!snapshot.valid || snapshot.txHashSet == nullptr) {
 			throw NodeUnavailableException("Local node TxHashSet is not available.");
 		}
+		auto pTxHashSet = snapshot.txHashSet;
 
 		std::shared_ptr<const IBlockDB> pBlockDB;
 		{
@@ -202,10 +206,14 @@ public:
 	//
 	std::unique_ptr<OutputRange> GetOutputsByPosition(const uint64_t startPosition, const uint64_t maxNumOutputs) const final
 	{
-		auto pTxHashSet = m_pTxHashSetManager->GetTxHashSet();
-		if (pTxHashSet == nullptr) {
+		// F-14: coherent read through the chain state lease. Holding the lease for
+		// one bounded output page prevents the wallet from observing a TxHashSet
+		// that PIBD activation is closing or replacing.
+		const auto snapshot = m_pBlockChain->GetApiStateSnapshot();
+		if (!snapshot.valid || snapshot.txHashSet == nullptr) {
 			throw NodeUnavailableException("Local node TxHashSet is not available.");
 		}
+		auto pTxHashSet = snapshot.txHashSet;
 
 		const BlockHeaderPtr pFlushed = pTxHashSet->GetFlushedBlockHeader();
 		if (pFlushed == nullptr) {
@@ -355,44 +363,50 @@ public:
 
 	bool PostTransaction(TransactionPtr pTransaction, const EPoolType poolType) final
 	{
-		auto pTipHeader = m_pBlockChain->GetTipBlockHeader(EChainType::CONFIRMED);
-		if (pTipHeader != nullptr) {
+		bool added = false;
+		{
+			// F-14: validate the transaction against one coherent chain snapshot.
+			// The lease covers the pool admission decision only; broadcasting is
+			// performed after the lease is released.
+			const auto snapshot = m_pBlockChain->GetApiStateSnapshot();
+			if (!snapshot.valid || snapshot.tip == nullptr || snapshot.txHashSet == nullptr) {
+				return false;
+			}
+
 			std::shared_ptr<const IBlockDB> pBlockDB;
 			{
 				const auto pReader = m_pDatabase->GetBlockDB()->Read();
 				pBlockDB = pReader.GetShared();
 			}
-			auto pTxHashSet = m_pTxHashSetManager->GetTxHashSet();
-			if (pTxHashSet != nullptr) {
-				try
-				{
-					auto result = m_pTransactionPool->AddTransaction(
-						pBlockDB,
-						pTxHashSet,
-						pTransaction,
-						poolType,
-						*pTipHeader
-					);
-					
-					if (result == EAddTransactionStatus::ADDED) {
-						if (poolType == EPoolType::MEMPOOL) {
-							m_pP2PServer->BroadcastTransaction(pTransaction);
-						}
 
-						return true;
-					} else {
-						LOG_ERROR_F("Failed to post {} for reason '{}'", pTransaction, (uint8_t)result);
-					}
+			try
+			{
+				auto result = m_pTransactionPool->AddTransaction(
+					pBlockDB,
+					snapshot.txHashSet,
+					pTransaction,
+					poolType,
+					*snapshot.tip
+				);
+
+				if (result == EAddTransactionStatus::ADDED) {
+					added = true;
+				} else {
+					LOG_ERROR_F("Failed to post {} for reason '{}'", pTransaction, (uint8_t)result);
 				}
-				catch (std::exception& e)
-				{
-					LOG_ERROR_F("Failed to post {}. Exception: ", pTransaction, e.what());
-					return false;
-				}
+			}
+			catch (std::exception& e)
+			{
+				LOG_ERROR_F("Failed to post {}. Exception: {}", pTransaction, e.what());
+				return false;
 			}
 		}
 
-		return false;
+		if (added && poolType == EPoolType::MEMPOOL) {
+			m_pP2PServer->BroadcastTransaction(pTransaction);
+		}
+
+		return added;
 	}
 
 	IP2PServerPtr GetP2PServer() { return m_pP2PServer; }

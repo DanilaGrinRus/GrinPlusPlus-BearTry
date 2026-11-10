@@ -1,0 +1,164 @@
+{
+  "schema": "nrd-paired-differential/v1",
+  "generated_utc": "2026-11-02T22:14:51.2894872Z",
+  "tests_exe_path": "C:\\DHW\\Gplus\\src\\grinplusplus\\bin\\Release\\Release\\Tests.exe",
+  "tests_exe_sha256": "930148B6146A5E89B0B7FAC4A32B57212434B511E14F778A00AD6D6D24C1BB6E",
+  "tests_run_id": "nrd-paired-930148B6-20261103-051449",
+  "tests_run_exit": 0,
+  "oracle_json": "C:\\DHW\\Gplus\\src\\grinplusplus\\tools\\audit\\nrd\\evidence\\rust-oracle-8F10BFD6.json",
+  "oracle_sha256": "3FCB01244CC2C14EC72FCED85581EC74318D2ED9C515EFE9B68DA82422B73DB0",
+  "cases_total": 14,
+  "computed_cases": 11,
+  "not_computed_cases": 3,
+  "paired_cases": 11,
+  "paired_mismatches": 0,
+  "paired_mismatch_ids": [],
+  "not_computed_ids": [
+    "missing-local-history",
+    "rebuild-rejects-historical-violation",
+    "rebuild-rejects-duplicate-history-block"
+  ],
+  "claim": "Paired parity is claimed ONLY for computed cases with paired=true. not_computed cases are listed with reasons and are not evidence of parity.",
+  "rows": [
+    {
+      "id": "first-occurrence-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "exact-boundary-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "one-before-boundary-invalid",
+      "oracle_status": "computed",
+      "actual_rust_category": "invalid_nrd_relative_height",
+      "actual_cpp_category": "invalid_nrd_relative_height",
+      "expected_cpp_category": "invalid_nrd_relative_height",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "relative-height-1-next-block-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "three-occurrences-boundary-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "duplicate-nrd-in-one-block-invalid",
+      "oracle_status": "computed",
+      "actual_rust_category": "invalid_nrd_duplicate_in_block",
+      "actual_cpp_category": "invalid_nrd_duplicate_in_block",
+      "expected_cpp_category": "invalid_nrd_duplicate_in_block",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "plain-excess-not-indexed",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "plain-repeat-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted_non_nrd",
+      "actual_cpp_category": "accepted_non_nrd",
+      "expected_cpp_category": "accepted_non_nrd",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "multi-kernel-mixed-block-attribution",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "missing-local-history",
+      "oracle_status": "not_computed",
+      "actual_rust_category": null,
+      "actual_cpp_category": null,
+      "expected_cpp_category": "missing_local_history",
+      "paired": false,
+      "paired_match": false,
+      "not_computed_reason": "Rust has no local-missing-index state: the index is rebuilt inside txhashset write/startup"
+    },
+    {
+      "id": "rebuild-rejects-historical-violation",
+      "oracle_status": "not_computed",
+      "actual_rust_category": null,
+      "actual_cpp_category": null,
+      "expected_cpp_category": "missing_local_history",
+      "paired": false,
+      "paired_match": false,
+      "not_computed_reason": "invalid NRD history fixture cannot be created through real chain apply; Rust verify_kernel_pos_index rebuild path needs a crafted MMR harness"
+    },
+    {
+      "id": "rebuild-rejects-duplicate-history-block",
+      "oracle_status": "not_computed",
+      "actual_rust_category": null,
+      "actual_cpp_category": null,
+      "expected_cpp_category": "missing_local_history",
+      "paired": false,
+      "paired_match": false,
+      "not_computed_reason": "invalid NRD history fixture cannot be created through real chain apply; Rust verify_kernel_pos_index rebuild path needs a crafted MMR harness"
+    },
+    {
+      "id": "incremental-one-before-boundary-invalid",
+      "oracle_status": "computed",
+      "actual_rust_category": "invalid_nrd_relative_height",
+      "actual_cpp_category": "invalid_nrd_relative_height",
+      "expected_cpp_category": "invalid_nrd_relative_height",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    },
+    {
+      "id": "incremental-exact-boundary-accepted",
+      "oracle_status": "computed",
+      "actual_rust_category": "accepted",
+      "actual_cpp_category": "accepted",
+      "expected_cpp_category": "accepted",
+      "paired": true,
+      "paired_match": true,
+      "not_computed_reason": null
+    }
+  ]
+}

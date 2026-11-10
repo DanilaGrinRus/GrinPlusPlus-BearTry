@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #include "MessageProcessor.h"
 #include "BlockLocator.h"
 #include "ConnectionManager.h"
@@ -485,23 +482,28 @@ void MessageProcessor::ProcessMessageInternal(const std::shared_ptr<Connection>&
 		}
 		case Block:
 		{
+			if (m_pSyncStatus->GetStatus() == ESyncStatus::SYNCING_BLOCKS) {
+				// V3 inputs omit features and resolve them through the coin view
+				// while deserializing. Do not deserialize here: the block may be a
+				// child whose parent has not been committed yet. The pipe buffers
+				// raw bytes and deserializes them in height order after the parent.
+				m_pPipeline->ProcessSerializedBlock(*pConnection, ByteBuffer(byteBuffer));
+				break;
+			}
+
 			const BlockMessage blockMessage = BlockMessage::Deserialize(byteBuffer);
 			const FullBlock& block = blockMessage.GetBlock();
 
 			LOG_TRACE_F("Block received: {}", block.GetHeight());
 
-			if (m_pSyncStatus->GetStatus() == ESyncStatus::SYNCING_BLOCKS) {
-				m_pPipeline->ProcessBlock(*pConnection, block);
-			} else {
-				const EBlockChainStatus added = m_pBlockChain->AddBlock(block);
-				if (added == EBlockChainStatus::SUCCESS) {
-					const HeaderMessage headerMessage(block.GetHeader());
-					m_connectionManager.BroadcastMessage(headerMessage, pConnection->GetId());
-				} else if (added == EBlockChainStatus::ORPHANED) {
-					if (block.GetTotalDifficulty() > m_pBlockChain->GetTotalDifficulty(EChainType::CONFIRMED))
-					{
-						pConnection->SendAsync(GetCompactBlockMessage{ block.GetPreviousHash() });
-					}
+			const EBlockChainStatus added = m_pBlockChain->AddBlock(block);
+			if (added == EBlockChainStatus::SUCCESS) {
+				const HeaderMessage headerMessage(block.GetHeader());
+				m_connectionManager.BroadcastMessage(headerMessage, pConnection->GetId());
+			} else if (added == EBlockChainStatus::ORPHANED) {
+				if (block.GetTotalDifficulty() > m_pBlockChain->GetTotalDifficulty(EChainType::CONFIRMED))
+				{
+					pConnection->SendAsync(GetCompactBlockMessage{ block.GetPreviousHash() });
 				}
 			}
 

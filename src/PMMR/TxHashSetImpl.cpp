@@ -1,6 +1,3 @@
-// Derived from grin 5.5.2 (Rust), Copyright The Grin Developers.
-// Licensed under the Apache License, Version 2.0. Modified for the Grin++ C++ fork.
-// See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt for details.
 #include "TxHashSetImpl.h"
 #include "TxHashSetValidator.h"
 #include "Common/MMRUtil.h"
@@ -494,7 +491,7 @@ void TxHashSet::RebuildRecentKernelIndexInternal(
 		if (cutoff > 0) {
 			BlockHeaderPtr pPrevious = pBlockDB->GetBlockHeader(pHeader->GetPreviousHash());
 			if (pPrevious == nullptr || pPrevious->GetHeight() + 1 != cutoff) {
-				LOG_WARNING_F("Could not rebuild NRD index: header before cutoff is missing");
+				LOG_WARNING("Could not rebuild NRD index: header before cutoff is missing");
 				return;
 			}
 			previousKernelCount = pPrevious->GetNumKernels();

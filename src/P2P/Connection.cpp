@@ -78,13 +78,6 @@ void Connection::SendAsync(const IMessage& message)
     }
 }
 
-bool Connection::ExceedsRateLimit() const
-{
-    // Our own outbound requests are under local control and are not evidence
-    // that the remote peer is abusive (Grin 5.5.2 checks incoming only).
-    return PeerRatePolicy::IsAbusive(m_pSocket->GetRateCounter().GetReceivedInLastMinute());
-}
-
 bool Connection::AllowPibdRequest()
 {
     std::lock_guard<std::mutex> lock(m_pibdRateMutex);
@@ -136,6 +129,18 @@ void Connection::Thread_Connect(std::shared_ptr<Connection> pConnection)
     }
     catch (const std::exception& e) {
         LOG_ERROR_F("Connection {} {} failed: {}", pConnection->GetDirection() == EDirection::OUTBOUND ? "outbound" : "inbound", pConnection->GetSocket()->GetSocketAddress().Format(), e);
+    }
+
+    // Always release the pre-handshake admission slot: success and every
+    // failure path must invoke the callback exactly once.
+    pConnection->NotifyHandshakeComplete();
+}
+
+void Connection::NotifyHandshakeComplete()
+{
+    std::function<void()> callback = std::move(m_handshakeCallback);
+    if (callback) {
+        callback();
     }
 }
 
@@ -232,7 +237,7 @@ void Connection::HandleReceivedBody(MessageHeader msg_header, const asio::error_
             m_lastReceived = std::chrono::system_clock::now();
             // The async receive path is the normal path after the handshake; the
             // synchronous ReceiveSync counter is not used here. Count every fully
-            // received message so ExceedsRateLimit sees actual traffic.
+            // received message so the incoming abuse rate policy sees actual traffic.
             m_pSocket->GetRateCounter().AddMessageReceived();
 
             auto pMessageProcessor = m_pMessageProcessor.lock();
@@ -271,10 +276,33 @@ void Connection::CheckPing()
         return;
     }
 
-    if (ExceedsRateLimit()) {
-        LOG_WARNING_F("Banning {} for exceeding rate limit.", GetPeer());
+    // Incoming-only abuse accounting (Grin 5.5.2 parity). A remote peer above
+    // the threshold is banned exactly as before. A loopback peer is a local
+    // stand peer, not a remote DoS vector, and a healthy fast local catch-up
+    // legitimately exceeds 500 block messages/minute, so rate alone must not
+    // ban it (the 3-hour ban of the sole 127.0.0.1 peer stopped block catch-up
+    // on the task-70 no-fill control).
+    const size_t receivedInLastMinute = m_pSocket->GetRateCounter().GetReceivedInLastMinute();
+    switch (PeerRatePolicy::RateLimitAction(receivedInLastMinute, GetIPAddress().IsLocalhost())) {
+    case PeerRatePolicy::ERateLimitAction::Ban:
+        LOG_WARNING_F(
+            "Banning {} for exceeding rate limit ({}/min).",
+            GetPeer(),
+            receivedInLastMinute);
         GetPeer()->Ban(EBanReason::Abusive);
         return;
+    case PeerRatePolicy::ERateLimitAction::IgnoreLoopback:
+        if (m_lastLoopbackRateLog + PeerRatePolicy::LOOPBACK_RATE_LOG_INTERVAL < system_clock::now()) {
+            m_lastLoopbackRateLog = system_clock::now();
+            LOG_WARNING_F(
+                "Loopback peer {} exceeded the incoming rate limit ({}/min); not banning a local peer.",
+                GetPeer(),
+                receivedInLastMinute);
+        }
+        break;
+    case PeerRatePolicy::ERateLimitAction::None:
+    default:
+        break;
     }
 
     if (m_lastPing + std::chrono::seconds(10) < system_clock::now()) {

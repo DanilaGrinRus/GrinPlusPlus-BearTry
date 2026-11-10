@@ -4,6 +4,7 @@
 #include <Core/Models/SpentOutput.h>
 #include <Core/Traits/Batchable.h>
 #include <Database/KernelIndexState.h>
+#include <filesystem.h>
 #include <unordered_map>
 #include <memory>
 
@@ -33,6 +34,12 @@ public:
 	/// </summary>
 	/// <param name="version">The new version.</param>
 	virtual void SetVersion(const uint8_t version) = 0;
+
+	/// <summary>
+	/// Creates a consistent point-in-time checkpoint of the open chain database
+	/// at checkpointPath (which must not exist). Returns false on failure.
+	/// </summary>
+	virtual bool CreateCheckpoint(const fs::path& checkpointPath) const = 0;
 
 	/// <summary>
 	/// Updates FullBlock entries to the latest serialization format.

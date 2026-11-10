@@ -19,7 +19,7 @@ public:
 
 private:
     TestListener()
-        : m_pAsioContext(std::make_shared<asio::io_service>()) { }
+        : m_pAsioContext(std::make_shared<asio::io_context>()) { }
 
     void Accept(const CreateConnFunc& fn_create_connection);
     void OnAccept(CreateConnFunc fn_create_connection, const asio::error_code& ec);
@@ -27,7 +27,7 @@ private:
     std::mutex m_asioMutex;
     std::atomic_uint32_t m_tasks;
 
-    std::shared_ptr<asio::io_service> m_pAsioContext;
+    std::shared_ptr<asio::io_context> m_pAsioContext;
     std::shared_ptr<asio::ip::tcp::acceptor> m_pAcceptor;
     asio_socket_ptr m_pSocket;
 

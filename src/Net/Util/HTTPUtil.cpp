@@ -115,11 +115,18 @@ std::optional<Json::Value> HTTPUtil::GetRequestBody(mg_connection* conn)
 {
 	assert(conn != nullptr);
 
-	const struct mg_request_info* req_info = mg_get_request_info(conn);
-	const long long contentLength = req_info->content_length;
+	const long long contentLength = GetRequestBodyLength(conn);
 	if (contentLength <= 0)
 	{
 		return std::nullopt;
+	}
+
+	if (!IsRequestBodySizeAllowed(contentLength))
+	{
+		throw DESERIALIZATION_EXCEPTION_F(
+			"Request body too large ({} bytes; maximum {})",
+			contentLength,
+			MAX_REQUEST_BODY_BYTES);
 	}
 
 	std::string requestBody;
@@ -249,7 +256,36 @@ int HTTPUtil::BuildNotFoundResponse(mg_connection* conn, const std::string& resp
 
 	mg_write(conn, response.c_str(), len);
 
-	return 400;
+	return 404;
+}
+
+long long HTTPUtil::GetRequestBodyLength(mg_connection* conn) noexcept
+{
+	if (conn == nullptr)
+	{
+		return -1;
+	}
+
+	const struct mg_request_info* req_info = mg_get_request_info(conn);
+	return req_info != nullptr ? req_info->content_length : -1;
+}
+
+int HTTPUtil::BuildRequestEntityTooLargeResponse(mg_connection* conn, const std::string& response)
+{
+	assert(conn != nullptr);
+
+	unsigned long len = (unsigned long)response.size();
+
+	mg_printf(conn,
+		"HTTP/1.1 413 Request Entity Too Large\r\n"
+		"Content-Length: %lu\r\n"
+		"Content-Type: text/plain\r\n"
+		"Connection: close\r\n\r\n",
+		len);
+
+	mg_write(conn, response.c_str(), len);
+
+	return 413;
 }
 
 int HTTPUtil::BuildInternalErrorResponse(mg_connection* conn, const std::string& response)

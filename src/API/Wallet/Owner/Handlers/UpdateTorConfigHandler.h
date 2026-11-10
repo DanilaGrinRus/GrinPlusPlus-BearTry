@@ -5,6 +5,7 @@
 #include <Core/Util/JsonUtil.h>
 #include <Net/Servers/RPC/RPCMethod.h>
 #include <API/Wallet/Owner/Models/Errors.h>
+#include <Common/Logger.h>
 #include <optional>
 #include <fstream>
 
@@ -32,30 +33,45 @@ public:
 		bool enableSnowflake = JsonUtil::GetRequiredBool(json_params, "enable_snowflake");
 		
 		Config& config = Global::GetConfig();
-		
+
+		// Never report SUCCESS unless every torrc write succeeded. Snapshot the
+		// original file so a failed multi-step update is rolled back as a unit.
+		const std::string originalTorrc = config.ReadTorrcFile();
+		const auto failAndRestore = [&](const std::string& message) {
+			if (!config.WriteTorrcContent(originalTorrc)) {
+				WALLET_ERROR("Failed to restore torrc after a failed Tor configuration update");
+			}
+			return request.BuildError("INTERNAL_ERROR", message);
+		};
+
 		if (enableSnowflake)
 		{
 			if (!torBridges.empty())
 			{
 				return request.BuildError("INVALID_PARAMS", "Obfs4 bridges are not compatible with Snowflake");
 			}
-			config.EnableSnowflake();
+			if (!config.EnableSnowflake()) {
+				return failAndRestore("Failed to enable Snowflake configuration");
+			}
 		}
 		else
 		{
-			config.DisableSnowflake();
-		}
-		
-		if(!torBridges.empty())
-		{
-			for (const Json::Value& bridge : torBridges)
+			if (!config.DisableSnowflake()) {
+				return failAndRestore("Failed to disable Snowflake configuration");
+			}
+
+			if (!torBridges.empty())
 			{
-				config.AddObfs4TorBridge(bridge.asString());
-			}	
-		}
-		else
-		{
-			config.DisableObfsBridges();
+				for (const Json::Value& bridge : torBridges)
+				{
+					if (!config.AddObfs4TorBridge(bridge.asString())) {
+						return failAndRestore("Failed to write obfs4 bridge configuration");
+					}
+				}
+			}
+			else if (!config.DisableObfsBridges()) {
+				return failAndRestore("Failed to disable obfs4 configuration");
+			}
 		}
 
 		Json::Value bridges(Json::arrayValue);
