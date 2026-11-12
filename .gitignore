@@ -1,0 +1,4 @@
+.GrinPP/
+*.log
+*.tmp
+__pycache__/
