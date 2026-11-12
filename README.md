@@ -15,7 +15,7 @@
 | Node Beta (старое) | предыдущая node-only Beta, сохранена в ветке `beta` | ветка [`beta`](https://github.com/DanilaGrinRus/GrinPlusPlus-BearTry/tree/beta) |
 
 В каждом релизе (zip-ассет): `GrinNode.exe`, `tor\`, `grinpp-desktop.exe`,
-NSIS-установщик UI, `Start Grin++.cmd`, README, исходники и `SHA256SUMS.txt`.
+NSIS-установщик UI, `Start Grin++.cmd`, README, исходники и `SHA256SUMS.txt`. Полные контрольные суммы комплекта лежат внутри zip; `SHA256SUMS.txt` в папках репозитория покрывает файлы, которые лежат в git.
 
 ## Быстрый старт
 
